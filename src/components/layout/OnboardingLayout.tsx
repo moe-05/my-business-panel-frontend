@@ -13,16 +13,11 @@ export function OnboardingLayout({
       {/* ── Panel izquierdo decorativo ── */}
       <aside className="hidden lg:flex lg:w-[45%] xl:w-[42%] relative flex-col justify-between p-10 xl:p-14 overflow-hidden bg-gray-950">
         {/* Fondo con gradiente y textura */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse at 20% 50%, #323232 0%, #1a1a1a 40%, #0f0f0f 100%)",
-          }}
-        />
+        <div className="absolute inset-0 bg-gradient-dark" />
+
         {/* Orbes decorativos */}
-        <div className="absolute top-[-80px] right-[-80px] w-[300px] h-[300px] rounded-full bg-gray-700/20 blur-3xl" />
-        <div className="absolute bottom-[-60px] left-[-60px] w-[250px] h-[250px] rounded-full bg-gray-600/10 blur-3xl" />
+        <div className="absolute -top-20 -right-20 w-75 h-75 rounded-full bg-gray-700/20 blur-3xl" />
+        <div className="absolute -bottom-15 -left-15 w-62 h-62 rounded-full bg-gray-600/10 blur-3xl" />
 
         {/* Contenido del panel */}
         <div className="relative z-10">
@@ -52,10 +47,7 @@ export function OnboardingLayout({
                 <rect x="14" y="13" width="8" height="8" rx="2" fill="white" />
               </svg>
             </div>
-            <span
-              className="text-white font-semibold text-lg tracking-tight"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
+            <span className="text-white font-semibold text-lg tracking-tight font-display">
               My Business Panel
             </span>
           </div>
@@ -63,10 +55,7 @@ export function OnboardingLayout({
           {/* Headline */}
           {panelHeadline && (
             <div className="mb-8">
-              <h1
-                className="text-3xl xl:text-4xl font-bold text-white leading-tight mb-3"
-                style={{ fontFamily: "var(--font-display)" }}
-              >
+              <h1 className="text-3xl xl:text-4xl font-bold text-white leading-tight mb-3 font-display">
                 {panelHeadline}
               </h1>
               {panelSubtext && (
@@ -158,10 +147,7 @@ export function OnboardingLayout({
               <rect x="14" y="13" width="8" height="8" rx="2" fill="white" />
             </svg>
           </div>
-          <span
-            className="font-semibold text-gray-900 text-base"
-            style={{ fontFamily: "var(--font-display)" }}
-          >
+          <span className="font-semibold text-gray-900 text-base font-display">
             My Business Panel
           </span>
         </div>

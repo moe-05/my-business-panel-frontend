@@ -1,18 +1,23 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
+import { useLoaderData, useNavigate, useNavigation } from "react-router-dom";
+
+import { useOnboarding } from "@/context/OnboardingContext";
+
+import { OnboardingLayout } from "@/components/layout/OnboardingLayout";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+
+import { identificationTypes } from "@/constants/identification-types";
+
+import type { SetupTenantPageLoaderData } from "@/router/loaders/setupTenant.loader";
+
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useLoaderData, useNavigate, useNavigation } from "react-router-dom";
-import { useOnboarding } from "../../../context/OnboardingContext";
-import { OnboardingLayout } from "../../../components/layout/OnboardingLayout";
-import { Button } from "../../../components/ui/Button";
-import { Input } from "../../../components/ui/Input";
-import { Select } from "../../../components/ui/Select";
-import { identificationTypes } from "../../../constants/identification-types";
-import { schema } from "./schema";
-import type { SetupTenantPageLoaderData } from "../../../router/loaders/setupTenant.loader";
+import { setupTenantSchema } from "./setup-tenant.schema";
 
-type FormValues = z.infer<typeof schema>;
+type FormValues = z.infer<typeof setupTenantSchema>;
 
 export function SetupTenantPage() {
   const { data, setStep2 } = useOnboarding();
@@ -31,7 +36,7 @@ export function SetupTenantPage() {
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(setupTenantSchema),
     defaultValues: {
       tenantName: data.tenantName,
       identificationType: data.identificationType ?? 1,
@@ -137,48 +142,17 @@ export function SetupTenantPage() {
             {...register("regionId")}
           />
 
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1.5">
-              Teléfono de contacto <span className="text-accent-500">*</span>
-            </label>
-            <div className="flex gap-2 items-start">
-              <div
-                className={`flex items-center px-3 py-2.5 bg-gray-100 border border-gray-200 rounded-xl text-sm font-medium whitespace-nowrap shrink-0 ${countryCode ? "text-gray-700" : "text-gray-400"}`}
-              >
-                {countryCode ?? "+"}
-              </div>
-              <div className="flex-1">
-                <div className="relative">
-                  <input
-                    type="tel"
-                    placeholder="71045365"
-                    required
-                    className={[
-                      "w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400",
-                      "transition-all duration-150 outline-none",
-                      "focus-ring-accent",
-                      errors.contactPhone
-                        ? "border-red-400 focus:border-red-500 focus:ring-red-500/20"
-                        : "border-gray-200 hover:border-gray-300",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    {...register("contactPhone")}
-                  />
-                </div>
-                {errors.contactPhone && (
-                  <p className="text-xs text-red-500 mt-1.5">
-                    {errors.contactPhone.message}
-                  </p>
-                )}
-                {!errors.contactPhone && (
-                  <p className="text-xs text-gray-400 mt-1.5">
-                    Número sin el código de país
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
+          <Input
+            type="tel"
+            label="Teléfono de contacto"
+            placeholder="71045365"
+            required
+            leftAddon={countryCode ?? "+"}
+            leftAddonClassName={countryCode ? "text-gray-700" : "text-gray-400"}
+            error={errors.contactPhone?.message}
+            hint="Número sin el código de país"
+            {...register("contactPhone")}
+          />
 
           <Select
             label="Tipo de identificación"

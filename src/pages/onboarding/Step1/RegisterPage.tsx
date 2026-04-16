@@ -1,46 +1,18 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { Link, useNavigate } from "react-router-dom";
+
+import { useOnboarding } from "@/context/OnboardingContext";
+
+import { OnboardingLayout } from "@/components/layout/OnboardingLayout";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Link, useNavigate } from "react-router-dom";
-import { useOnboarding } from "../../../context/OnboardingContext";
-import { OnboardingLayout } from "../../../components/layout/OnboardingLayout";
-import { Button } from "../../../components/ui/Button";
-import { Input } from "../../../components/ui/Input";
+import { registerSchema } from "./register.schema";
 
-const schema = z
-  .object({
-    firstName: z
-      .string()
-      .min(2, "Mínimo 2 caracteres")
-      .max(50, "Máximo 50 caracteres"),
-    lastName: z
-      .string()
-      .min(2, "Mínimo 2 caracteres")
-      .max(50, "Máximo 50 caracteres"),
-    email: z.string().min(1, "El email es requerido").email("Email inválido"),
-    phone: z
-      .string()
-      .min(8, "Mínimo 8 dígitos")
-      .max(15, "Máximo 15 dígitos")
-      .regex(/^[0-9+\-\s()]+$/, "Teléfono inválido"),
-    docNumber: z
-      .string()
-      .min(5, "Mínimo 5 caracteres")
-      .max(20, "Máximo 20 caracteres"),
-    password: z
-      .string()
-      .min(8, "Mínimo 8 caracteres")
-      .regex(/[A-Z]/, "Debe tener al menos una mayúscula")
-      .regex(/[0-9]/, "Debe tener al menos un número"),
-    confirmPassword: z.string().min(1, "Confirma tu contraseña"),
-  })
-  .refine((d) => d.password === d.confirmPassword, {
-    message: "Las contraseñas no coinciden",
-    path: ["confirmPassword"],
-  });
-
-type FormValues = z.infer<typeof schema>;
+type FormValues = z.infer<typeof registerSchema>;
 
 export function RegisterPage() {
   const { data, setStep1 } = useOnboarding();
@@ -52,7 +24,7 @@ export function RegisterPage() {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(registerSchema),
     defaultValues: {
       firstName: data.firstName,
       lastName: data.lastName,
@@ -88,10 +60,7 @@ export function RegisterPage() {
           <p className="text-xs font-semibold text-gray-800 uppercase tracking-widest mb-2">
             Paso 1 de 4
           </p>
-          <h2
-            className="text-2xl font-bold text-gray-900 mb-1.5"
-            style={{ fontFamily: "var(--font-display)" }}
-          >
+          <h2 className="text-2xl font-bold text-gray-900 mb-1.5 font-display">
             Datos personales
           </h2>
           <p className="text-sm text-gray-500">
@@ -136,37 +105,18 @@ export function RegisterPage() {
             required
             autoComplete="email"
             error={errors.email?.message}
+            hint="Correo administrador para acceder a tu cuenta y gestionar tu negocio"
             {...register("email")}
           />
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Teléfono"
-              type="tel"
-              placeholder="8888-8888"
-              required
-              autoComplete="tel"
-              error={errors.phone?.message}
-              {...register("phone")}
-            />
-            <Input
-              label="N° de documento"
-              placeholder="1-0000-0000"
-              required
-              error={errors.docNumber?.message}
-              hint="Cédula o pasaporte"
-              {...register("docNumber")}
-            />
-          </div>
 
           <Input
             label="Contraseña"
             type="password"
-            placeholder="Mínimo 8 caracteres"
+            placeholder="Tu contraseña"
             required
             autoComplete="new-password"
             error={errors.password?.message}
-            hint="Al menos 8 caracteres, una mayúscula y un número"
+            hint="Debe contener al menos 8 caracteres, una mayúscula y un número"
             {...register("password")}
           />
 
@@ -176,9 +126,31 @@ export function RegisterPage() {
             placeholder="Repite tu contraseña"
             required
             autoComplete="new-password"
+            hint="Debe coincidir con la contraseña ingresada arriba"
             error={errors.confirmPassword?.message}
             {...register("confirmPassword")}
           />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Teléfono"
+              type="tel"
+              placeholder="71045365"
+              required
+              autoComplete="tel"
+              error={errors.phone?.message}
+              hint="Número de teléfono para contacto"
+              {...register("phone")}
+            />
+            <Input
+              label="Número de identificación"
+              placeholder="3140002575"
+              required
+              error={errors.docNumber?.message}
+              hint="Cédula o pasaporte"
+              {...register("docNumber")}
+            />
+          </div>
 
           <div className="pt-2">
             <Button type="submit" fullWidth loading={isSubmitting} size="lg">

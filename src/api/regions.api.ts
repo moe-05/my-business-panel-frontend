@@ -1,9 +1,9 @@
 import { url } from ".";
-import type { IRegion } from "./interfaces/IRegion";
+import type { RegionResponse } from "@/interfaces/api/responses/RegionResponse";
 
 export const regionsApi = {
-  getRegions: async (): Promise<IRegion[]> => {
-    const response = await fetch(`${url}/regions`, {
+  getRegions: async (): Promise<RegionResponse[]> => {
+    const response = await fetch(`${url}/region`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",

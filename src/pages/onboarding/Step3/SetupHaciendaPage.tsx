@@ -1,29 +1,18 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
+
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useNavigate } from "react-router-dom";
-import { useOnboarding } from "../../../context/OnboardingContext";
-import { OnboardingLayout } from "../../../components/layout/OnboardingLayout";
-import { Button } from "../../../components/ui/Button";
-import { Input } from "../../../components/ui/Input";
+import { setupHaciendaSchema } from "./setup-hacienda.schema";
 
-const schema = z.object({
-  haciendaUsername: z
-    .string()
-    .min(3, "Mínimo 3 caracteres")
-    .max(100, "Máximo 100 caracteres"),
-  haciendaPassword: z
-    .string()
-    .min(6, "Mínimo 6 caracteres")
-    .max(200, "Máximo 200 caracteres"),
-  p12Password: z
-    .string()
-    .min(6, "Mínimo 6 caracteres")
-    .max(200, "Máximo 200 caracteres"),
-});
+import { useOnboarding } from "@/context/OnboardingContext";
 
-type FormValues = z.infer<typeof schema>;
+import { OnboardingLayout } from "@/components/layout/OnboardingLayout";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+
+type FormValues = z.infer<typeof setupHaciendaSchema>;
 
 export function SetupHaciendaPage() {
   const { data, setStep3 } = useOnboarding();
@@ -32,7 +21,6 @@ export function SetupHaciendaPage() {
   const [p12Base64, setP12Base64] = useState<string>(data.p12Base64);
   const [, setError] = useState("");
 
-  // Obtener el ID de cliente desde variable de entorno
   const haciendaClientId =
     import.meta.env.VITE_HACIENDA_CLIENT_ID || "api-prod";
 
@@ -41,7 +29,7 @@ export function SetupHaciendaPage() {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(setupHaciendaSchema),
     defaultValues: {
       haciendaUsername: data.haciendaUsername,
       haciendaPassword: data.haciendaPassword,
@@ -96,14 +84,11 @@ export function SetupHaciendaPage() {
           <p className="text-xs font-semibold text-gray-800 uppercase tracking-widest mb-2">
             Paso 3 de 4
           </p>
-          <h2
-            className="text-2xl font-bold text-gray-900 mb-1.5"
-            style={{ fontFamily: "var(--font-display)" }}
-          >
+          <h2 className="text-2xl font-bold text-gray-900 mb-1.5 font-display">
             Credenciales Hacienda
           </h2>
           <p className="text-sm text-gray-500">
-            Configura tu acceso al ATV de Hacienda para facturación electrónica.
+            Configura tu acceso a OVI de Hacienda para facturación electrónica.
           </p>
         </div>
 
@@ -126,7 +111,7 @@ export function SetupHaciendaPage() {
             placeholder="••••••••"
             required
             error={errors.haciendaPassword?.message}
-            hint="Tu contraseña de acceso al ATV"
+            hint="Tu contraseña de acceso a OVI"
             {...register("haciendaPassword")}
           />
 

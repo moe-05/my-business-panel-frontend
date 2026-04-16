@@ -1,21 +1,14 @@
-import type { IRegion } from "../../api/types/auth";
-import { regionService } from "../../api/regionService";
+import { regionsApi } from "@/api";
+
+import type { RegionResponse } from "@/interfaces/api/responses/RegionResponse";
 
 export type SetupTenantPageLoaderData = {
-  regions: IRegion[];
+  regions: RegionResponse[];
   regionsError: string;
 };
 
 export const getSetupTenantData =
   async (): Promise<SetupTenantPageLoaderData> => {
-    try {
-      const regions: IRegion[] = await regionService.getAll();
-      return { regions, regionsError: "" };
-    } catch {
-      return {
-        regions: [],
-        regionsError:
-          "No se pudieron cargar las regiones. Por favor, recarga la página.",
-      };
-    }
+    const regions: RegionResponse[] = await regionsApi.getRegions();
+    return { regions, regionsError: "" };
   };

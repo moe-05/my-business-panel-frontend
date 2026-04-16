@@ -1,5 +1,21 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+
+import { useOnboarding } from "@/context/OnboardingContext";
+
+import { tenantService } from "@/api/tenantService";
+import { branchService } from "@/api/branchService";
+import { userService } from "@/api/userService";
+import { authService } from "@/api/authService";
+import { haciendaService } from "@/api/haciendaService";
+import { createSubscription } from "@/router/actions/subscription.actions";
+
+import { OnboardingLayout } from "@/components/layout/OnboardingLayout";
+import { Button } from "@/components/ui/Button";
+import { buildSubscriptionRequest } from "@/helpers/buildSubscriptionRequest";
+
+import { SUBSCRIPTION_PLANS } from "@/constants/subscription-plans";
+
 import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -7,18 +23,6 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
-import { useOnboarding } from "../../../context/OnboardingContext";
-import { tenantService } from "../../../api/tenantService";
-import { branchService } from "../../../api/branchService";
-import { userService } from "../../../api/userService";
-import {
-  subscriptionService,
-  SUBSCRIPTION_PLANS,
-} from "../../../api/subscriptionService";
-import { authService } from "../../../api/authService";
-import { haciendaService } from "../../../api/haciendaService";
-import { OnboardingLayout } from "../../../components/layout/OnboardingLayout";
-import { Button } from "../../../components/ui/Button";
 
 const stripePromise = loadStripe(
   import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string,
@@ -162,12 +166,8 @@ function PaymentForm() {
       }
 
       // 7. Crear suscripción en backend (adjunta el PM al customer)
-      const subReq = subscriptionService.buildRequest(
-        tenantId,
-        PLAN,
-        paymentMethod.id,
-      );
-      const subRes = await subscriptionService.create(subReq);
+      const subReq = buildSubscriptionRequest(tenantId, PLAN, paymentMethod.id);
+      const subRes = await createSubscription(subReq);
 
       if (!subRes.clientSecret) {
         throw new Error("No se recibió el token de pago del servidor.");
@@ -211,10 +211,7 @@ function PaymentForm() {
           <p className="text-xs font-semibold text-gray-800 uppercase tracking-widest mb-2">
             Paso 4 de 4
           </p>
-          <h2
-            className="text-2xl font-bold text-gray-900 mb-1.5"
-            style={{ fontFamily: "var(--font-display)" }}
-          >
+          <h2 className="text-2xl font-bold text-gray-900 mb-1.5 font-display">
             Resumen de suscripción
           </h2>
           <p className="text-sm text-gray-500">
@@ -226,10 +223,7 @@ function PaymentForm() {
         <div className="rounded-2xl border-2 border-gray-800 bg-gray-50 p-6 mb-6">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h3
-                className="text-lg font-bold text-gray-900"
-                style={{ fontFamily: "var(--font-display)" }}
-              >
+              <h3 className="text-lg font-bold text-gray-900 font-display">
                 {PLAN.name}
               </h3>
               <p className="text-sm text-gray-800 font-medium mt-0.5">
@@ -369,7 +363,7 @@ function PaymentForm() {
             type="button"
             loading={isLoading}
             size="lg"
-            className="flex-[2]"
+            className="flex-2"
             onClick={handleSubscribe}
             disabled={!cardComplete || !stripe}
           >

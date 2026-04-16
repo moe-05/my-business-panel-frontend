@@ -1,4 +1,4 @@
-export interface IRegion {
+export interface RegionResponse {
   region_id: number;
   region_name: string;
   country_code: string;

@@ -6,34 +6,34 @@ import {
   Route,
   RouterProvider,
 } from "react-router-dom";
-import { AuthProvider } from "../context/AuthContext";
-import { OnboardingProvider } from "../context/OnboardingContext";
-import { ModuleProvider } from "../context/ModuleContext";
+import { AuthProvider } from "@/context/AuthContext";
+import { OnboardingProvider } from "@/context/OnboardingContext";
+import { ModuleProvider } from "@/context/ModuleContext";
 import { ProtectedRoute } from "./ProtectedRoute";
 
 // Layouts
-import { AppLayout } from "../components/layout/AppLayout";
+import { AppLayout } from "@/components/layout/AppLayout";
 
 // Auth pages
-import { LoginPage } from "../pages/auth/LoginPage";
+import { LoginPage } from "@/pages/auth/LoginPage";
 
 // Onboarding pages
-import { RegisterPage } from "../pages/onboarding/Step1/RegisterPage";
-import { SetupTenantPage } from "../pages/onboarding/Step2/SetupTenantPage";
-import { SetupHaciendaPage } from "../pages/onboarding/Step3/SetupHaciendaPage";
-import { PaymentPage } from "../pages/onboarding/Step4/PaymentPage";
-import { SuccessPage } from "../pages/onboarding/SuccessPage";
+import { RegisterPage } from "@/pages/onboarding/Step1/RegisterPage";
+import { SetupTenantPage } from "@/pages/onboarding/Step2/SetupTenantPage";
+import { SetupHaciendaPage } from "@/pages/onboarding/Step3/SetupHaciendaPage";
+import { PaymentPage } from "@/pages/onboarding/Step4/PaymentPage";
+import { SuccessPage } from "@/pages/onboarding/SuccessPage";
 
 // App pages
-import { DashboardPage } from "../pages/app/DashboardPage";
-import { UsersPage } from "../pages/app/UsersPage";
-import { TenantsPage } from "../pages/app/TenantsPage";
-import { TenantDetailPage } from "../pages/app/TenantDetailPage";
-import { BranchesPage } from "../pages/app/BranchesPage";
-import { ProductsPage } from "../pages/app/ProductsPage";
-import { CustomersPage } from "../pages/app/CustomersPage";
-import { SettingsPage } from "../pages/app/SettingsPage";
-import { ProfilePage } from "../pages/app/ProfilePage";
+import { DashboardPage } from "@/pages/app/DashboardPage";
+import { UsersPage } from "@/pages/app/UsersPage";
+import { TenantsPage } from "@/pages/app/TenantsPage";
+import { TenantDetailPage } from "@/pages/app/TenantDetailPage";
+import { BranchesPage } from "@/pages/app/BranchesPage";
+import { ProductsPage } from "@/pages/app/ProductsPage";
+import { CustomersPage } from "@/pages/app/CustomersPage";
+import { SettingsPage } from "@/pages/app/SettingsPage";
+import { ProfilePage } from "@/pages/app/ProfilePage";
 import { getSetupTenantData } from "./loaders/setupTenant.loader";
 
 // Generic placeholder for modules not yet implemented
