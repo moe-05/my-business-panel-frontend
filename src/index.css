@@ -1,0 +1,224 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Outfit:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-display: 'Bricolage Grotesque', sans-serif;
+  --font-sans: 'Outfit', sans-serif;
+}
+
+:root {
+  /* Default accent: soft black (not pure black) */
+  --accent-50: #f7f7f8;
+  --accent-100: #eeeeef;
+  --accent-200: #dddee0;
+  --accent-300: #c7c8cc;
+  --accent-400: #9c9ea6;
+  --accent-500: #737680;
+  --accent-600: #51545e;
+  --accent-700: #3d4048;
+  --accent-800: #2a2c33;
+  --accent-900: #1d1f24;
+  --accent-950: #15171b;
+}
+
+body[data-module='dashboard'],
+body[data-module='auth'] {
+  --accent-50: #f7f7f8;
+  --accent-100: #eeeeef;
+  --accent-200: #dddee0;
+  --accent-300: #c7c8cc;
+  --accent-400: #9c9ea6;
+  --accent-500: #737680;
+  --accent-600: #51545e;
+  --accent-700: #3d4048;
+  --accent-800: #2a2c33;
+  --accent-900: #1d1f24;
+  --accent-950: #15171b;
+}
+
+body[data-module='tenants'] {
+  --accent-50: #eff6ff;
+  --accent-100: #dbeafe;
+  --accent-200: #bfdbfe;
+  --accent-300: #93c5fd;
+  --accent-400: #60a5fa;
+  --accent-500: #3b82f6;
+  --accent-600: #2563eb;
+  --accent-700: #1d4ed8;
+  --accent-800: #1e40af;
+  --accent-900: #1e3a8a;
+  --accent-950: #172554;
+}
+
+body[data-module='users'] {
+  --accent-50: #ecfdf5;
+  --accent-100: #d1fae5;
+  --accent-200: #a7f3d0;
+  --accent-300: #6ee7b7;
+  --accent-400: #34d399;
+  --accent-500: #10b981;
+  --accent-600: #059669;
+  --accent-700: #047857;
+  --accent-800: #065f46;
+  --accent-900: #064e3b;
+  --accent-950: #022c22;
+}
+
+body[data-module='branches'] {
+  --accent-50: #fffbeb;
+  --accent-100: #fef3c7;
+  --accent-200: #fde68a;
+  --accent-300: #fcd34d;
+  --accent-400: #fbbf24;
+  --accent-500: #f59e0b;
+  --accent-600: #d97706;
+  --accent-700: #b45309;
+  --accent-800: #92400e;
+  --accent-900: #78350f;
+  --accent-950: #451a03;
+}
+
+body[data-module='products'] {
+  --accent-50: #f0fdfa;
+  --accent-100: #ccfbf1;
+  --accent-200: #99f6e4;
+  --accent-300: #5eead4;
+  --accent-400: #2dd4bf;
+  --accent-500: #14b8a6;
+  --accent-600: #0d9488;
+  --accent-700: #0f766e;
+  --accent-800: #115e59;
+  --accent-900: #134e4a;
+  --accent-950: #042f2e;
+}
+
+body[data-module='customers'] {
+  --accent-50: #fff1f2;
+  --accent-100: #ffe4e6;
+  --accent-200: #fecdd3;
+  --accent-300: #fda4af;
+  --accent-400: #fb7185;
+  --accent-500: #f43f5e;
+  --accent-600: #e11d48;
+  --accent-700: #be123c;
+  --accent-800: #9f1239;
+  --accent-900: #881337;
+  --accent-950: #4c0519;
+}
+
+body[data-module='settings'] {
+  --accent-50: #f8fafc;
+  --accent-100: #f1f5f9;
+  --accent-200: #e2e8f0;
+  --accent-300: #cbd5e1;
+  --accent-400: #94a3b8;
+  --accent-500: #64748b;
+  --accent-600: #475569;
+  --accent-700: #334155;
+  --accent-800: #1e293b;
+  --accent-900: #0f172a;
+  --accent-950: #020617;
+}
+
+body[data-module='profile'] {
+  --accent-50: #f5f5f5;
+  --accent-100: #e8e8e8;
+  --accent-200: #d1d1d1;
+  --accent-300: #b0b0b0;
+  --accent-400: #808080;
+  --accent-500: #595959;
+  --accent-600: #323232;
+  --accent-700: #242424;
+  --accent-800: #171717;
+  --accent-900: #101010;
+  --accent-950: #0a0a0a;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: #ffffff;
+  color: #111827;
+}
+
+.text-accent-200 { color: var(--accent-200); }
+.text-accent-400 { color: var(--accent-400); }
+.text-accent-500 { color: var(--accent-500); }
+.text-accent-600 { color: var(--accent-600); }
+.text-accent-700 { color: var(--accent-700); }
+
+.bg-accent-50 { background-color: var(--accent-50); }
+.bg-accent-100 { background-color: var(--accent-100); }
+.bg-accent-200 { background-color: var(--accent-200); }
+.bg-accent-500 { background-color: var(--accent-500); }
+.bg-accent-600 { background-color: var(--accent-600); }
+.bg-accent-950 { background-color: var(--accent-950); }
+
+.bg-accent-400-10 { background-color: color-mix(in srgb, var(--accent-400) 10%, transparent); }
+.bg-accent-500-20 { background-color: color-mix(in srgb, var(--accent-500) 20%, transparent); }
+.bg-accent-600-20 { background-color: color-mix(in srgb, var(--accent-600) 20%, transparent); }
+
+.border-accent-100 { border-color: var(--accent-100); }
+.border-accent-200 { border-color: var(--accent-200); }
+.border-accent-500 { border-color: var(--accent-500); }
+.border-accent-600 { border-color: var(--accent-600); }
+
+.focus-ring-accent:focus {
+  border-color: var(--accent-500);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 20%, transparent);
+}
+
+.focus-within-ring-accent:focus-within {
+  border-color: var(--accent-500);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 20%, transparent);
+}
+
+.focus-visible-accent-outline:focus-visible {
+  outline-color: var(--accent-500);
+}
+
+.step-ring-accent {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-300) 50%, transparent);
+}
+
+.accent-shadow {
+  box-shadow: 0 10px 18px -8px color-mix(in srgb, var(--accent-200) 85%, transparent);
+}
+
+.btn-accent-primary {
+  background-color: var(--accent-600);
+  color: #ffffff;
+  box-shadow: 0 1px 2px 0 rgb(17 24 39 / 8%);
+}
+.btn-accent-primary:hover { background-color: var(--accent-700); }
+.btn-accent-primary:active { background-color: var(--accent-800); }
+.btn-accent-primary:disabled { background-color: var(--accent-300); }
+
+.btn-accent-secondary {
+  background-color: #ffffff;
+  color: var(--accent-700);
+  border: 1px solid var(--accent-200);
+}
+.btn-accent-secondary:hover { background-color: var(--accent-50); }
+.btn-accent-secondary:active { background-color: var(--accent-100); }
+.btn-accent-secondary:disabled { opacity: 0.4; }
+
+.btn-accent-ghost {
+  background-color: transparent;
+  color: var(--accent-600);
+}
+.btn-accent-ghost:hover { background-color: var(--accent-50); }
+.btn-accent-ghost:active { background-color: var(--accent-100); }
+.btn-accent-ghost:disabled { opacity: 0.4; }
