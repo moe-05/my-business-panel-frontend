@@ -1,8 +1,8 @@
 import { url } from ".";
 
 import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
-import type { NewSubscriptionRequest } from "@/interfaces/api/requests/NewSubscriptionRequest";
-import type { NewSubscriptionResponse } from "@/interfaces/api/responses/NewSubscriptionResponse";
+import type { NewSubscriptionRequest } from "@/interfaces/api/requests/NewSubscriptionRequest.interface";
+import type { NewSubscriptionResponse } from "@/interfaces/api/responses/NewSubscriptionResponse.interface";
 
 export const subscriptionApi = {
   async create(data: NewSubscriptionRequest): Promise<NewSubscriptionResponse> {

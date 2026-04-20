@@ -43,6 +43,9 @@ export function SetupTenantPage() {
       identification: data.identification,
       economicActivity: data.economicActivity,
       sign: data.sign,
+      branchName: data.branchName,
+      branchNumber: data.branchNumber,
+      branchAddress: data.branchAddress,
       regionId: data.regionId ? String(data.regionId) : "",
       contactPhone: data.contactPhone,
     },
@@ -70,6 +73,9 @@ export function SetupTenantPage() {
       identification: values.identification,
       economicActivity: values.economicActivity,
       sign: values.sign,
+      branchName: values.branchName,
+      branchNumber: values.branchNumber,
+      branchAddress: values.branchAddress,
       regionId: Number(values.regionId),
     });
     console.log(data);
@@ -192,6 +198,33 @@ export function SetupTenantPage() {
             error={errors.sign?.message}
             hint="Nombre con que se identifica tu negocio en el mercado"
             {...register("sign")}
+          />
+
+          <Input
+            label="Nombre de sucursal principal"
+            placeholder="Sucursal Principal"
+            required
+            error={errors.branchName?.message}
+            hint="Será la primera sucursal activa del tenant"
+            {...register("branchName")}
+          />
+
+          <Input
+            label="Número de sucursal principal"
+            placeholder="1"
+            required
+            error={errors.branchNumber?.message}
+            hint="Identificador interno de la sucursal"
+            {...register("branchNumber")}
+          />
+
+          <Input
+            label="Dirección de sucursal principal"
+            placeholder="San José, Costa Rica"
+            required
+            error={errors.branchAddress?.message}
+            hint="Dirección física de la sucursal"
+            {...register("branchAddress")}
           />
 
           <div className="flex gap-3 pt-2">

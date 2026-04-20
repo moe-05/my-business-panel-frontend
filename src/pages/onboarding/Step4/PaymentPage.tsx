@@ -3,16 +3,10 @@ import { useNavigate } from "react-router-dom";
 
 import { useOnboarding } from "@/context/OnboardingContext";
 
-import { tenantService } from "@/api/tenantService";
-import { branchService } from "@/api/branchService";
-import { userService } from "@/api/userService";
-import { authService } from "@/api/authService";
-import { haciendaService } from "@/api/haciendaService";
-import { createSubscription } from "@/router/actions/subscription.actions";
+import { tenantApi } from "@/api/tenant.api";
 
 import { OnboardingLayout } from "@/components/layout/OnboardingLayout";
 import { Button } from "@/components/ui/Button";
-import { buildSubscriptionRequest } from "@/helpers/buildSubscriptionRequest";
 
 import { SUBSCRIPTION_PLANS } from "@/constants/subscription-plans";
 
@@ -48,7 +42,7 @@ const CARD_ELEMENT_OPTIONS = {
 function PaymentForm() {
   const stripe = useStripe();
   const elements = useElements();
-  const { data, setCreatedIds, clear } = useOnboarding();
+  const { data, clear } = useOnboarding();
   const navigate = useNavigate();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -66,92 +60,7 @@ function PaymentForm() {
     setIsLoading(true);
 
     try {
-      let tenantId = data.tenantId;
-      let branchId = data.branchId;
-      let userId = data.userId;
-
-      const today = new Date().toISOString().split("T")[0];
-      const nextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split("T")[0];
-
-      // 1. Crear tenant
-      if (!tenantId) {
-        setCurrentStep("Creando tu empresa...");
-        const tenant = await tenantService.create({
-          tenant_name: data.tenantName,
-          contact_email: data.email,
-          identification: data.identification,
-          economic_activity: data.economicActivity,
-          sign: data.sign,
-          region_id: data.regionId || 1,
-          contact_phone: data.contactPhone,
-        });
-        tenantId = tenant.tenant_id;
-      }
-
-      // 2. Crear sucursal principal
-      if (!branchId) {
-        setCurrentStep("Configurando tu sucursal...");
-        const branch = await branchService.create({
-          tenant_id: tenantId,
-          branch_name: `${data.tenantName} - Principal`,
-          branch_number: "1",
-          branch_address: "Pendiente de configurar",
-          is_main_branch: true,
-        });
-        branchId = branch.branch_id;
-      }
-
-      // 3. Crear usuario administrador
-      if (!userId) {
-        setCurrentStep("Creando tu usuario...");
-        const userRes = await userService.create({
-          tenant_id: tenantId,
-          email: data.email,
-          password: data.password,
-          role_id: 2,
-          employeeInfo: {
-            tenant_id: tenantId,
-            branch_id: branchId,
-            first_name: data.firstName,
-            last_name: data.lastName,
-            doc_number: data.docNumber,
-            phone: data.phone,
-            email: data.email,
-            payment_schedule_id: 1,
-            contractData: {
-              start_date: today,
-              end_date: nextYear,
-              hours: 40,
-              base_salary: 0,
-              duties: "Administrador",
-              turn_type: 1,
-              turn_id: 1,
-            },
-          },
-        });
-        userId = userRes.user_id;
-      }
-
-      setCreatedIds({ tenantId, branchId, userId });
-
-      // 4. Login
-      setCurrentStep("Autenticando...");
-      await authService.login({ email: data.email, password: data.password });
-
-      // 5. Configurar Hacienda
-      setCurrentStep("Configurando Hacienda...");
-      await haciendaService.create({
-        tenant_id: tenantId,
-        hacienda_username: data.haciendaUsername,
-        hacienda_password: data.haciendaPassword,
-        hacienda_client_id: data.haciendaClientId,
-        p12_base64: data.p12Base64,
-        p12_password: data.p12Password,
-      });
-
-      // 6. Crear payment method en Stripe
+      // 1. Crear payment method en Stripe (client-side)
       setCurrentStep("Preparando el pago...");
       const { error: pmError, paymentMethod } =
         await stripe.createPaymentMethod({
@@ -165,18 +74,61 @@ function PaymentForm() {
         );
       }
 
-      // 7. Crear suscripción en backend (adjunta el PM al customer)
-      const subReq = buildSubscriptionRequest(tenantId, PLAN, paymentMethod.id);
-      const subRes = await createSubscription(subReq);
+      // 2. Calcular fechas de suscripción
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + PLAN.months);
 
-      if (!subRes.clientSecret) {
+      // 3. Enviar solicitud única de onboarding al backend
+      setCurrentStep("Creando tu cuenta...");
+      const result = await tenantApi.onboard({
+        tenant_name: data.tenantName,
+        contact_email: data.email,
+        contact_phone: data.contactPhone,
+        identification_type_id: data.identificationType,
+        identification: data.identification,
+        economic_activity: data.economicActivity,
+        sign: data.sign,
+        region_id: data.regionId || 1,
+        branch: {
+          branch_name: data.branchName || `${data.tenantName} - Principal`,
+          branch_number: data.branchNumber || "1",
+          branch_address: data.branchAddress || undefined,
+        },
+        user: {
+          email: data.email,
+          password: data.password,
+          first_name: data.firstName,
+          last_name: data.lastName,
+          doc_number: data.docNumber,
+          phone: data.phone,
+        },
+        hacienda: {
+          hacienda_username: data.haciendaUsername,
+          hacienda_password: data.haciendaPassword,
+          hacienda_client_id: data.haciendaClientId,
+          p12_base64: data.p12Base64,
+          p12_password: data.p12Password,
+        },
+        subscription: {
+          stripe_payment_method_id: paymentMethod.id,
+          plan: PLAN.plan,
+          payment_method_id: 1,
+          payment_amount: PLAN.price,
+          subscription_type_id: PLAN.id,
+          start_date: startDate.toISOString().split("T")[0],
+          end_date: endDate.toISOString().split("T")[0],
+        },
+      });
+
+      if (!result.subscription?.clientSecret) {
         throw new Error("No se recibió el token de pago del servidor.");
       }
 
-      // 8. Confirmar el pago
+      // 4. Confirmar el pago (client-side Stripe)
       setCurrentStep("Procesando el pago...");
       const { error: stripeError, paymentIntent } =
-        await stripe.confirmCardPayment(subRes.clientSecret);
+        await stripe.confirmCardPayment(result.subscription.clientSecret);
 
       if (stripeError) {
         throw new Error(stripeError.message ?? "Error al procesar el pago.");
@@ -186,8 +138,12 @@ function PaymentForm() {
         throw new Error(`Pago no completado. Estado: ${paymentIntent?.status}`);
       }
 
+      const credentials = { email: data.email, password: data.password };
       clear();
-      navigate("/auth/register/success", { replace: true });
+      navigate("/auth/register/success", {
+        replace: true,
+        state: { credentials },
+      });
     } catch (err) {
       setError(
         err instanceof Error

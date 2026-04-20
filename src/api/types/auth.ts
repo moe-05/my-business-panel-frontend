@@ -44,11 +44,67 @@ export interface ILoginResponse {
 export interface INewTenantRequest {
   tenant_name: string;
   contact_email: string;
+  contact_phone?: string;
+  identification_type_id: number;
   identification: string;
   economic_activity: string;
   sign: string;
   region_id: number;
   is_subscribed?: boolean;
+}
+
+// ─── Onboarding (full tenant creation flow) ──────────────────────────────────
+
+export interface IOnboardingBranch {
+  branch_name?: string;
+  branch_number?: string;
+  branch_address?: string;
+}
+
+export interface IOnboardingUser {
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+  doc_number: string;
+  phone: string;
+}
+
+export interface IOnboardingHacienda {
+  hacienda_username: string;
+  hacienda_password: string;
+  hacienda_client_id: string;
+  p12_base64: string;
+  p12_password: string;
+}
+
+export interface IOnboardingSubscription {
+  stripe_payment_method_id: string;
+  plan: string;
+  payment_method_id: number;
+  payment_amount: number;
+  subscription_type_id: number;
+  start_date: string;
+  end_date: string;
+}
+
+export interface IOnboardingRequest extends INewTenantRequest {
+  branch?: IOnboardingBranch;
+  user: IOnboardingUser;
+  hacienda: IOnboardingHacienda;
+  subscription: IOnboardingSubscription;
+}
+
+export interface IOnboardingResponse {
+  tenant: ITenantResponse;
+  branch: IBranchResponse;
+  user: { user_id: string; email: string };
+  subscription: {
+    subscriptionId: string;
+    clientSecret: string;
+    invoice: string;
+    status: string;
+  };
 }
 
 export interface ITenantResponse {
@@ -404,6 +460,9 @@ export interface IOnboardingData {
   economicActivity: string;
   sign: string;
   regionId: number | null;
+  branchName: string;
+  branchNumber: string;
+  branchAddress: string;
   // Step 3 – Hacienda
   haciendaUsername: string;
   haciendaPassword: string;

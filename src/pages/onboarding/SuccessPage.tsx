@@ -1,20 +1,50 @@
-import { useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 import { Button } from '../../components/ui/Button';
+
+interface LocationState {
+  credentials?: { email: string; password: string };
+}
 
 export function SuccessPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login } = useAuth();
   const animRef = useRef<HTMLDivElement>(null);
+
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [error, setError] = useState('');
+
+  const credentials = (location.state as LocationState)?.credentials;
 
   useEffect(() => {
     const el = animRef.current;
     if (!el) return;
-    // Trigger entrance animation
     requestAnimationFrame(() => {
       el.style.opacity = '1';
       el.style.transform = 'translateY(0) scale(1)';
     });
   }, []);
+
+  const handleContinue = async () => {
+    if (!credentials) {
+      navigate('/auth/login', { replace: true });
+      return;
+    }
+
+    setError('');
+    setIsLoggingIn(true);
+
+    try {
+      await login(credentials);
+      navigate('/app/dashboard', { replace: true });
+    } catch {
+      setError('No se pudo iniciar sesión automáticamente. Intenta de nuevo.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center px-6">
@@ -102,16 +132,25 @@ export function SuccessPage() {
           ))}
         </div>
 
+        {error && (
+          <p className="mb-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+            {error}
+          </p>
+        )}
+
         <Button
           fullWidth
           size="lg"
-          onClick={() => navigate('/auth/login', { replace: true })}
+          loading={isLoggingIn}
+          onClick={handleContinue}
         >
-          Ir al Panel
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <line x1="5" y1="12" x2="19" y2="12" />
-            <polyline points="12 5 19 12 12 19" />
-          </svg>
+          {isLoggingIn ? 'Iniciando sesión...' : 'Ir al Panel'}
+          {!isLoggingIn && (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          )}
         </Button>
 
         <p className="mt-5 text-xs text-gray-400">

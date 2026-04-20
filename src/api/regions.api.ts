@@ -1,5 +1,5 @@
 import { url } from ".";
-import type { RegionResponse } from "@/interfaces/api/responses/RegionResponse";
+import type { RegionResponse } from "@/interfaces/entities/Region.interface";
 
 export const regionsApi = {
   getRegions: async (): Promise<RegionResponse[]> => {

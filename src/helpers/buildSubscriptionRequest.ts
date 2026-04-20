@@ -1,5 +1,5 @@
 import type { SubscriptionPlanOption } from "@/constants/subscription-plans";
-import type { NewSubscriptionRequest } from "@/interfaces/api/requests/NewSubscriptionRequest";
+import type { NewSubscriptionRequest } from "@/interfaces/api/requests/NewSubscriptionRequest.interface";
 
 export const buildSubscriptionRequest = (
   tenantId: string,

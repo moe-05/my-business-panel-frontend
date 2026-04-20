@@ -1,6 +1,8 @@
 import api from "./api";
 import type {
   INewTenantRequest,
+  IOnboardingRequest,
+  IOnboardingResponse,
   ITenantResponse,
   IUser,
   IUsersListResponse,
@@ -24,6 +26,14 @@ interface ITenantListResponse {
 export const tenantService = {
   async create(data: INewTenantRequest): Promise<ITenantResponse> {
     const res = await api.post<ApiResponse<ITenantResponse>>("/tenant", data);
+    return res.data.data;
+  },
+
+  async onboard(data: IOnboardingRequest): Promise<IOnboardingResponse> {
+    const res = await api.post<ApiResponse<IOnboardingResponse>>(
+      "/tenant",
+      data,
+    );
     return res.data.data;
   },
 

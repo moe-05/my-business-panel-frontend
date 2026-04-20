@@ -18,6 +18,9 @@ const INITIAL_STATE: IOnboardingData = {
   economicActivity: "",
   sign: "",
   regionId: null,
+  branchName: "",
+  branchNumber: "",
+  branchAddress: "",
   haciendaUsername: "",
   haciendaPassword: "",
   haciendaClientId: "api-prod",
@@ -46,6 +49,9 @@ interface OnboardingContextValue {
       | "economicActivity"
       | "sign"
       | "regionId"
+      | "branchName"
+      | "branchNumber"
+      | "branchAddress"
     >,
   ) => void;
   setStep3: (
