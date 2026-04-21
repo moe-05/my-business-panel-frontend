@@ -1,4 +1,4 @@
-export interface RegionResponse {
+export interface Region {
   region_id: number;
   region_name: string;
   country_code: string;

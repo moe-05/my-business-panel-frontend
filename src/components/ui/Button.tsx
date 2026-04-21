@@ -1,55 +1,45 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
-
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
-type Size = 'sm' | 'md' | 'lg';
-
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: Variant;
-  size?: Size;
-  loading?: boolean;
-  fullWidth?: boolean;
-  children: ReactNode;
-}
+import type {
+  ButtonProps,
+  Size,
+  Variant,
+} from "@/interfaces/components/ui/ButtonProps.interface";
 
 const variantClasses: Record<Variant, string> = {
-  primary:
-    'btn-accent-primary hover:shadow-md',
-  secondary:
-    'btn-accent-secondary',
-  ghost:
-    'btn-accent-ghost',
+  primary: "btn-accent-primary hover:shadow-md",
+  secondary: "btn-accent-secondary",
+  ghost: "btn-accent-ghost",
   danger:
-    'bg-red-600 text-white hover:bg-red-700 active:bg-red-800 disabled:bg-red-300',
+    "bg-red-600 text-white hover:bg-red-700 active:bg-red-800 disabled:bg-red-300",
 };
 
 const sizeClasses: Record<Size, string> = {
-  sm: 'px-3 py-1.5 text-sm min-h-[36px]',
-  md: 'px-5 py-2.5 text-sm min-h-[44px]',
-  lg: 'px-7 py-3 text-base min-h-[52px]',
+  sm: "px-3 py-1.5 text-sm min-h-[36px]",
+  md: "px-5 py-2.5 text-sm min-h-[44px]",
+  lg: "px-7 py-3 text-base min-h-[52px]",
 };
 
 export function Button({
-  variant = 'primary',
-  size = 'md',
+  variant = "primary",
+  size = "md",
   loading = false,
   fullWidth = false,
   disabled,
   children,
-  className = '',
+  className = "",
   ...props
 }: ButtonProps) {
   return (
     <button
       disabled={disabled ?? loading}
       className={[
-        'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all duration-150 cursor-pointer select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible-accent-outline',
+        "inline-flex items-center border border-gray-300 justify-center gap-2 rounded-xl font-medium transition-all duration-150 cursor-pointer select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible-accent-outline",
         variantClasses[variant],
         sizeClasses[size],
-        fullWidth ? 'w-full' : '',
+        fullWidth ? "w-full" : "",
         className,
       ]
         .filter(Boolean)
-        .join(' ')}
+        .join(" ")}
       {...props}
     >
       {loading && (

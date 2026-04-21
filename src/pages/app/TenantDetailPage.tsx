@@ -1,20 +1,17 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { tenantService } from "../../api/tenantService";
-import { branchService } from "../../api/branchService";
-import { userService } from "../../api/userService";
+import { tenantApi } from "../../api/tenant.api";
+import { branchApi } from "../../api/branch.api";
+import { userApi } from "../../api/user.api";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
 import { Table, Pagination } from "../../components/ui/Table";
 import { Badge } from "../../components/ui/Badge";
-import type {
-  ITenantResponse,
-  IBranchResponse,
-  IUser,
-  IUsersListResponse,
-} from "../../api/types/auth";
+import type { Tenant } from "../../interfaces/entities/Tenant.interface";
+import type { Branch } from "../../interfaces/entities/Branch.interface";
+import type { User } from "../../interfaces/entities/User.interface";
 
 interface BranchFormState {
   branch_name: string;
@@ -35,24 +32,24 @@ export function TenantDetailPage() {
   const navigate = useNavigate();
 
   // Tenant data
-  const [tenant, setTenant] = useState<ITenantResponse | null>(null);
+  const [tenant, setTenant] = useState<Tenant | null>(null);
   const [isLoadingTenant, setIsLoadingTenant] = useState(true);
 
   // Branches
-  const [branches, setBranches] = useState<IBranchResponse[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoadingBranches, setIsLoadingBranches] = useState(true);
   const [branchPage, setBranchPage] = useState(1);
   const [branchTotalPages, setBranchTotalPages] = useState(1);
 
   // Users
-  const [users, setUsers] = useState<IUser[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [userPage, setUserPage] = useState(1);
   const [userTotalPages, setUserTotalPages] = useState(1);
 
   // Branch modal
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
-  const [editingBranch, setEditingBranch] = useState<IBranchResponse | null>(
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(
     null,
   );
   const [branchErrors, setBranchErrors] = useState<BranchFormErrors>({});
@@ -89,7 +86,7 @@ export function TenantDetailPage() {
     const loadTenant = async () => {
       if (!tenantId) return;
       try {
-        const data = await tenantService.getById(tenantId);
+        const data = await tenantApi.getById(tenantId);
         setTenant(data);
       } catch (error) {
         console.error("Error loading tenant:", error);
@@ -107,7 +104,7 @@ export function TenantDetailPage() {
     if (!tenantId) return;
     setIsLoadingBranches(true);
     try {
-      const result = await branchService.listByTenant(tenantId, pageNum, 20);
+      const result = await branchApi.listByTenant(tenantId, pageNum, 20);
       setBranches(result.branches);
       setBranchTotalPages(Math.ceil(result.total / result.limit));
       setBranchPage(result.page);
@@ -123,7 +120,7 @@ export function TenantDetailPage() {
     if (!tenantId) return;
     setIsLoadingUsers(true);
     try {
-      const result = await userService.listByTenant(tenantId, pageNum, 10);
+      const result = await userApi.listByTenant(tenantId, pageNum, 10);
       setUsers(result.users);
       setUserTotalPages(Math.ceil(result.total / result.limit));
       setUserPage(result.page);
@@ -168,14 +165,14 @@ export function TenantDetailPage() {
     try {
       if (editingBranch) {
         // Update branch
-        await branchService.update(editingBranch.branch_id, {
+        await branchApi.update(editingBranch.branch_id, {
           branch_name: branchFormData.branch_name,
           branch_address: branchFormData.branch_address,
           is_main_branch: branchFormData.is_main_branch,
         });
       } else {
         // Create branch
-        await branchService.create({
+        await branchApi.create({
           tenant_id: tenantId,
           branch_name: branchFormData.branch_name,
           branch_number: branchFormData.branch_number,
@@ -209,7 +206,7 @@ export function TenantDetailPage() {
   };
 
   // Open branch modal for edit
-  const handleEditBranch = (branchToEdit: IBranchResponse) => {
+  const handleEditBranch = (branchToEdit: Branch) => {
     setEditingBranch(branchToEdit);
     setBranchFormData({
       branch_name: branchToEdit.branch_name,
@@ -228,7 +225,7 @@ export function TenantDetailPage() {
     }
 
     try {
-      await branchService.delete(branchId);
+      await branchApi.delete(branchId);
       await loadBranches(branchPage);
     } catch (error) {
       console.error("Error deleting branch:", error);

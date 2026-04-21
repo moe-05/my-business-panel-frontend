@@ -77,7 +77,7 @@ export function Table({
             <tr
               key={idx}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${rowClassName}`}
+              className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${onRowClick ? "cursor-pointer" : ""} ${rowClassName}`}
             >
               {columns.map((col) => (
                 <td key={col.key} className="px-4 py-3 text-gray-700">

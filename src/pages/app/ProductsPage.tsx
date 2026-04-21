@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { productService } from "../../api/productService";
-import { tenantService } from "../../api/tenantService";
+import { productApi } from "../../api/product.api";
+import { tenantApi } from "../../api/tenant.api";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Select } from "../../components/ui/Select";
@@ -9,11 +9,9 @@ import { Modal } from "../../components/ui/Modal";
 import { Table, Pagination } from "../../components/ui/Table";
 import { Badge } from "../../components/ui/Badge";
 import { CategoryComboBox } from "../../components/ui/CategoryComboBox";
-import type {
-  IProduct,
-  IProductsListResponse,
-  ITenantResponse,
-} from "../../api/types/auth";
+import type { Product } from "../../interfaces/entities/Product.interface";
+import type { ProductsListResponse } from "../../interfaces/api/responses/ProductsListResponse.interface";
+import type { Tenant } from "../../interfaces/entities/Tenant.interface";
 
 const LIMIT = 100;
 
@@ -23,7 +21,7 @@ function ProductDetailModal({
   product,
   onClose,
 }: {
-  product: IProduct;
+  product: Product;
   onClose: () => void;
 }) {
   const field = (label: string, value?: string | number | boolean | null) => {
@@ -45,7 +43,7 @@ function ProductDetailModal({
     );
   };
 
-  const pv = product as IProduct & {
+  const pv = product as Product & {
     variant_name?: string;
     unit_price?: number;
     product_variant_id?: string;
@@ -141,7 +139,7 @@ export function ProductsPage() {
   const canCreate = isSuperAdmin || currentUser?.role.role_hierarchy === 2;
 
   // Products state
-  const [products, setProducts] = useState<IProduct[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -149,13 +147,13 @@ export function ProductsPage() {
   const [total, setTotal] = useState(0);
 
   // Tenants (superuser)
-  const [tenants, setTenants] = useState<ITenantResponse[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoadingTenants, setIsLoadingTenants] = useState(false);
 
   // Modal state
-  const [selectedProduct, setSelectedProduct] = useState<IProduct | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<IProduct | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formErrors, setFormErrors] = useState<ProductFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -175,9 +173,9 @@ export function ProductsPage() {
   useEffect(() => {
     if (!isSuperAdmin) return;
     setIsLoadingTenants(true);
-    tenantService
+    tenantApi
       .getAll()
-      .then(setTenants)
+      .then((res) => setTenants(res.tenants))
       .catch(console.error)
       .finally(() => setIsLoadingTenants(false));
   }, [isSuperAdmin]);
@@ -186,15 +184,15 @@ export function ProductsPage() {
   const loadProducts = async (pageNum = 1, query = "") => {
     setIsLoading(true);
     try {
-      let result: IProductsListResponse;
+      let result: ProductsListResponse;
       if (isSuperAdmin) {
-        result = await productService.listAll(pageNum, LIMIT);
+        result = await productApi.listAll(pageNum, LIMIT);
       } else {
         const tenantId = currentUser?.tenant.tenant_id || "";
         if (query.trim()) {
-          result = await productService.search(tenantId, query, pageNum, LIMIT);
+          result = await productApi.search(tenantId, query, pageNum, LIMIT);
         } else {
-          result = await productService.listByTenant(tenantId, pageNum, LIMIT);
+          result = await productApi.listByTenant(tenantId, pageNum, LIMIT);
         }
       }
       setProducts(result.products);
@@ -247,7 +245,7 @@ export function ProductsPage() {
     setIsSubmitting(true);
     try {
       if (editingProduct) {
-        await productService.update(
+        await productApi.update(
           editingProduct.product_id ||
             (editingProduct as any).product_variant_id,
           {
@@ -261,7 +259,7 @@ export function ProductsPage() {
         const tenantId = isSuperAdmin
           ? formData.tenant_id || ""
           : currentUser.tenant.tenant_id;
-        await productService.create({
+        await productApi.create({
           tenant_id: tenantId,
           sku: formData.sku.toUpperCase().trim(),
           product_name: formData.product_name,
@@ -284,7 +282,7 @@ export function ProductsPage() {
     }
   };
 
-  const handleEditProduct = (p: IProduct) => {
+  const handleEditProduct = (p: Product) => {
     setEditingProduct(p);
     setFormData({
       sku: p.sku,
@@ -301,7 +299,7 @@ export function ProductsPage() {
   const handleDeleteProduct = async (productId: string) => {
     if (!confirm("¿Está seguro de que desea eliminar este producto?")) return;
     try {
-      await productService.delete(productId);
+      await productApi.delete(productId);
       await loadProducts(page, searchQuery);
     } catch (error) {
       alert(
@@ -318,13 +316,13 @@ export function ProductsPage() {
   };
 
   // Helper to get the display name for a product
-  const getProductName = (p: IProduct) =>
+  const getProductName = (p: Product) =>
     (p as any).variant_name || p.product_name || "—";
 
-  const getProductPrice = (p: IProduct) =>
+  const getProductPrice = (p: Product) =>
     Number((p as any).unit_price ?? p.price ?? 0);
 
-  const getProductId = (p: IProduct) =>
+  const getProductId = (p: Product) =>
     (p as any).product_variant_id || p.product_id;
 
   return (
@@ -397,13 +395,13 @@ export function ProductsPage() {
             [
               { key: "sku", label: "SKU", width: "12%" },
               {
-                key: "product_name" as keyof IProduct,
+                key: "product_name" as keyof Product,
                 label: "Nombre",
                 width: "28%",
-                render: (_: unknown, row: IProduct) => getProductName(row),
+                render: (_: unknown, row: Product) => getProductName(row),
               },
               {
-                key: "cabys_code" as keyof IProduct,
+                key: "cabys_code" as keyof Product,
                 label: "CABYS",
                 width: "14%",
                 render: (code: unknown) =>
@@ -417,25 +415,25 @@ export function ProductsPage() {
                   ),
               },
               {
-                key: "price" as keyof IProduct,
+                key: "price" as keyof Product,
                 label: "Precio",
                 width: "14%",
-                render: (_: unknown, row: IProduct) =>
+                render: (_: unknown, row: Product) =>
                   `₡${getProductPrice(row).toLocaleString("es-CR")}`,
               },
               ...(isSuperAdmin
                 ? [
                     {
-                      key: "tenant_id" as keyof IProduct,
+                      key: "tenant_id" as keyof Product,
                       label: "Tenant",
                       width: "14%",
-                      render: (_: unknown, row: IProduct) =>
+                      render: (_: unknown, row: Product) =>
                         (row as any).tenant_name || "—",
                     },
                   ]
                 : []),
               {
-                key: "created_at" as keyof IProduct,
+                key: "created_at" as keyof Product,
                 label: "Creado",
                 width: "10%",
                 render: (date: unknown) =>
@@ -444,10 +442,10 @@ export function ProductsPage() {
               ...(canCreate
                 ? [
                     {
-                      key: "actions" as keyof IProduct,
+                      key: "actions" as keyof Product,
                       label: "Acciones",
                       width: "8%",
-                      render: (_: unknown, row: IProduct) => (
+                      render: (_: unknown, row: Product) => (
                         <div
                           className="flex gap-2"
                           onClick={(e) => e.stopPropagation()}

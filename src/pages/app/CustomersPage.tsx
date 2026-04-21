@@ -1,25 +1,22 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { customerService } from "../../api/customerService";
-import { segmentService } from "../../api/segmentService";
-import { tenantService } from "../../api/tenantService";
+import { customerApi } from "../../api/customer.api";
+import { segmentApi } from "../../api/segment.api";
+import { tenantApi } from "../../api/tenant.api";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Select } from "../../components/ui/Select";
 import { Modal } from "../../components/ui/Modal";
 import { Table, Pagination } from "../../components/ui/Table";
 import { Badge } from "../../components/ui/Badge";
-import type {
-  ICustomer,
-  ISegment,
-  ICustomersListResponse,
-  DocumentType,
-  ITenantResponse,
-} from "../../api/types/auth";
+import type { Customer, DocTypeCode } from "../../interfaces/entities/Customer.interface";
+import type { Segment } from "../../interfaces/entities/Segment.interface";
+import type { CustomersListResponse } from "../../interfaces/api/responses/CustomersListResponse.interface";
+import type { Tenant } from "../../interfaces/entities/Tenant.interface";
 
 const LIMIT = 100;
 
-const DOCUMENT_TYPES: { value: DocumentType; label: string }[] = [
+const DOCUMENT_TYPES: { value: DocTypeCode; label: string }[] = [
   { value: "cedula", label: "Cédula" },
   { value: "passport", label: "Pasaporte" },
   { value: "dimex", label: "DIMEX" },
@@ -34,8 +31,8 @@ function CustomerDetailModal({
   segments,
   onClose,
 }: {
-  customer: ICustomer;
-  segments: ISegment[];
+  customer: Customer;
+  segments: Segment[];
   onClose: () => void;
 }) {
   const segmentName = segments.find(
@@ -143,7 +140,7 @@ function CustomerDetailModal({
 interface CustomerFormState {
   first_name: string;
   last_name: string;
-  doc_type: DocumentType;
+  doc_type: DocTypeCode;
   doc_number: string;
   email: string;
   phone: string;
@@ -173,7 +170,7 @@ export function CustomersPage() {
   const canCreate = isSuperAdmin || currentUser?.role.role_hierarchy === 2;
 
   // Customers state
-  const [customers, setCustomers] = useState<ICustomer[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSegment, setSelectedSegment] = useState<string>("");
@@ -182,19 +179,19 @@ export function CustomersPage() {
   const [total, setTotal] = useState(0);
 
   // Segments state
-  const [segments, setSegments] = useState<ISegment[]>([]);
+  const [segments, setSegments] = useState<Segment[]>([]);
   const [isLoadingSegments, setIsLoadingSegments] = useState(true);
 
   // Tenants (for superuser form)
-  const [tenants, setTenants] = useState<ITenantResponse[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoadingTenants, setIsLoadingTenants] = useState(false);
 
   // Modal state
-  const [selectedCustomer, setSelectedCustomer] = useState<ICustomer | null>(
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null,
   );
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<ICustomer | null>(
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(
     null,
   );
   const [formErrors, setFormErrors] = useState<CustomerFormErrors>({});
@@ -219,7 +216,7 @@ export function CustomersPage() {
 
   // Load segments
   useEffect(() => {
-    segmentService
+    segmentApi
       .getAll()
       .then(setSegments)
       .catch(console.error)
@@ -230,9 +227,9 @@ export function CustomersPage() {
   useEffect(() => {
     if (!isSuperAdmin) return;
     setIsLoadingTenants(true);
-    tenantService
+    tenantApi
       .getAll()
-      .then(setTenants)
+      .then((res) => setTenants(res.tenants))
       .catch(console.error)
       .finally(() => setIsLoadingTenants(false));
   }, [isSuperAdmin]);
@@ -241,27 +238,27 @@ export function CustomersPage() {
   const loadCustomers = async (pageNum = 1, query = "", segmentId = "") => {
     setIsLoading(true);
     try {
-      let result: ICustomersListResponse;
+      let result: CustomersListResponse;
       if (isSuperAdmin) {
-        result = await customerService.listAll(pageNum, LIMIT);
+        result = await customerApi.listAll(pageNum, LIMIT);
       } else {
         const tenantId = currentUser?.tenant.tenant_id || "";
         if (query.trim()) {
-          result = await customerService.search(
+          result = await customerApi.search(
             tenantId,
             query,
             pageNum,
             LIMIT,
           );
         } else if (segmentId) {
-          result = await customerService.filterBySegment(
+          result = await customerApi.filterBySegment(
             tenantId,
             segmentId,
             pageNum,
             LIMIT,
           );
         } else {
-          result = await customerService.listByTenant(tenantId, pageNum, LIMIT);
+          result = await customerApi.listByTenant(tenantId, pageNum, LIMIT);
         }
       }
       setCustomers(result.customers);
@@ -312,7 +309,7 @@ export function CustomersPage() {
     setIsSubmitting(true);
     try {
       if (editingCustomer) {
-        await customerService.update(editingCustomer.customer_id, {
+        await customerApi.update(editingCustomer.customer_id, {
           first_name: formData.first_name,
           last_name: formData.last_name,
           email: formData.email || undefined,
@@ -327,7 +324,7 @@ export function CustomersPage() {
         const tenantId = isSuperAdmin
           ? formData.tenant_id || ""
           : currentUser.tenant.tenant_id;
-        await customerService.create({
+        await customerApi.create({
           tenant_id: tenantId,
           first_name: formData.first_name,
           last_name: formData.last_name,
@@ -355,7 +352,7 @@ export function CustomersPage() {
     }
   };
 
-  const handleEditCustomer = (c: ICustomer) => {
+  const handleEditCustomer = (c: Customer) => {
     setEditingCustomer(c);
     setFormData({
       first_name: c.first_name,
@@ -377,7 +374,7 @@ export function CustomersPage() {
   const handleDeleteCustomer = async (customerId: string) => {
     if (!confirm("¿Está seguro de que desea eliminar este cliente?")) return;
     try {
-      await customerService.delete(customerId);
+      await customerApi.delete(customerId);
       await loadCustomers(page, searchQuery, selectedSegment);
     } catch (error) {
       alert(
@@ -396,7 +393,7 @@ export function CustomersPage() {
   const getSegmentName = (segmentId?: string) =>
     segments.find((s) => s.segment_id === segmentId)?.segment_name || "—";
 
-  const getDocTypeLabel = (docType: DocumentType) =>
+  const getDocTypeLabel = (docType: DocTypeCode) =>
     DOCUMENT_TYPES.find((d) => d.value === docType)?.label || docType;
 
   return (
@@ -529,10 +526,10 @@ export function CustomersPage() {
               ...(isSuperAdmin
                 ? [
                     {
-                      key: "tenant_name" as keyof ICustomer,
+                      key: "tenant_name" as keyof Customer,
                       label: "Tenant",
                       width: "10%",
-                      render: (_: unknown, row: ICustomer) =>
+                      render: (_: unknown, row: Customer) =>
                         (row as any).tenant_name || "—",
                     },
                   ]
@@ -540,10 +537,10 @@ export function CustomersPage() {
               ...(canCreate
                 ? [
                     {
-                      key: "actions" as keyof ICustomer,
+                      key: "actions" as keyof Customer,
                       label: "Acciones",
                       width: "8%",
-                      render: (_: unknown, row: ICustomer) => (
+                      render: (_: unknown, row: Customer) => (
                         <div
                           className="flex gap-2"
                           onClick={(e) => e.stopPropagation()}
@@ -663,7 +660,7 @@ export function CustomersPage() {
               onChange={(e) =>
                 setFormData((p) => ({
                   ...p,
-                  doc_type: e.target.value as DocumentType,
+                  doc_type: e.target.value as DocTypeCode,
                 }))
               }
               options={DOCUMENT_TYPES}

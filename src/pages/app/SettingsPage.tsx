@@ -1,35 +1,33 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { segmentService } from "../../api/segmentService";
-import { marginService } from "../../api/marginService";
-import { loyaltyService } from "../../api/loyaltyService";
-import { haciendaService } from "../../api/haciendaService";
+import { segmentApi } from "../../api/segment.api";
+import { marginApi } from "../../api/margin.api";
+import { loyaltyApi } from "../../api/loyalty.api";
+import { haciendaApi } from "../../api/hacienda.api";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Select } from "../../components/ui/Select";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
-import type {
-  ISegment,
-  IMargin,
-  ILoyaltyProgram,
-  IHaciendaConfigStatus,
-} from "../../api/types/auth";
+import type { Segment } from "../../interfaces/entities/Segment.interface";
+import type { Margin } from "../../interfaces/entities/Margin.interface";
+import type { LoyaltyProgram } from "../../interfaces/entities/LoyaltyProgram.interface";
+import type { HaciendaConfigStatus } from "../../interfaces/api/responses/HaciendaConfigStatus.interface";
 
 type Tab = "segments" | "loyalty" | "hacienda";
 
 // ─── Segment + Margin Tab ────────────────────────────────────────────────────
 
 function SegmentsTab({ tenantId }: { tenantId: string }) {
-  const [segments, setSegments] = useState<ISegment[]>([]);
-  const [margins, setMargins] = useState<IMargin[]>([]);
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [margins, setMargins] = useState<Margin[]>([]);
   const [isLoadingSegments, setIsLoadingSegments] = useState(true);
   const [isLoadingMargins, setIsLoadingMargins] = useState(true);
 
   // Segment modal
   const [segmentModal, setSegmentModal] = useState<{
     open: boolean;
-    editing: ISegment | null;
+    editing: Segment | null;
   }>({
     open: false,
     editing: null,
@@ -46,7 +44,7 @@ function SegmentsTab({ tenantId }: { tenantId: string }) {
   // Margin modal
   const [marginModal, setMarginModal] = useState<{
     open: boolean;
-    editing: IMargin | null;
+    editing: Margin | null;
   }>({
     open: false,
     editing: null,
@@ -60,7 +58,7 @@ function SegmentsTab({ tenantId }: { tenantId: string }) {
 
   const loadSegments = async () => {
     setIsLoadingSegments(true);
-    segmentService
+    segmentApi
       .getAll()
       .then(setSegments)
       .catch(console.error)
@@ -69,7 +67,7 @@ function SegmentsTab({ tenantId }: { tenantId: string }) {
 
   const loadMargins = async () => {
     setIsLoadingMargins(true);
-    marginService
+    marginApi
       .listByTenant(tenantId)
       .then(setMargins)
       .catch(console.error)
@@ -93,14 +91,14 @@ function SegmentsTab({ tenantId }: { tenantId: string }) {
     setIsSubmittingSegment(true);
     try {
       if (segmentModal.editing) {
-        await segmentService.update(segmentModal.editing.segment_id, {
+        await segmentApi.update(segmentModal.editing.segment_id, {
           segment_name: segmentForm.segment_name,
           hierarchy: segmentForm.hierarchy
             ? parseInt(segmentForm.hierarchy)
             : undefined,
         });
       } else {
-        await segmentService.create({
+        await segmentApi.create({
           segment_name: segmentForm.segment_name,
           hierarchy: segmentForm.hierarchy
             ? parseInt(segmentForm.hierarchy)
@@ -123,7 +121,7 @@ function SegmentsTab({ tenantId }: { tenantId: string }) {
   const handleDeleteSegment = async (id: string) => {
     if (!confirm("¿Eliminar este segmento?")) return;
     try {
-      await segmentService.delete(id);
+      await segmentApi.delete(id);
       await loadSegments();
     } catch (error) {
       alert(error instanceof Error ? error.message : "Error al eliminar");
@@ -146,12 +144,12 @@ function SegmentsTab({ tenantId }: { tenantId: string }) {
     setIsSubmittingMargin(true);
     try {
       if (marginModal.editing) {
-        await marginService.update(
+        await marginApi.update(
           marginModal.editing.margin_id,
           parseFloat(marginForm.margin_percentage),
         );
       } else {
-        await marginService.create({
+        await marginApi.create({
           tenant_id: tenantId,
           segment_id: marginForm.segment_id,
           margin_percentage: parseFloat(marginForm.margin_percentage),
@@ -172,7 +170,7 @@ function SegmentsTab({ tenantId }: { tenantId: string }) {
   const handleDeleteMargin = async (id: string) => {
     if (!confirm("¿Eliminar este margen?")) return;
     try {
-      await marginService.delete(id);
+      await marginApi.delete(id);
       await loadMargins();
     } catch (error) {
       alert(error instanceof Error ? error.message : "Error al eliminar");
@@ -504,7 +502,7 @@ function SegmentsTab({ tenantId }: { tenantId: string }) {
 // ─── Loyalty Program Tab ─────────────────────────────────────────────────────
 
 function LoyaltyTab({ tenantId }: { tenantId: string }) {
-  const [programs, setPrograms] = useState<ILoyaltyProgram[]>([]);
+  const [programs, setPrograms] = useState<LoyaltyProgram[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -516,7 +514,7 @@ function LoyaltyTab({ tenantId }: { tenantId: string }) {
 
   const loadPrograms = async () => {
     setIsLoading(true);
-    loyaltyService
+    loyaltyApi
       .getByTenant(tenantId)
       .then(setPrograms)
       .catch(console.error)
@@ -545,7 +543,7 @@ function LoyaltyTab({ tenantId }: { tenantId: string }) {
 
     setIsSubmitting(true);
     try {
-      await loyaltyService.create({
+      await loyaltyApi.create({
         tenant_id: tenantId,
         points_earned_per_currency_unit: earned,
         points_redeemed_per_currency_unit: redeemed,
@@ -569,7 +567,7 @@ function LoyaltyTab({ tenantId }: { tenantId: string }) {
     }
   };
 
-  const handleToggle = async (program: ILoyaltyProgram) => {
+  const handleToggle = async (program: LoyaltyProgram) => {
     if (
       !confirm(
         `¿${program.is_active ? "Desactivar" : "Activar"} este programa de lealtad?`,
@@ -577,7 +575,7 @@ function LoyaltyTab({ tenantId }: { tenantId: string }) {
     )
       return;
     try {
-      await loyaltyService.update(program.loyalty_program_id, {
+      await loyaltyApi.update(program.loyalty_program_id, {
         minimum_purchase_for_points: program.minimum_purchase_for_points,
       });
       await loadPrograms();
@@ -589,7 +587,7 @@ function LoyaltyTab({ tenantId }: { tenantId: string }) {
   const handleDelete = async (id: string) => {
     if (!confirm("¿Eliminar este programa de lealtad?")) return;
     try {
-      await loyaltyService.delete(id);
+      await loyaltyApi.delete(id);
       await loadPrograms();
     } catch (error) {
       alert(error instanceof Error ? error.message : "Error");
@@ -730,7 +728,7 @@ function LoyaltyTab({ tenantId }: { tenantId: string }) {
 // ─── Hacienda Config Tab ─────────────────────────────────────────────────────
 
 function HaciendaTab({ tenantId }: { tenantId: string }) {
-  const [status, setStatus] = useState<IHaciendaConfigStatus | null>(null);
+  const [status, setStatus] = useState<HaciendaConfigStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -745,7 +743,7 @@ function HaciendaTab({ tenantId }: { tenantId: string }) {
   const loadStatus = async () => {
     setIsLoading(true);
     try {
-      const data = await haciendaService.getStatus(tenantId);
+      const data = await haciendaApi.getStatus(tenantId);
       setStatus(data);
       if (data.hacienda_username)
         setForm((p) => ({
@@ -786,7 +784,7 @@ function HaciendaTab({ tenantId }: { tenantId: string }) {
 
     setIsSubmitting(true);
     try {
-      await haciendaService.save({ tenant_id: tenantId, ...form });
+      await haciendaApi.save({ tenant_id: tenantId, ...form });
       await loadStatus();
       setForm((p) => ({
         ...p,
@@ -815,7 +813,7 @@ function HaciendaTab({ tenantId }: { tenantId: string }) {
     )
       return;
     try {
-      await haciendaService.deactivate(tenantId);
+      await haciendaApi.deactivate(tenantId);
       await loadStatus();
     } catch (error) {
       alert(error instanceof Error ? error.message : "Error");

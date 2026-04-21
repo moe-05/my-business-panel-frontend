@@ -7,49 +7,32 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { authService } from "../api/authService";
-import type { ICurrentUser, ILoginRequest } from "../api/types/auth";
+import { authApi } from "../api/auth.api";
+import type { CurrentUserResponse } from "../interfaces/api/responses/CurrentUserResponse.interface";
+import type { LoginRequest } from "../interfaces/api/requests/LoginRequest.interface";
 
 interface AuthContextValue {
-  user: ICurrentUser | null;
+  user: CurrentUserResponse | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (data: ILoginRequest) => Promise<void>;
+  login: (data: LoginRequest) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const USER_STORAGE_KEY = "mbp_user";
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<ICurrentUser | null>(() => {
-    try {
-      const stored = localStorage.getItem(USER_STORAGE_KEY);
-      return stored ? (JSON.parse(stored) as ICurrentUser) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState<CurrentUserResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const persistUser = (u: ICurrentUser | null) => {
-    setUser(u);
-    if (u) {
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(u));
-    } else {
-      localStorage.removeItem(USER_STORAGE_KEY);
-    }
-  };
-
-  // Verifica la sesión al montar (cookie puede seguir válida)
+  // Rehidrata la sesión desde la cookie al montar el provider
   const refreshUser = useCallback(async () => {
     try {
-      const currentUser = await authService.getCurrentUser();
-      persistUser(currentUser);
+      const currentUser = await authApi.getCurrentUser();
+      setUser(currentUser);
     } catch {
-      persistUser(null);
+      setUser(null);
     }
   }, []);
 
@@ -57,17 +40,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshUser().finally(() => setIsLoading(false));
   }, [refreshUser]);
 
-  const login = async (data: ILoginRequest) => {
-    await authService.login(data);
-    const currentUser = await authService.getCurrentUser();
-    persistUser(currentUser);
+  const login = async (data: LoginRequest) => {
+    await authApi.login(data);
+    const currentUser = await authApi.getCurrentUser();
+    setUser(currentUser);
   };
 
   const logout = async () => {
     try {
-      await authService.logout();
+      await authApi.logout();
     } finally {
-      persistUser(null);
+      setUser(null);
     }
   };
 

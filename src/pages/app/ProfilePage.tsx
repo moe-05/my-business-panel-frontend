@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { authService } from "../../api/authService";
+import { authApi } from "../../api/auth.api";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
-import type { ILoginHistory } from "../../api/authService";
+import type { LoginHistoryResponse } from "../../interfaces/api/responses/LoginHistoryResponse.interface";
+import { capitalize } from "@/utils/capitalize";
 
 interface PasswordFormState {
   currentPassword: string;
@@ -34,7 +35,7 @@ export function ProfilePage() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   // Login history state
-  const [loginHistory, setLoginHistory] = useState<ILoginHistory[]>([]);
+  const [loginHistory, setLoginHistory] = useState<LoginHistoryResponse[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
   // Load login history on mount
@@ -42,11 +43,10 @@ export function ProfilePage() {
     const loadHistory = async () => {
       setIsLoadingHistory(true);
       try {
-        const history = await authService.getLoginHistory();
-        setLoginHistory(history);
+        const history = await authApi.getLoginHistory();
+        setLoginHistory(Array.isArray(history) ? history : []);
       } catch (error) {
         console.error("Error loading login history:", error);
-        // Don't fail silently - this might not be available
         setLoginHistory([]);
       } finally {
         setIsLoadingHistory(false);
@@ -93,7 +93,7 @@ export function ProfilePage() {
     setIsSubmittingPassword(true);
     setPasswordSuccess(false);
     try {
-      await authService.changePassword({
+      await authApi.changePassword({
         currentPassword: passwordFormData.currentPassword,
         newPassword: passwordFormData.newPassword,
         confirmPassword: passwordFormData.confirmPassword,
@@ -160,22 +160,17 @@ export function ProfilePage() {
       </div>
 
       {/* Personal Info Card */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-8 mb-8">
+      <div className="bg-white rounded-2xl border border-gray-300 p-8 mb-8">
         <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-          {/* Avatar */}
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-accent-500 to-accent-600 flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-2xl">
-              {currentUser.email.charAt(0).toUpperCase()}
-            </span>
-          </div>
-
           {/* Info */}
           <div className="flex-1">
             <h2 className="text-2xl font-bold text-gray-900 mb-1">
               {currentUser.email}
             </h2>
             <div className="flex flex-wrap gap-3 mt-3">
-              <Badge variant="accent">{currentUser.role.role_name}</Badge>
+              <Badge variant="accent">
+                {capitalize(currentUser.role.role_name)}
+              </Badge>
               {currentUser.tenant.is_subscribed && (
                 <Badge variant="success">Suscripción Activa</Badge>
               )}
@@ -212,7 +207,7 @@ export function ProfilePage() {
         {/* Left Column - User Details */}
         <div className="lg:col-span-1 space-y-6">
           {/* Email Details */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <div className="bg-white rounded-2xl border border-gray-300 p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               Información de Cuenta
             </h3>
@@ -230,15 +225,7 @@ export function ProfilePage() {
                   Rol
                 </p>
                 <p className="text-sm font-medium text-gray-900">
-                  {currentUser.role.role_name}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                  Jerarquía
-                </p>
-                <p className="text-sm font-medium text-gray-900">
-                  Nivel {currentUser.role.role_hierarchy}
+                  {capitalize(currentUser.role.role_name)}
                 </p>
               </div>
             </div>
@@ -286,7 +273,7 @@ export function ProfilePage() {
         {/* Right Column - Tenant & Login History */}
         <div className="lg:col-span-2 space-y-6">
           {/* Tenant Info */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <div className="bg-white rounded-2xl border border-gray-300 p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               Información del Tenant
             </h3>
@@ -329,7 +316,7 @@ export function ProfilePage() {
           </div>
 
           {/* Login History */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <div className="bg-white rounded-2xl border border-gray-300 p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               Historial de Sesiones
             </h3>

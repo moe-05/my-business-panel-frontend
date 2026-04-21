@@ -11,7 +11,7 @@ import { Select } from "@/components/ui/Select";
 
 import { identificationTypes } from "@/constants/identification-types";
 
-import type { SetupTenantPageLoaderData } from "@/router/loaders/setupTenant.loader";
+import type { RegionLoaderData } from "@/router/loaders/region.loaders";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -24,7 +24,7 @@ export function SetupTenantPage() {
   const navigate = useNavigate();
   const navigation = useNavigation();
   const { regions, regionsError } =
-    useLoaderData() as SetupTenantPageLoaderData;
+    useLoaderData() as RegionLoaderData;
   const loadingRegions =
     navigation.state === "loading" &&
     navigation.location?.pathname === "/auth/register/setup-tenant";

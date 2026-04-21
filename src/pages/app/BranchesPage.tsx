@@ -1,18 +1,16 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { branchService } from "../../api/branchService";
-import { tenantService } from "../../api/tenantService";
+import { branchApi } from "../../api/branch.api";
+import { tenantApi } from "../../api/tenant.api";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Select } from "../../components/ui/Select";
 import { Modal } from "../../components/ui/Modal";
 import { Table, Pagination } from "../../components/ui/Table";
 import { Badge } from "../../components/ui/Badge";
-import type {
-  IBranchResponse,
-  IUpdateBranchRequest,
-  ITenantResponse,
-} from "../../api/types/auth";
+import type { Branch } from "../../interfaces/entities/Branch.interface";
+import type { UpdateBranchRequest } from "../../interfaces/api/requests/UpdateBranchRequest.interface";
+import type { Tenant } from "../../interfaces/entities/Tenant.interface";
 
 const LIMIT = 100;
 
@@ -22,7 +20,7 @@ function BranchDetailModal({
   branch,
   onClose,
 }: {
-  branch: IBranchResponse;
+  branch: Branch;
   onClose: () => void;
 }) {
   const field = (label: string, value?: string | number | boolean | null) => {
@@ -39,7 +37,7 @@ function BranchDetailModal({
     );
   };
 
-  const loc = branch as IBranchResponse & {
+  const loc = branch as Branch & {
     provincia?: string;
     canton?: string;
     distrito?: string;
@@ -134,19 +132,19 @@ interface BranchFormErrors {
 
 export function BranchesPage() {
   const { user: currentUser } = useAuth();
-  const [branches, setBranches] = useState<IBranchResponse[]>([]);
-  const [tenants, setTenants] = useState<ITenantResponse[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTenants, setIsLoadingTenants] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
-  const [selectedBranch, setSelectedBranch] = useState<IBranchResponse | null>(
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(
     null,
   );
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingBranch, setEditingBranch] = useState<IBranchResponse | null>(
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(
     null,
   );
   const [formErrors, setFormErrors] = useState<BranchFormErrors>({});
@@ -171,9 +169,9 @@ export function BranchesPage() {
     try {
       let result;
       if (isSuperAdmin) {
-        result = await branchService.list(pageNum, LIMIT);
+        result = await branchApi.list(pageNum, LIMIT);
       } else {
-        result = await branchService.listByTenant(
+        result = await branchApi.listByTenant(
           currentUser?.tenant.tenant_id || "",
           pageNum,
           LIMIT,
@@ -194,9 +192,9 @@ export function BranchesPage() {
   useEffect(() => {
     if (!isSuperAdmin) return;
     setIsLoadingTenants(true);
-    tenantService
+    tenantApi
       .getAll()
-      .then(setTenants)
+      .then((res) => setTenants(res.tenants))
       .catch(console.error)
       .finally(() => setIsLoadingTenants(false));
   }, [isSuperAdmin]);
@@ -223,17 +221,17 @@ export function BranchesPage() {
     setIsSubmitting(true);
     try {
       if (editingBranch) {
-        const updateData: IUpdateBranchRequest = {
+        const updateData: UpdateBranchRequest = {
           branch_name: formData.branch_name,
           branch_address: formData.branch_address,
           is_main_branch: formData.is_main_branch,
         };
-        await branchService.update(editingBranch.branch_id, updateData);
+        await branchApi.update(editingBranch.branch_id, updateData);
       } else {
         const tenantId = isSuperAdmin
           ? formData.tenant_id || ""
           : currentUser?.tenant.tenant_id || "";
-        await branchService.create({
+        await branchApi.create({
           tenant_id: tenantId,
           branch_name: formData.branch_name,
           branch_number: formData.branch_number,
@@ -254,7 +252,7 @@ export function BranchesPage() {
     }
   };
 
-  const handleEditBranch = (b: IBranchResponse) => {
+  const handleEditBranch = (b: Branch) => {
     setEditingBranch(b);
     setFormData({
       branch_name: b.branch_name,
@@ -269,7 +267,7 @@ export function BranchesPage() {
   const handleDeleteBranch = async (branchId: string) => {
     if (!confirm("¿Está seguro de que desea eliminar esta sucursal?")) return;
     try {
-      await branchService.delete(branchId);
+      await branchApi.delete(branchId);
       await loadBranches(page);
     } catch (error) {
       alert(
@@ -346,16 +344,16 @@ export function BranchesPage() {
               ...(isSuperAdmin
                 ? [
                     {
-                      key: "tenant_id" as keyof IBranchResponse,
+                      key: "tenant_id" as keyof Branch,
                       label: "Tenant",
                       width: "18%",
-                      render: (_: unknown, row: IBranchResponse) =>
+                      render: (_: unknown, row: Branch) =>
                         (row as any).tenant_name || "—",
                     },
                   ]
                 : []),
               {
-                key: "is_main_branch" as keyof IBranchResponse,
+                key: "is_main_branch" as keyof Branch,
                 label: "Principal",
                 width: "12%",
                 render: (isMain: unknown) => (
@@ -374,10 +372,10 @@ export function BranchesPage() {
               ...(canCreate
                 ? [
                     {
-                      key: "actions" as keyof IBranchResponse,
+                      key: "actions" as keyof Branch,
                       label: "Acciones",
                       width: "10%",
-                      render: (_: unknown, row: IBranchResponse) => (
+                      render: (_: unknown, row: Branch) => (
                         <div
                           className="flex gap-2"
                           onClick={(e) => e.stopPropagation()}

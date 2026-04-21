@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { categoryService } from "../../api/categoryService";
-import type { ICategory } from "../../api/types/auth";
+import { categoryApi } from "../../api/category.api";
+import type { Category } from "../../interfaces/entities/Category.interface";
 
 interface CategoryComboBoxProps {
   value: string; // product_category_id (UUID)
@@ -23,7 +23,7 @@ export function CategoryComboBox({
 }: CategoryComboBoxProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [categories, setCategories] = useState<ICategory[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedName, setSelectedName] = useState(displayValue || "");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,7 +38,7 @@ export function CategoryComboBox({
   const fetchCategories = useCallback(async (searchTerm: string) => {
     setIsLoading(true);
     try {
-      const data = await categoryService.search(searchTerm, 100, 0);
+      const data = await categoryApi.search(searchTerm, 100, 0);
       setCategories(data);
     } catch {
       setCategories([]);
@@ -81,7 +81,7 @@ export function CategoryComboBox({
     setTimeout(() => searchInputRef.current?.focus(), 50);
   };
 
-  const handleSelect = (cat: ICategory) => {
+  const handleSelect = (cat: Category) => {
     onChange(cat.category_id, cat.category_name);
     setSelectedName(cat.category_name);
     setIsOpen(false);

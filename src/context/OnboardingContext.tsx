@@ -1,10 +1,10 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, type ReactNode } from "react";
-import type { IOnboardingData } from "../api/types/auth";
+import type { OnboardingData } from "../interfaces/components/onboarding/OnboardingData.interface";
 
 const STORAGE_KEY = "mbp_onboarding";
 
-const INITIAL_STATE: IOnboardingData = {
+const INITIAL_STATE: OnboardingData = {
   firstName: "",
   lastName: "",
   email: "",
@@ -32,16 +32,16 @@ const INITIAL_STATE: IOnboardingData = {
 };
 
 interface OnboardingContextValue {
-  data: IOnboardingData;
+  data: OnboardingData;
   setStep1: (
     values: Pick<
-      IOnboardingData,
+      OnboardingData,
       "firstName" | "lastName" | "email" | "password" | "phone" | "docNumber"
     >,
   ) => void;
   setStep2: (
     values: Pick<
-      IOnboardingData,
+      OnboardingData,
       | "tenantName"
       | "contactPhone"
       | "identificationType"
@@ -56,7 +56,7 @@ interface OnboardingContextValue {
   ) => void;
   setStep3: (
     values: Pick<
-      IOnboardingData,
+      OnboardingData,
       | "haciendaUsername"
       | "haciendaPassword"
       | "haciendaClientId"
@@ -77,14 +77,14 @@ const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 // TODO: re-enable sessionStorage persistence after testing
 const PERSIST = false;
 
-function loadStored(): IOnboardingData {
+function loadStored(): OnboardingData {
   if (!PERSIST) return INITIAL_STATE;
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY);
     return stored
       ? {
           ...INITIAL_STATE,
-          ...(JSON.parse(stored) as Partial<IOnboardingData>),
+          ...(JSON.parse(stored) as Partial<OnboardingData>),
         }
       : INITIAL_STATE;
   } catch {
@@ -93,9 +93,9 @@ function loadStored(): IOnboardingData {
 }
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<IOnboardingData>(loadStored);
+  const [data, setData] = useState<OnboardingData>(loadStored);
 
-  const update = (patch: Partial<IOnboardingData>) => {
+  const update = (patch: Partial<OnboardingData>) => {
     setData((prev) => {
       const next = { ...prev, ...patch };
       if (PERSIST) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));

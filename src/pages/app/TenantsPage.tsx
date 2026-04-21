@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { tenantService } from "../../api/tenantService";
+import { tenantApi } from "../../api/tenant.api";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Table, Pagination } from "../../components/ui/Table";
 import { Badge } from "../../components/ui/Badge";
-import type { ITenantResponse } from "../../api/types/auth";
+import type { Tenant } from "../../interfaces/entities/Tenant.interface";
 
 export function TenantsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [tenants, setTenants] = useState<ITenantResponse[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -42,15 +42,19 @@ export function TenantsPage() {
       let result;
 
       if (query.trim()) {
-        result = await tenantService.search(query, pageNum, 20);
+        result = await tenantApi.search(query, pageNum, 20);
       } else {
-        result = await tenantService.getAll(pageNum, 20);
+        result = await tenantApi.getAll(pageNum, 20);
       }
 
-      setTenants(result.tenants);
-      setTotal(result.total);
-      setTotalPages(Math.ceil(result.total / result.limit));
-      setPage(result.page);
+      const tenantList = Array.isArray(result) ? result : (result?.tenants ?? []);
+      const total = Array.isArray(result) ? result.length : (result?.total ?? tenantList.length);
+      const limit = Array.isArray(result) ? tenantList.length : (result?.limit ?? 20);
+      const newPage = Array.isArray(result) ? pageNum : (result?.page ?? pageNum);
+      setTenants(tenantList);
+      setTotal(total);
+      setTotalPages(Math.ceil(total / limit));
+      setPage(newPage);
     } catch (error) {
       console.error("Error loading tenants:", error);
     } finally {
@@ -84,7 +88,7 @@ export function TenantsPage() {
     }
 
     try {
-      await tenantService.delete(tenantId);
+      await tenantApi.delete(tenantId);
       await loadTenants(page, searchQuery);
     } catch (error) {
       console.error("Error deleting tenant:", error);

@@ -1,0 +1,9 @@
+export interface CreateProductRequest {
+  tenant_id: string;
+  sku: string;
+  product_name: string;
+  description?: string;
+  category_id: string;
+  price: number;
+  cabys_code?: string;
+}

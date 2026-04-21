@@ -1,0 +1,108 @@
+import { useAuth } from "@/context/AuthContext";
+
+import { Badge, SubscriptionBadge } from "@/components/ui/Badge";
+import { ModuleCard } from "@/components/ui/ModuleCard";
+
+import { IconMail } from "@/assets/icons/IconMail";
+import { IconCalendar } from "@/assets/icons/IconCalendar";
+
+import { mainModules } from "./main-modules";
+import { generalOptions } from "./general-options";
+import { SuperuserDashboard } from "./SuperUserDashboard";
+
+// ─── Tenant user Dashboard ────────────────────────────────────────────────────
+export function TenantDashboard() {
+  const { user } = useAuth();
+
+  const tenant = user?.tenant;
+
+  const createdAt = tenant?.created_at
+    ? new Date(tenant.created_at).toLocaleDateString("es-CR", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "—";
+
+  return (
+    <div className="p-6 lg:p-8 space-y-8">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 font-display">
+          Bienvenido
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">
+          {user?.email}
+          <span className="mx-1.5 text-gray-300">·</span>
+          <span className="capitalize">{user?.role.role_name}</span>
+        </p>
+      </div>
+
+      {/* Company info card */}
+      {tenant && (
+        <div className="bg-white rounded-2xl border border-gray-300 p-5 flex flex-col sm:flex-row sm:items-center gap-5">
+          <div className="w-14 h-14 rounded-2xl bg-gray-800 flex items-center justify-center shrink-0">
+            <span className="text-white font-bold text-xl font-display">
+              {tenant.tenant_name.slice(0, 1).toUpperCase()}
+            </span>
+          </div>
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-bold text-gray-900 font-display">
+                {tenant.tenant_name}
+              </h2>
+              <SubscriptionBadge active={tenant.is_subscribed} />
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+              <span className="flex items-center gap-1.5">
+                <IconMail />
+                {tenant.contact_email}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <IconCalendar />
+                Desde {createdAt}
+              </span>
+            </div>
+          </div>
+          <div className="shrink-0">
+            <Badge variant="accent">{user?.role.role_name}</Badge>
+          </div>
+        </div>
+      )}
+
+      {/* Main modules grid */}
+      <div>
+        <h2 className="text-base font-semibold text-gray-800 mb-4 font-display">
+          Módulos Principales
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {mainModules.map((mod) => (
+            <ModuleCard key={mod.to} {...mod} />
+          ))}
+        </div>
+      </div>
+
+      {/* General options */}
+      <div>
+        <h2 className="text-base font-semibold text-gray-800 mb-3 font-display">
+          Administración General
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {generalOptions.map((mod) => (
+            <ModuleCard key={mod.to} {...mod} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── DashboardPage ────────────────────────────────────────────────────────────
+
+export function DashboardPage() {
+  const { user } = useAuth();
+  const roleId = user?.role.role_id ?? 1;
+
+  if (roleId === 1) return <SuperuserDashboard />;
+  return <TenantDashboard />;
+}
