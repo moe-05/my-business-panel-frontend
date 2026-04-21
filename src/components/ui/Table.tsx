@@ -1,20 +1,4 @@
-import type { ReactNode } from "react";
-
-interface Column {
-  key: string;
-  label: string;
-  width?: string;
-  render?: (value: any, row: any) => ReactNode;
-}
-
-interface TableProps {
-  columns: Column[];
-  data: any[];
-  isLoading?: boolean;
-  emptyMessage?: string;
-  rowClassName?: string;
-  onRowClick?: (row: any) => void;
-}
+import type { TableProps } from "@/interfaces/components/ui/TableProps.interface";
 
 export function Table({
   columns,
@@ -77,10 +61,10 @@ export function Table({
             <tr
               key={idx}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${onRowClick ? "cursor-pointer" : ""} ${rowClassName}`}
+              className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${onRowClick ? "cursor-pointer" : ""} ${rowClassName}`}
             >
               {columns.map((col) => (
-                <td key={col.key} className="px-4 py-3 text-gray-700">
+                <td key={col.key} className="px-4 py-2 text-gray-700">
                   {col.render ? col.render(row[col.key], row) : row[col.key]}
                 </td>
               ))}

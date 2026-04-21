@@ -37,7 +37,7 @@ export function ModuleCard({
   return (
     <Link
       to={to}
-      className={`group bg-white rounded-2xl border border-gray-300 p-5 flex flex-col items-start gap-3 shadow-sm hover:shadow-lg transition-all duration-200 relative overflow-hidden ${hoverClass} ${colorClass}`}
+      className={`group bg-white rounded-2xl border border-gray-200 p-5 flex flex-col items-start gap-3 shadow-sm hover:shadow-lg transition-all duration-200 relative overflow-hidden ${hoverClass} ${colorClass}`}
     >
       <div className="absolute top-3 right-3 text-xs font-bold opacity-10 text-gray-700 text-right">
         {code}

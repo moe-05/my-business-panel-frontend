@@ -31,8 +31,8 @@ export const getUsersByTenant = async (
   limit = 20,
 ): Promise<UsersListResponse> => userApi.listByTenant(tenantId, page, limit);
 
-export const getUserById = async (userId: string): Promise<User> =>
-  userApi.getById(userId);
+export const getUserById = async (userId: string, full?: boolean): Promise<User> =>
+  userApi.getById(userId, full);
 
 export const getRoles = async (): Promise<Role[]> => userApi.getRoles();
 

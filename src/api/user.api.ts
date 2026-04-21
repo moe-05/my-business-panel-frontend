@@ -98,9 +98,10 @@ export const userApi = {
     }
   },
 
-  async getById(userId: string): Promise<User> {
+  async getById(userId: string, full?: boolean): Promise<User> {
     try {
-      const response = await fetch(`${url}/user/${userId}`, {
+      const qs = full ? "?full=true" : "";
+      const response = await fetch(`${url}/user/${userId}${qs}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

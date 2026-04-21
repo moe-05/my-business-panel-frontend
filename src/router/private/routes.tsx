@@ -6,7 +6,6 @@ import { ProtectedLayout } from "./ProtectedLayout";
 import { DashboardPage } from "@/pages/app/DashboardPage/DashboardPage";
 import { TenantsPage } from "@/pages/app/TenantsPage";
 import { TenantDetailPage } from "@/pages/app/TenantDetailPage";
-import { BranchesPage } from "@/pages/app/BranchesPage";
 import { ProductsPage } from "@/pages/app/ProductsPage";
 import { CustomersPage } from "@/pages/app/CustomersPage";
 import { SettingsPage } from "@/pages/app/SettingsPage";
@@ -14,6 +13,7 @@ import { ProfilePage } from "@/pages/app/ProfilePage";
 import { ComingSoon } from "@/pages/app/ComingSoon";
 
 import { getUsersPageData } from "../loaders/user.loaders";
+import { getBranchesPageData } from "../loaders/branch.loaders";
 
 export const privateRoutes: RouteObject[] = [
   {
@@ -38,7 +38,15 @@ export const privateRoutes: RouteObject[] = [
             },
           },
 
-          { path: "branches", element: <BranchesPage /> },
+          {
+            path: "branches",
+            loader: getBranchesPageData,
+            lazy: async () => {
+              const { BranchesPage } =
+                await import("@/pages/app/BranchesPage/BranchesPage");
+              return { Component: BranchesPage };
+            },
+          },
           { path: "products", element: <ProductsPage /> },
           { path: "customers", element: <CustomersPage /> },
           { path: "settings", element: <SettingsPage /> },

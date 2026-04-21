@@ -3,7 +3,11 @@ import { useLoaderData } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 
 import { userApi } from "@/api/user.api";
-import { createUser } from "@/router/actions/user.actions";
+import {
+  createUser,
+  deleteUser,
+  updateUser,
+} from "@/router/actions/user.actions";
 import type { UsersPageLoaderData } from "@/router/loaders/user.loaders";
 
 import { Button } from "@/components/ui/Button";
@@ -11,14 +15,16 @@ import { Input } from "@/components/ui/Input";
 import { Table, Pagination } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Toast } from "@/components/ui/Toast";
+import { IconEdit, IconEye, IconPlus, IconTrash } from "@/assets/icons";
 
 import type { User } from "@/interfaces/entities/User.interface";
 import type { Role } from "@/interfaces/entities/Role.interface";
 import type { CreateUserRequest } from "@/interfaces/api/requests/CreateUserRequest.interface";
+import type { UpdateUserRequest } from "@/interfaces/api/requests/UpdateUserRequest.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
 
 import { UserDetailModal } from "./UserDetailModal";
-import { NewUserModal } from "./NewUserModal";
+import { UserUpsertModal } from "./UserUpsertModal";
 
 import { getRoleName } from "@/utils/getRoleName";
 
@@ -29,17 +35,22 @@ const LIMIT = 100;
 export function UsersPage() {
   const { initialUsers } = useLoaderData() as UsersPageLoaderData;
   const { user: currentUser } = useAuth();
-  const [users, setUsers] = useState<User[]>(initialUsers?.users ?? []);
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [isLoadingRoles, setIsLoadingRoles] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [page, setPage] = useState(initialUsers?.page ?? 1);
-  const [totalPages] = useState(
-    Math.ceil((initialUsers?.total ?? 0) / (initialUsers?.limit ?? LIMIT)),
-  );
-  const [total, setTotal] = useState(initialUsers?.total ?? 0);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const canManageUsers =
+    currentUser?.role.role_id === 1 || currentUser?.role.role_id === 2;
+
+  const [users, setUsers] = useState<User[]>(initialUsers?.users ?? []),
+    [roles, setRoles] = useState<Role[]>([]),
+    [isLoadingRoles, setIsLoadingRoles] = useState(true),
+    [searchQuery, setSearchQuery] = useState(""),
+    [page, setPage] = useState(initialUsers?.page ?? 1),
+    [totalPages] = useState(
+      Math.ceil((initialUsers?.total ?? 0) / (initialUsers?.limit ?? LIMIT)),
+    ),
+    [total, setTotal] = useState(initialUsers?.total ?? 0),
+    [isModalOpen, setIsModalOpen] = useState(false),
+    [selectedUser, setSelectedUser] = useState<User | null>(null),
+    [editingUser, setEditingUser] = useState<User | null>(null);
+
   const formRef = useRef<HTMLFormElement>(null);
 
   // Toast
@@ -49,6 +60,8 @@ export function UsersPage() {
   } | null>(null);
 
   const tenantId = currentUser?.tenant.tenant_id ?? "";
+  const isUpsertOpen = isModalOpen || !!editingUser;
+  const isEditing = !!editingUser;
 
   useEffect(() => {
     userApi
@@ -58,7 +71,7 @@ export function UsersPage() {
       .finally(() => setIsLoadingRoles(false));
   }, []);
 
-  const handleCreateUser = (data: CreateUserRequest) => {
+  const handleCreateUser = async (data: CreateUserRequest) => {
     const tempId = `temp-${Date.now()}`;
     const tempUser: User = {
       user_id: tempId,
@@ -72,23 +85,41 @@ export function UsersPage() {
     setUsers((prev) => [tempUser, ...prev]);
     setTotal((prev) => prev + 1);
 
-    createUser(data)
-      .then((result) => {
-        setUsers((prev) =>
-          prev.map((u) =>
-            u.user_id === tempId ? { ...tempUser, user_id: result.user_id } : u,
-          ),
-        );
-        setToast({ mode: "success", message: "Usuario creado exitosamente" });
-      })
-      .catch((error) => {
-        // Revert optimistic insert
-        setUsers((prev) => prev.filter((u) => u.user_id !== tempId));
-        setTotal((prev) => prev - 1);
-        const message =
-          error instanceof Error ? error.message : "Error al crear usuario";
-        setToast({ mode: "error", message });
+    try {
+      const result = await createUser(data);
+
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.user_id === tempId ? { ...tempUser, user_id: result.user_id } : u,
+        ),
+      );
+
+      setToast({ mode: "success", message: "Usuario creado exitosamente" });
+    } catch (error) {
+      setUsers((prev) => prev.filter((u) => u.user_id !== tempId));
+      setTotal((prev) => prev - 1);
+
+      const message =
+        error instanceof Error ? error.message : "Error al crear usuario";
+      setToast({ mode: "error", message });
+    }
+  };
+
+  const handleUpdateUser = async (userId: string, data: UpdateUserRequest) => {
+    try {
+      const updatedUser = await updateUser(userId, data);
+      setUsers((prev) =>
+        prev.map((u) => (u.user_id === userId ? { ...u, ...updatedUser } : u)),
+      );
+      setToast({
+        mode: "success",
+        message: "Usuario actualizado exitosamente",
       });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Error al actualizar usuario";
+      setToast({ mode: "error", message });
+    }
   };
 
   const handleDeleteUser = async (userId: string) => {
@@ -97,7 +128,8 @@ export function UsersPage() {
     setUsers((prev) => prev.filter((u) => u.user_id !== userId));
     setTotal((prev) => prev - 1);
     try {
-      await userApi.delete(userId);
+      await deleteUser(userId);
+      setToast({ mode: "success", message: "Usuario eliminado exitosamente" });
     } catch (error) {
       if (userToDelete) {
         setUsers((prev) => [...prev, userToDelete]);
@@ -109,7 +141,10 @@ export function UsersPage() {
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────────
+  const handleCloseUpsertModal = () => {
+    setIsModalOpen(false);
+    setEditingUser(null);
+  };
 
   return (
     <div className="p-6 lg:p-8">
@@ -153,17 +188,7 @@ export function UsersPage() {
               onClick={() => setIsModalOpen(true)}
               className="w-full lg:w-auto"
             >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
+              <IconPlus />
               Nuevo Usuario
             </Button>
           </div>
@@ -190,45 +215,51 @@ export function UsersPage() {
               width: "15%",
               render: (date) => new Date(date).toLocaleDateString("es-CR"),
             },
-            {
-              key: "actions",
-              label: "Acciones",
-              width: "5%",
-              render: (_: unknown, row: User) => (
-                <div
-                  className="flex gap-2"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteUser(row.user_id)}
-                    title="Eliminar usuario"
-                    className="p-1.5 cursor-pointer text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                      <path d="M10 11v6" />
-                      <path d="M14 11v6" />
-                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                    </svg>
-                  </button>
-                </div>
-              ),
-            },
+            ...(canManageUsers
+              ? [
+                  {
+                    key: "actions",
+                    label: "Acciones",
+                    width: "5%",
+                    render: (_: unknown, row: User) => (
+                      <div
+                        className="flex gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button
+                          onClick={() => setSelectedUser(row)}
+                          title="Ver detalles"
+                          variant="ghost"
+                          className="hover:bg-gray-50 rounded-lg transition-colors"
+                        >
+                          <IconEye />
+                        </Button>
+                        <Button
+                          onClick={() => setEditingUser(row)}
+                          title="Editar usuario"
+                          variant="ghost"
+                          className="hover:bg-gray-50 rounded-lg transition-colors"
+                        >
+                          <IconEdit />
+                        </Button>
+                        {row.role_id !== 1 && row.role_id !== 2 && (
+                          <Button
+                            onClick={() => handleDeleteUser(row.user_id)}
+                            title="Eliminar usuario"
+                            variant="danger"
+                            className="hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <IconTrash />
+                          </Button>
+                        )}
+                      </div>
+                    ),
+                  },
+                ]
+              : []),
           ]}
           data={users}
           emptyMessage="No hay usuarios para mostrar"
-          onRowClick={(row) => setSelectedUser(row)}
         />
         {totalPages > 1 && (
           <Pagination
@@ -248,14 +279,16 @@ export function UsersPage() {
         />
       )}
 
-      {/* New User Modal */}
-      <NewUserModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+      <UserUpsertModal
+        isOpen={isUpsertOpen}
+        isEditing={isEditing}
+        user={editingUser}
+        onClose={handleCloseUpsertModal}
         tenantId={tenantId}
         roles={roles}
         isLoadingRoles={isLoadingRoles}
-        onSubmit={handleCreateUser}
+        onCreate={handleCreateUser}
+        onUpdate={handleUpdateUser}
       />
 
       {/* Hidden form ref kept for compatibility */}

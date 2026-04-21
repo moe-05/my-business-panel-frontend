@@ -15,3 +15,5 @@ export { marginApi } from "./margin.api";
 export { documentApi } from "./document.api";
 export { loyaltyApi } from "./loyalty.api";
 export { haciendaApi } from "./hacienda.api";
+export { employeeApi } from "./employee.api";
+export { contractApi } from "./contract.api";
