@@ -76,9 +76,6 @@ function SidebarNavItem({ item, onClick }: SidebarNavItemProps) {
             {item.icon}
           </span>
           {item.label}
-          {isActive && (
-            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white" />
-          )}
         </>
       )}
     </NavLink>

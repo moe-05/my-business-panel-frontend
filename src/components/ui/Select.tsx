@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type KeyboardEvent,
   type SelectHTMLAttributes,
 } from "react";
@@ -85,9 +86,12 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     const triggerNativeChange = (nextValue: string) => {
       if (!selectRef.current) return;
 
-      selectRef.current.value = nextValue;
-      const changeEvent = new Event("change", { bubbles: true });
-      selectRef.current.dispatchEvent(changeEvent);
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        HTMLSelectElement.prototype,
+        "value",
+      )?.set;
+      nativeSetter?.call(selectRef.current, nextValue);
+      selectRef.current.dispatchEvent(new Event("change", { bubbles: true }));
     };
 
     const handleSelect = (nextValue: string) => {
@@ -95,9 +99,19 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
 
       if (!isControlled) {
         setInternalValue(nextValue);
+        triggerNativeChange(nextValue);
       }
 
-      triggerNativeChange(nextValue);
+      if (onChange) {
+        const syntheticEvent = {
+          target: { value: nextValue, name: name ?? "" },
+          currentTarget: { value: nextValue, name: name ?? "" },
+          preventDefault: () => {},
+          stopPropagation: () => {},
+        } as unknown as ChangeEvent<HTMLSelectElement>;
+        onChange(syntheticEvent);
+      }
+
       setIsOpen(false);
     };
 

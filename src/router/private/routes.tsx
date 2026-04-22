@@ -7,13 +7,16 @@ import { DashboardPage } from "@/pages/app/DashboardPage/DashboardPage";
 import { TenantsPage } from "@/pages/app/TenantsPage";
 import { TenantDetailPage } from "@/pages/app/TenantDetailPage";
 import { ProductsPage } from "@/pages/app/ProductsPage";
-import { CustomersPage } from "@/pages/app/CustomersPage";
-import { SettingsPage } from "@/pages/app/SettingsPage";
+import { CustomersPage } from "@/pages/app/CustomersPage/CustomersPage";
 import { ProfilePage } from "@/pages/app/ProfilePage";
 import { ComingSoon } from "@/pages/app/ComingSoon";
+import { authApi } from "@/api/auth.api";
 
 import { getUsersPageData } from "../loaders/user.loaders";
 import { getBranchesPageData } from "../loaders/branch.loaders";
+// import { getHaciendaStatus } from "../loaders/hacienda.loaders";
+import { getAllSegments } from "../loaders/segment.loaders";
+import { getMarginsByTenant } from "../loaders/margin.loaders";
 
 export const privateRoutes: RouteObject[] = [
   {
@@ -49,7 +52,24 @@ export const privateRoutes: RouteObject[] = [
           },
           { path: "products", element: <ProductsPage /> },
           { path: "customers", element: <CustomersPage /> },
-          { path: "settings", element: <SettingsPage /> },
+          {
+            path: "settings",
+            loader: async () => {
+              const segments = await getAllSegments();
+              const currentUser = await authApi.getCurrentUser();
+              const tenantId = currentUser?.tenant?.tenant_id;
+              const margins = tenantId
+                ? await getMarginsByTenant(tenantId)
+                : [];
+
+              return { segments, margins };
+            },
+            lazy: async () => {
+              const { SettingsPage } =
+                await import("@/pages/app/SettingsPage/SettingsPage");
+              return { Component: SettingsPage };
+            },
+          },
           { path: "profile", element: <ProfilePage /> },
 
           // POS Module

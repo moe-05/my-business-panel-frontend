@@ -1,11 +1,9 @@
-import type { Segment } from "./Segment.interface";
-
 export interface Margin {
-  margin_id: string;
-  tenant_id: string;
-  segment_id: string;
-  segment?: Segment;
-  margin_percentage: number;
-  created_at?: string;
-  updated_at?: string;
+  customer_segment_margin_id: string;
+  tenant_name: string;
+  segment_name: string;
+  type_name: string;
+  spending_threshold: number;
+  seniority_months: number;
+  frequency_per_month: number;
 }

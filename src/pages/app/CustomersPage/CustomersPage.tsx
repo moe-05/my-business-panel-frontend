@@ -1,18 +1,26 @@
 import { useEffect, useState, useRef } from "react";
-import { useAuth } from "../../context/AuthContext";
-import { customerApi } from "../../api/customer.api";
-import { segmentApi } from "../../api/segment.api";
-import { tenantApi } from "../../api/tenant.api";
-import { Button } from "../../components/ui/Button";
-import { Input } from "../../components/ui/Input";
-import { Select } from "../../components/ui/Select";
-import { Modal } from "../../components/ui/Modal";
-import { Table, Pagination } from "../../components/ui/Table";
-import { Badge } from "../../components/ui/Badge";
-import type { Customer, DocTypeCode } from "../../interfaces/entities/Customer.interface";
-import type { Segment } from "../../interfaces/entities/Segment.interface";
-import type { CustomersListResponse } from "../../interfaces/api/responses/CustomersListResponse.interface";
-import type { Tenant } from "../../interfaces/entities/Tenant.interface";
+import { useAuth } from "@/context/AuthContext";
+
+import { customerApi } from "@/api/customer.api";
+import { segmentApi } from "@/api/segment.api";
+import { tenantApi } from "@/api/tenant.api";
+
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Modal } from "@/components/ui/Modal";
+import { Table, Pagination } from "@/components/ui/Table";
+import { Badge } from "@/components/ui/Badge";
+
+import type {
+  Customer,
+  DocTypeCode,
+} from "@/interfaces/entities/Customer.interface";
+import type { Segment } from "@/interfaces/entities/Segment.interface";
+import type { CustomersListResponse } from "@/interfaces/api/responses/CustomersListResponse.interface";
+import type { Tenant } from "@/interfaces/entities/Tenant.interface";
+import { capitalize } from "@/utils/capitalize";
+import { IconPlus } from "@/assets/icons/IconPlus";
 
 const LIMIT = 100;
 
@@ -23,117 +31,6 @@ const DOCUMENT_TYPES: { value: DocTypeCode; label: string }[] = [
   { value: "nite", label: "NITE" },
   { value: "other", label: "Otro" },
 ];
-
-// ─── Detail Modal ─────────────────────────────────────────────────────────────
-
-function CustomerDetailModal({
-  customer,
-  segments,
-  onClose,
-}: {
-  customer: Customer;
-  segments: Segment[];
-  onClose: () => void;
-}) {
-  const segmentName = segments.find(
-    (s) => s.segment_id === customer.segment_id,
-  )?.segment_name;
-  const docTypeLabel =
-    DOCUMENT_TYPES.find((d) => d.value === customer.doc_type)?.label ||
-    customer.doc_type;
-
-  const field = (label: string, value?: string | number | null) => (
-    <div key={label}>
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-0.5">
-        {label}
-      </p>
-      <p className="text-sm text-gray-900">{value ?? "—"}</p>
-    </div>
-  );
-
-  return (
-    <Modal isOpen onClose={onClose} title="Detalle de Cliente" size="md">
-      <div className="space-y-5">
-        {/* Identity */}
-        <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-            Identificación
-          </p>
-          <div className="grid grid-cols-2 gap-4">
-            {field("Nombre", `${customer.first_name} ${customer.last_name}`)}
-            {field("Tipo Doc.", docTypeLabel)}
-            {field("Documento", customer.doc_number)}
-            {field(
-              "Segmento",
-              segmentName ??
-                (customer.segment_id
-                  ? `Segmento ${customer.segment_id}`
-                  : null),
-            )}
-          </div>
-        </div>
-
-        {/* Contact */}
-        {(customer.email || customer.phone) && (
-          <div className="border-t border-gray-100 pt-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-              Contacto
-            </p>
-            <div className="grid grid-cols-2 gap-4">
-              {field("Email", customer.email)}
-              {field("Teléfono", customer.phone)}
-            </div>
-          </div>
-        )}
-
-        {/* Address */}
-        {(customer.address || customer.city || customer.province) && (
-          <div className="border-t border-gray-100 pt-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-              Dirección
-            </p>
-            <div className="grid grid-cols-2 gap-4">
-              {field("Dirección", customer.address)}
-              {field("Ciudad", customer.city)}
-              {field("Provincia", customer.province)}
-              {field("Código Postal", customer.postal_code)}
-            </div>
-          </div>
-        )}
-
-        {/* Tenant (superuser view) */}
-        {(customer as any).tenant_name && (
-          <div className="border-t border-gray-100 pt-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-              Empresa
-            </p>
-            {field("Tenant", (customer as any).tenant_name)}
-          </div>
-        )}
-
-        {/* Timestamps */}
-        <div className="border-t border-gray-100 pt-4">
-          <div className="grid grid-cols-2 gap-4">
-            {field(
-              "Creado",
-              new Date(customer.created_at).toLocaleString("es-CR"),
-            )}
-            {field(
-              "Actualizado",
-              new Date(customer.updated_at).toLocaleString("es-CR"),
-            )}
-          </div>
-        </div>
-
-        <div className="pt-2">
-          <Button type="button" variant="ghost" fullWidth onClick={onClose}>
-            Cerrar
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
@@ -167,7 +64,8 @@ export function CustomersPage() {
   const { user: currentUser } = useAuth();
 
   const isSuperAdmin = currentUser?.role.role_hierarchy === 1;
-  const canCreate = isSuperAdmin || currentUser?.role.role_hierarchy === 2;
+  const canManageCustomers =
+    isSuperAdmin || currentUser?.role.role_hierarchy === 2;
 
   // Customers state
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -191,9 +89,7 @@ export function CustomersPage() {
     null,
   );
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(
-    null,
-  );
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [formErrors, setFormErrors] = useState<CustomerFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -244,12 +140,7 @@ export function CustomersPage() {
       } else {
         const tenantId = currentUser?.tenant.tenant_id || "";
         if (query.trim()) {
-          result = await customerApi.search(
-            tenantId,
-            query,
-            pageNum,
-            LIMIT,
-          );
+          result = await customerApi.search(tenantId, query, pageNum, LIMIT);
         } else if (segmentId) {
           result = await customerApi.filterBySegment(
             tenantId,
@@ -411,7 +302,7 @@ export function CustomersPage() {
       </div>
 
       {/* Search & Actions */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
+      <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:gap-3">
           <div className="flex-1 min-w-0">
             <Input
@@ -437,7 +328,7 @@ export function CustomersPage() {
                     { value: "", label: "Todos los segmentos" },
                     ...segments.map((s) => ({
                       value: s.segment_id,
-                      label: s.segment_name,
+                      label: capitalize(s.segment_name),
                     })),
                   ]}
                 />
@@ -447,7 +338,7 @@ export function CustomersPage() {
             <span className="text-sm text-gray-500">
               {total} cliente{total !== 1 ? "s" : ""}
             </span>
-            {canCreate && (
+            {canManageCustomers && (
               <Button
                 variant="primary"
                 size="md"
@@ -459,17 +350,7 @@ export function CustomersPage() {
                 }}
                 className="w-full lg:w-auto"
               >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
+                <IconPlus />
                 Nuevo Cliente
               </Button>
             )}
@@ -478,7 +359,7 @@ export function CustomersPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-6">
+      <div className="bg-white rounded-2xl border border-gray-300 p-6">
         <p className="text-xs text-gray-400 mb-4">
           Haz clic en una fila para ver el detalle del cliente
         </p>
@@ -534,7 +415,7 @@ export function CustomersPage() {
                     },
                   ]
                 : []),
-              ...(canCreate
+              ...(canManageCustomers
                 ? [
                     {
                       key: "actions" as keyof Customer,

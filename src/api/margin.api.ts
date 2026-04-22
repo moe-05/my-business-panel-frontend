@@ -5,6 +5,13 @@ import type { CreateMarginRequest } from "@/interfaces/api/requests/CreateMargin
 import type { Margin } from "@/interfaces/entities/Margin.interface";
 import type { MarginsListResponse } from "@/interfaces/api/responses/MarginsListResponse.interface";
 
+type UpdateMarginRequest = Partial<
+  Pick<
+    CreateMarginRequest,
+    "spending_threshold" | "seniority_months" | "frequency_per_month"
+  >
+>;
+
 export const marginApi = {
   async listByTenant(tenantId: string): Promise<Margin[]> {
     try {
@@ -42,7 +49,7 @@ export const marginApi = {
     }
   },
 
-  async create(data: CreateMarginRequest): Promise<Margin> {
+  async create(data: CreateMarginRequest): Promise<{ message: string }> {
     try {
       const response = await fetch(`${url}/margin`, {
         method: "POST",
@@ -51,7 +58,7 @@ export const marginApi = {
         body: JSON.stringify(data),
       });
 
-      const json: ApiResponse<Margin> = await response.json();
+      const json: ApiResponse<{ message: string }> = await response.json();
       return json.data;
     } catch (error) {
       throw new Error(
@@ -60,16 +67,19 @@ export const marginApi = {
     }
   },
 
-  async update(marginId: string, marginPercentage: number): Promise<Margin> {
+  async update(
+    marginId: string,
+    data: UpdateMarginRequest,
+  ): Promise<{ message: string }> {
     try {
       const response = await fetch(`${url}/margin/${marginId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ margin_percentage: marginPercentage }),
+        body: JSON.stringify(data),
       });
 
-      const json: ApiResponse<Margin> = await response.json();
+      const json: ApiResponse<{ message: string }> = await response.json();
       return json.data;
     } catch (error) {
       throw new Error(

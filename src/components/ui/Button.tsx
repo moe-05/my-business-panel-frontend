@@ -10,6 +10,8 @@ const variantClasses: Record<Variant, string> = {
   ghost: "btn-accent-ghost",
   danger:
     "bg-red-600 text-white hover:bg-red-700 active:bg-red-800 disabled:bg-red-300",
+  warning:
+    "bg-amber-500 text-white hover:bg-amber-600 active:bg-amber-700 disabled:bg-amber-300",
 };
 
 const sizeClasses: Record<Size, string> = {

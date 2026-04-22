@@ -1,16 +1,22 @@
 import { marginApi } from "@/api/margin.api";
 
 import type { CreateMarginRequest } from "@/interfaces/api/requests/CreateMarginRequest.interface";
-import type { Margin } from "@/interfaces/entities/Margin.interface";
+
+type UpdateMarginRequest = Partial<
+  Pick<
+    CreateMarginRequest,
+    "spending_threshold" | "seniority_months" | "frequency_per_month"
+  >
+>;
 
 export const createMargin = async (
   data: CreateMarginRequest,
-): Promise<Margin> => marginApi.create(data);
+): Promise<{ message: string }> => marginApi.create(data);
 
 export const updateMargin = async (
   marginId: string,
-  marginPercentage: number,
-): Promise<Margin> => marginApi.update(marginId, marginPercentage);
+  data: UpdateMarginRequest,
+): Promise<{ message: string }> => marginApi.update(marginId, data);
 
 export const deleteMargin = async (
   marginId: string,

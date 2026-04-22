@@ -19,6 +19,7 @@ export { IconMenu } from "./IconMenu";
 export { IconPackage } from "./IconPackage";
 export { IconPlus } from "./IconPlus";
 export { IconSettings } from "./IconSettings";
+export { IconShield } from "./IconShield";
 export { IconShoppingCart } from "./IconShoppingCart";
 export { IconTrash } from "./IconTrash";
 export { IconTrendingUp } from "./IconTrendingUp";
