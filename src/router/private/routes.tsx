@@ -7,13 +7,13 @@ import { DashboardPage } from "@/pages/app/DashboardPage/DashboardPage";
 import { TenantsPage } from "@/pages/app/TenantsPage";
 import { TenantDetailPage } from "@/pages/app/TenantDetailPage";
 import { ProductsPage } from "@/pages/app/ProductsPage";
-import { CustomersPage } from "@/pages/app/CustomersPage/CustomersPage";
 import { ProfilePage } from "@/pages/app/ProfilePage";
 import { ComingSoon } from "@/pages/app/ComingSoon";
 import { authApi } from "@/api/auth.api";
 
 import { getUsersPageData } from "../loaders/user.loaders";
 import { getBranchesPageData } from "../loaders/branch.loaders";
+import { getCustomersPageData } from "../loaders/customer.loaders";
 // import { getHaciendaStatus } from "../loaders/hacienda.loaders";
 import { getAllSegments } from "../loaders/segment.loaders";
 import { getMarginsByTenant } from "../loaders/margin.loaders";
@@ -51,7 +51,16 @@ export const privateRoutes: RouteObject[] = [
             },
           },
           { path: "products", element: <ProductsPage /> },
-          { path: "customers", element: <CustomersPage /> },
+          {
+            path: "customers",
+            loader: getCustomersPageData,
+            lazy: async () => {
+              const { CustomersPage } = await import(
+                "@/pages/app/CustomersPage/CustomersPage"
+              );
+              return { Component: CustomersPage };
+            },
+          },
           {
             path: "settings",
             loader: async () => {

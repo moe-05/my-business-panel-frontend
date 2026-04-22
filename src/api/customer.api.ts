@@ -16,6 +16,11 @@ export const customerApi = {
         body: JSON.stringify(data),
       });
 
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({})) as { message?: string };
+        throw new Error(err.message ?? `Error ${response.status} al crear cliente`);
+      }
+
       const json: ApiResponse<Customer> = await response.json();
       return json.data;
     } catch (error) {
@@ -37,6 +42,7 @@ export const customerApi = {
       );
 
       const json: ApiResponse<CustomersListResponse> = await response.json();
+      console.log(json);
       return json.data;
     } catch (error) {
       throw new Error(

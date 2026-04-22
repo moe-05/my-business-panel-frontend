@@ -1,35 +1,28 @@
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import type { Customer } from "@/interfaces/entities/Customer.interface";
-import type { Segment } from "@/interfaces/entities/Segment.interface";
+
 import { identificationTypes } from "@/constants/identification-types";
+import { defaultCustomerSegments } from "@/constants/default-customer-segments";
+
+import type { Customer } from "@/interfaces/entities/Customer.interface";
 
 type CustomerWithTenant = Customer & { tenant_name?: string };
 
 export function CustomerDetailModal({
   customer,
-  segments,
   onClose,
 }: {
   customer: Customer;
-  segments: Segment[];
   onClose: () => void;
 }) {
-  const segmentName = segments.find(
-    (s) => s.segment_id === customer.segment_id,
-  )?.segment_name;
+  const segmentName =
+    defaultCustomerSegments.find((s) => s.value === customer.segment_id)
+      ?.label ?? (customer.segment_id ? `Segmento ${customer.segment_id}` : null);
+
   const docTypeLabel =
-    customer.doc_type === "cedula"
-      ? (identificationTypes[0]?.label ?? customer.doc_type)
-      : customer.doc_type === "passport"
-        ? (identificationTypes[4]?.label ?? customer.doc_type)
-        : customer.doc_type === "dimex"
-          ? (identificationTypes[2]?.label ?? customer.doc_type)
-          : customer.doc_type === "nite"
-            ? (identificationTypes[3]?.label ?? customer.doc_type)
-            : customer.doc_type === "other"
-              ? (identificationTypes[5]?.label ?? customer.doc_type)
-              : customer.doc_type;
+    identificationTypes.find((t) => t.value === customer.doc_type)?.label ??
+    String(customer.doc_type);
+
   const tenantName = (customer as CustomerWithTenant).tenant_name;
 
   const field = (label: string, value?: string | number | null) => (
@@ -53,13 +46,7 @@ export function CustomerDetailModal({
             {field("Nombre", `${customer.first_name} ${customer.last_name}`)}
             {field("Tipo Doc.", docTypeLabel)}
             {field("Documento", customer.doc_number)}
-            {field(
-              "Segmento",
-              segmentName ??
-                (customer.segment_id
-                  ? `Segmento ${customer.segment_id}`
-                  : null),
-            )}
+            {field("Segmento", segmentName)}
           </div>
         </div>
 

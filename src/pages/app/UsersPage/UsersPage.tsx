@@ -172,10 +172,12 @@ export function UsersPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex-1 min-w-0">
             <Input
-              placeholder="Buscar por email..."
+              label="Buscar usuario"
+              placeholder="Buscar por email"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full lg:max-w-sm"
+              required
             />
           </div>
           <div className="flex items-center gap-3">

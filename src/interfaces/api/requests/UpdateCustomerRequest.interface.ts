@@ -7,5 +7,5 @@ export interface UpdateCustomerRequest {
   city?: string;
   province?: string;
   postal_code?: string;
-  segment_id?: string;
+  segment_id?: number;
 }

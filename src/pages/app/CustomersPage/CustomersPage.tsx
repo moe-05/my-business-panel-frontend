@@ -1,294 +1,342 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useLoaderData } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 
-import { customerApi } from "@/api/customer.api";
-import { segmentApi } from "@/api/segment.api";
-import { tenantApi } from "@/api/tenant.api";
+import {
+  getAllCustomers,
+  getCustomersByTenant,
+  searchCustomers,
+  getCustomersBySegment,
+  CUSTOMERS_PAGE_LIMIT,
+  type CustomersPageLoaderData,
+} from "@/router/loaders/customer.loaders";
+import {
+  createCustomer,
+  updateCustomer,
+  deleteCustomer,
+} from "@/router/actions/customer.actions";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Modal } from "@/components/ui/Modal";
 import { Table, Pagination } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
+import { Toast } from "@/components/ui/Toast";
+import { IconEdit, IconEye, IconPlus, IconTrash } from "@/assets/icons";
 
-import type {
-  Customer,
-  DocTypeCode,
-} from "@/interfaces/entities/Customer.interface";
-import type { Segment } from "@/interfaces/entities/Segment.interface";
+import { identificationTypes } from "@/constants/identification-types";
+import { defaultCustomerSegments } from "@/constants/default-customer-segments";
+
+import type { Customer } from "@/interfaces/entities/Customer.interface";
+import type { CreateCustomerRequest } from "@/interfaces/api/requests/CreateCustomerRequest.interface";
+import type { UpdateCustomerRequest } from "@/interfaces/api/requests/UpdateCustomerRequest.interface";
 import type { CustomersListResponse } from "@/interfaces/api/responses/CustomersListResponse.interface";
-import type { Tenant } from "@/interfaces/entities/Tenant.interface";
-import { capitalize } from "@/utils/capitalize";
-import { IconPlus } from "@/assets/icons/IconPlus";
+import type { Column } from "@/interfaces/components/ui/TableProps.interface";
+import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
 
-const LIMIT = 100;
+import { CustomerDetailModal } from "./CustomerDetailModal";
+import { CustomerUpsertModal } from "./CustomerUpsertModal";
 
-const DOCUMENT_TYPES: { value: DocTypeCode; label: string }[] = [
-  { value: "cedula", label: "Cédula" },
-  { value: "passport", label: "Pasaporte" },
-  { value: "dimex", label: "DIMEX" },
-  { value: "nite", label: "NITE" },
-  { value: "other", label: "Otro" },
-];
+type CustomerWithTenant = Customer & { tenant_name?: string };
 
-// ─── Form state ───────────────────────────────────────────────────────────────
-
-interface CustomerFormState {
-  first_name: string;
-  last_name: string;
-  doc_type: DocTypeCode;
-  doc_number: string;
-  email: string;
-  phone: string;
-  address: string;
-  city: string;
-  province: string;
-  postal_code: string;
-  segment_id: string;
-  tenant_id?: string;
+interface UpsertModalState {
+  open: boolean;
+  mode: "create" | "edit";
+  customer?: Customer;
 }
-
-interface CustomerFormErrors {
-  first_name?: string;
-  last_name?: string;
-  doc_type?: string;
-  doc_number?: string;
-  email?: string;
-  tenant_id?: string;
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function CustomersPage() {
+  const { initialCustomers, tenants } =
+    useLoaderData() as CustomersPageLoaderData;
   const { user: currentUser } = useAuth();
 
-  const isSuperAdmin = currentUser?.role.role_hierarchy === 1;
-  const canManageCustomers =
-    isSuperAdmin || currentUser?.role.role_hierarchy === 2;
+  const isSuperAdmin = currentUser?.role.role_id === 1;
+  const canManage = isSuperAdmin || currentUser?.role.role_id === 2;
 
-  // Customers state
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSegment, setSelectedSegment] = useState<string>("");
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-
-  // Segments state
-  const [segments, setSegments] = useState<Segment[]>([]);
-  const [isLoadingSegments, setIsLoadingSegments] = useState(true);
-
-  // Tenants (for superuser form)
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [isLoadingTenants, setIsLoadingTenants] = useState(false);
-
-  // Modal state
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
-    null,
+  // List state — initialized from loader
+  const [customers, setCustomers] = useState<Customer[]>(
+    initialCustomers.customers,
   );
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const [formErrors, setFormErrors] = useState<CustomerFormErrors>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const formRef = useRef<HTMLFormElement>(null);
+  const [total, setTotal] = useState(initialCustomers.total);
+  const [totalPages, setTotalPages] = useState(
+    Math.ceil(initialCustomers.total / initialCustomers.limit),
+  );
+  const [isLoading, setIsLoading] = useState(false);
 
-  const initialFormState: CustomerFormState = {
-    first_name: "",
-    last_name: "",
-    doc_type: "cedula",
-    doc_number: "",
-    email: "",
-    phone: "",
-    address: "",
-    city: "",
-    province: "",
-    postal_code: "",
-    segment_id: "",
-    tenant_id: undefined,
-  };
-  const [formData, setFormData] = useState<CustomerFormState>(initialFormState);
+  // Filters & pagination
+  const [query, setQuery] = useState("");
+  const [segment, setSegment] = useState("");
+  const [page, setPage] = useState(initialCustomers.page);
 
-  // Load segments
+  // Toast
+  const [toast, setToast] = useState<{
+    mode: ToastMode;
+    message: string;
+  } | null>(null);
+
+  // Modals
+  const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
+  const [upsertModal, setUpsertModal] = useState<UpsertModalState>({
+    open: false,
+    mode: "create",
+  });
+
+  // Re-fetch on search/filter/page changes (skip initial render — data from loader)
+  const isFirstRender = useRef(true);
+
   useEffect(() => {
-    segmentApi
-      .getAll()
-      .then(setSegments)
-      .catch(console.error)
-      .finally(() => setIsLoadingSegments(false));
-  }, []);
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
 
-  // Load tenants (superuser only)
-  useEffect(() => {
-    if (!isSuperAdmin) return;
-    setIsLoadingTenants(true);
-    tenantApi
-      .getAll()
-      .then((res) => setTenants(res.tenants))
-      .catch(console.error)
-      .finally(() => setIsLoadingTenants(false));
-  }, [isSuperAdmin]);
+    const delay = query.trim() ? 300 : 0;
+    const timer = setTimeout(async () => {
+      setIsLoading(true);
+      try {
+        const tenantId = currentUser?.tenant.tenant_id ?? "";
+        let result: CustomersListResponse;
 
-  // Load customers
-  const loadCustomers = async (pageNum = 1, query = "", segmentId = "") => {
-    setIsLoading(true);
-    try {
-      let result: CustomersListResponse;
-      if (isSuperAdmin) {
-        result = await customerApi.listAll(pageNum, LIMIT);
-      } else {
-        const tenantId = currentUser?.tenant.tenant_id || "";
-        if (query.trim()) {
-          result = await customerApi.search(tenantId, query, pageNum, LIMIT);
-        } else if (segmentId) {
-          result = await customerApi.filterBySegment(
+        if (isSuperAdmin) {
+          result = await getAllCustomers(page, CUSTOMERS_PAGE_LIMIT);
+        } else if (query.trim()) {
+          result = await searchCustomers(
             tenantId,
-            segmentId,
-            pageNum,
-            LIMIT,
+            query,
+            page,
+            CUSTOMERS_PAGE_LIMIT,
+          );
+        } else if (segment) {
+          result = await getCustomersBySegment(
+            tenantId,
+            segment,
+            page,
+            CUSTOMERS_PAGE_LIMIT,
           );
         } else {
-          result = await customerApi.listByTenant(tenantId, pageNum, LIMIT);
+          result = await getCustomersByTenant(
+            tenantId,
+            page,
+            CUSTOMERS_PAGE_LIMIT,
+          );
         }
+
+        setCustomers(result.customers);
+        setTotal(result.total);
+        setTotalPages(Math.ceil(result.total / result.limit));
+      } catch (err) {
+        console.error("Error fetching customers:", err);
+      } finally {
+        setIsLoading(false);
       }
-      setCustomers(result.customers);
-      setTotal(result.total);
-      setTotalPages(Math.ceil(result.total / result.limit));
-      setPage(result.page);
-    } catch (error) {
-      console.error("Error loading customers:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    }, delay);
 
-  // Initial load
-  useEffect(() => {
-    loadCustomers(1, "", "");
-  }, [isSuperAdmin, currentUser?.tenant.tenant_id]);
-
-  // Search + segment filter debounce
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setPage(1);
-      loadCustomers(1, searchQuery, selectedSegment);
-    }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery, selectedSegment]);
+  }, [query, segment, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Validate form
-  const validateForm = (): boolean => {
-    const errors: CustomerFormErrors = {};
-    if (!formData.first_name.trim()) errors.first_name = "Nombre es requerido";
-    if (!formData.last_name.trim()) errors.last_name = "Apellido es requerido";
-    if (!formData.doc_type) errors.doc_type = "Tipo de documento es requerido";
-    if (!formData.doc_number.trim())
-      errors.doc_number = "Número de documento es requerido";
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email))
-      errors.email = "Email inválido";
-    if (isSuperAdmin && !editingCustomer && !formData.tenant_id)
-      errors.tenant_id = "Empresa (Tenant) es requerida";
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
+  // ─── Optimistic handlers ────────────────────────────────────────────────────
 
-  // Handle form submit
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateForm() || !currentUser) return;
-    setIsSubmitting(true);
-    try {
-      if (editingCustomer) {
-        await customerApi.update(editingCustomer.customer_id, {
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          email: formData.email || undefined,
-          phone: formData.phone || undefined,
-          address: formData.address || undefined,
-          city: formData.city || undefined,
-          province: formData.province || undefined,
-          postal_code: formData.postal_code || undefined,
-          segment_id: formData.segment_id || undefined,
+  const handleCreate = (data: CreateCustomerRequest) => {
+    const tempId = `temp-${Date.now()}`;
+    const tempCustomer: Customer = {
+      customer_id: tempId,
+      tenant_id: data.tenant_id,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      doc_type: data.document_type_id,
+      doc_number: data.document_number,
+      email: data.email,
+      phone: data.phone,
+      address: data.address,
+      segment_id: data.segment_id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    setCustomers((prev) => [tempCustomer, ...prev]);
+    setTotal((prev) => prev + 1);
+
+    void createCustomer(data)
+      .then((result) => {
+        setCustomers((prev) =>
+          prev.map((c) => (c.customer_id === tempId ? result : c)),
+        );
+        setToast({ mode: "success", message: "Cliente creado exitosamente" });
+      })
+      .catch((err: unknown) => {
+        setCustomers((prev) => prev.filter((c) => c.customer_id !== tempId));
+        setTotal((prev) => prev - 1);
+        setToast({
+          mode: "error",
+          message:
+            err instanceof Error ? err.message : "Error al crear cliente",
         });
-      } else {
-        const tenantId = isSuperAdmin
-          ? formData.tenant_id || ""
-          : currentUser.tenant.tenant_id;
-        await customerApi.create({
-          tenant_id: tenantId,
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          doc_type: formData.doc_type,
-          doc_number: formData.doc_number,
-          email: formData.email || undefined,
-          phone: formData.phone || undefined,
-          address: formData.address || undefined,
-          city: formData.city || undefined,
-          province: formData.province || undefined,
-          postal_code: formData.postal_code || undefined,
-          segment_id: formData.segment_id || undefined,
-        });
-      }
-      await loadCustomers(page, searchQuery, selectedSegment);
-      closeModal();
-    } catch (error) {
-      console.error("Error saving customer:", error);
-      setFormErrors({
-        doc_number:
-          error instanceof Error ? error.message : "Error guardando cliente",
       });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
-  const handleEditCustomer = (c: Customer) => {
-    setEditingCustomer(c);
-    setFormData({
-      first_name: c.first_name,
-      last_name: c.last_name,
-      doc_type: c.doc_type,
-      doc_number: c.doc_number,
-      email: c.email || "",
-      phone: c.phone || "",
-      address: c.address || "",
-      city: c.city || "",
-      province: c.province || "",
-      postal_code: c.postal_code || "",
-      segment_id: c.segment_id || "",
-    });
-    setFormErrors({});
-    setIsModalOpen(true);
+  const handleUpdate = (customerId: string, data: UpdateCustomerRequest) => {
+    const original = customers.find((c) => c.customer_id === customerId);
+
+    setCustomers((prev) =>
+      prev.map((c) => (c.customer_id === customerId ? { ...c, ...data } : c)),
+    );
+
+    void updateCustomer(customerId, data)
+      .then((result) => {
+        setCustomers((prev) =>
+          prev.map((c) => (c.customer_id === customerId ? result : c)),
+        );
+        setToast({
+          mode: "success",
+          message: "Cliente actualizado exitosamente",
+        });
+      })
+      .catch((err: unknown) => {
+        if (original) {
+          setCustomers((prev) =>
+            prev.map((c) => (c.customer_id === customerId ? original : c)),
+          );
+        }
+        setToast({
+          mode: "error",
+          message:
+            err instanceof Error ? err.message : "Error al actualizar cliente",
+        });
+      });
   };
 
-  const handleDeleteCustomer = async (customerId: string) => {
+  const handleDelete = (customerId: string) => {
     if (!confirm("¿Está seguro de que desea eliminar este cliente?")) return;
-    try {
-      await customerApi.delete(customerId);
-      await loadCustomers(page, searchQuery, selectedSegment);
-    } catch (error) {
-      alert(
-        error instanceof Error ? error.message : "Error al eliminar cliente",
-      );
-    }
+
+    const toDelete = customers.find((c) => c.customer_id === customerId);
+    setCustomers((prev) => prev.filter((c) => c.customer_id !== customerId));
+    setTotal((prev) => prev - 1);
+
+    void deleteCustomer(customerId)
+      .then(() => {
+        setToast({
+          mode: "success",
+          message: "Cliente eliminado exitosamente",
+        });
+      })
+      .catch((err: unknown) => {
+        if (toDelete) setCustomers((prev) => [...prev, toDelete]);
+        setTotal((prev) => prev + 1);
+        setToast({
+          mode: "error",
+          message:
+            err instanceof Error ? err.message : "Error al eliminar cliente",
+        });
+      });
   };
 
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setEditingCustomer(null);
-    setFormData(initialFormState);
-    setFormErrors({});
-  };
+  // ─── Helpers ────────────────────────────────────────────────────────────────
 
-  const getSegmentName = (segmentId?: string) =>
-    segments.find((s) => s.segment_id === segmentId)?.segment_name || "—";
+  const getDocTypeLabel = (value: number) =>
+    identificationTypes.find((d) => d.value === value)?.label ?? String(value);
 
-  const getDocTypeLabel = (docType: DocTypeCode) =>
-    DOCUMENT_TYPES.find((d) => d.value === docType)?.label || docType;
+  const getSegmentName = (segmentId?: number) =>
+    defaultCustomerSegments.find((s) => s.value === segmentId)?.label ?? "—";
+
+  const columns: Column[] = [
+    {
+      key: "first_name",
+      label: "Nombre Completo",
+      width: "22%",
+      render: (_, row) => `${row.first_name} ${row.last_name}`,
+    },
+    {
+      key: "doc_type",
+      label: "Doc.",
+      width: "8%",
+      render: (type) => getDocTypeLabel(type),
+    },
+    { key: "doc_number", label: "Documento", width: "14%" },
+    {
+      key: "email",
+      label: "Email",
+      width: "18%",
+      render: (email) => email || "—",
+    },
+    {
+      key: "phone",
+      label: "Teléfono",
+      width: "12%",
+      render: (phone) => phone || "—",
+    },
+    {
+      key: "segment_id",
+      label: "Segmento",
+      width: "12%",
+      render: (segmentId) =>
+        segmentId ? (
+          <Badge variant="secondary">{getSegmentName(segmentId)}</Badge>
+        ) : (
+          <span className="text-gray-400 text-xs">—</span>
+        ),
+    },
+    ...(isSuperAdmin
+      ? [
+          {
+            key: "tenant_name",
+            label: "Tenant",
+            width: "10%",
+            render: (_: unknown, row: CustomerWithTenant) =>
+              row.tenant_name || "—",
+          },
+        ]
+      : []),
+    ...(canManage
+      ? [
+          {
+            key: "actions",
+            label: "Acciones",
+            width: "8%",
+            render: (_: unknown, row: Customer) => (
+              <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  onClick={() => setDetailCustomer(row)}
+                  title="Ver detalles"
+                  variant="ghost"
+                  className="hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  <IconEye />
+                </Button>
+                <Button
+                  onClick={() =>
+                    setUpsertModal({ open: true, mode: "edit", customer: row })
+                  }
+                  title="Editar cliente"
+                  variant="ghost"
+                  className="hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  <IconEdit />
+                </Button>
+                <Button
+                  onClick={() => handleDelete(row.customer_id)}
+                  title="Eliminar cliente"
+                  variant="danger"
+                  className="hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <IconTrash />
+                </Button>
+              </div>
+            ),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div className="p-6 lg:p-8">
+      {toast && (
+        <Toast
+          mode={toast.mode}
+          message={toast.message}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -307,47 +355,42 @@ export function CustomersPage() {
           <div className="flex-1 min-w-0">
             <Input
               label="Buscar cliente"
-              placeholder="Nombre, email o documento..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full"
+              placeholder="Número de documento"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+              className="w-full lg:max-w-sm"
+              required
             />
           </div>
-          {!isSuperAdmin &&
-            (isLoadingSegments ? (
-              <div className="flex items-center justify-center py-2">
-                <div className="w-4 h-4 border-2 border-accent-200 border-t-accent-500 rounded-full animate-spin" />
-              </div>
-            ) : (
-              <div className="flex-1 min-w-0">
-                <Select
-                  label="Segmento"
-                  value={selectedSegment}
-                  onChange={(e) => setSelectedSegment(e.target.value)}
-                  options={[
-                    { value: "", label: "Todos los segmentos" },
-                    ...segments.map((s) => ({
-                      value: s.segment_id,
-                      label: capitalize(s.segment_name),
-                    })),
-                  ]}
-                />
-              </div>
-            ))}
+          {!isSuperAdmin && (
+            <div className="flex-1 min-w-0">
+              <Select
+                label="Segmento"
+                value={segment}
+                onChange={(e) => {
+                  setSegment(e.target.value);
+                  setPage(1);
+                }}
+                options={[
+                  { value: "", label: "Todos los segmentos" },
+                  ...defaultCustomerSegments,
+                ]}
+                className="w-full lg:max-w-sm"
+              />
+            </div>
+          )}
           <div className="flex items-center gap-3 shrink-0">
             <span className="text-sm text-gray-500">
               {total} cliente{total !== 1 ? "s" : ""}
             </span>
-            {canManageCustomers && (
+            {canManage && (
               <Button
                 variant="primary"
                 size="md"
-                onClick={() => {
-                  setEditingCustomer(null);
-                  setFormData(initialFormState);
-                  setFormErrors({});
-                  setIsModalOpen(true);
-                }}
+                onClick={() => setUpsertModal({ open: true, mode: "create" })}
                 className="w-full lg:w-auto"
               >
                 <IconPlus />
@@ -360,306 +403,43 @@ export function CustomersPage() {
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-300 p-6">
-        <p className="text-xs text-gray-400 mb-4">
-          Haz clic en una fila para ver el detalle del cliente
-        </p>
         <Table
-          columns={
-            [
-              {
-                key: "first_name",
-                label: "Nombre Completo",
-                width: "22%",
-                render: (_, row) => `${row.first_name} ${row.last_name}`,
-              },
-              {
-                key: "doc_type",
-                label: "Doc.",
-                width: "8%",
-                render: (type) => getDocTypeLabel(type),
-              },
-              { key: "doc_number", label: "Documento", width: "14%" },
-              {
-                key: "email",
-                label: "Email",
-                width: "18%",
-                render: (email) => email || "—",
-              },
-              {
-                key: "phone",
-                label: "Teléfono",
-                width: "12%",
-                render: (phone) => phone || "—",
-              },
-              {
-                key: "segment_id",
-                label: "Segmento",
-                width: "12%",
-                render: (segmentId) =>
-                  segmentId ? (
-                    <Badge variant="secondary">
-                      {getSegmentName(segmentId)}
-                    </Badge>
-                  ) : (
-                    <span className="text-gray-400 text-xs">—</span>
-                  ),
-              },
-              ...(isSuperAdmin
-                ? [
-                    {
-                      key: "tenant_name" as keyof Customer,
-                      label: "Tenant",
-                      width: "10%",
-                      render: (_: unknown, row: Customer) =>
-                        (row as any).tenant_name || "—",
-                    },
-                  ]
-                : []),
-              ...(canManageCustomers
-                ? [
-                    {
-                      key: "actions" as keyof Customer,
-                      label: "Acciones",
-                      width: "8%",
-                      render: (_: unknown, row: Customer) => (
-                        <div
-                          className="flex gap-2"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleEditCustomer(row)}
-                            className="px-2 py-1 text-xs font-medium text-accent-600 hover:bg-accent-50 rounded-lg transition-colors"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleDeleteCustomer(row.customer_id)
-                            }
-                            className="px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      ),
-                    },
-                  ]
-                : []),
-            ] as any
-          }
+          columns={columns}
           data={customers}
           isLoading={isLoading}
           emptyMessage="No hay clientes registrados"
-          onRowClick={(row) => setSelectedCustomer(row)}
+          // onRowClick={(row) => setDetailCustomer(row)}
         />
         {totalPages > 1 && (
           <Pagination
             page={page}
             totalPages={totalPages}
-            onPageChange={(p) => {
-              setPage(p);
-              loadCustomers(p, searchQuery, selectedSegment);
-            }}
+            onPageChange={setPage}
             loading={isLoading}
           />
         )}
       </div>
 
-      {/* Detail Modal */}
-      {selectedCustomer && (
+      {detailCustomer && (
         <CustomerDetailModal
-          customer={selectedCustomer}
-          segments={segments}
-          onClose={() => setSelectedCustomer(null)}
+          customer={detailCustomer}
+          onClose={() => setDetailCustomer(null)}
         />
       )}
 
-      {/* Create / Edit Modal */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        title={editingCustomer ? "Editar Cliente" : "Nuevo Cliente"}
-        size="md"
-      >
-        <form
-          ref={formRef}
-          onSubmit={handleSubmit}
-          className="space-y-4 max-h-[80vh] overflow-y-auto pr-1"
-        >
-          {/* Tenant selector (superuser only, create mode) */}
-          {isSuperAdmin &&
-            !editingCustomer &&
-            (isLoadingTenants ? (
-              <div className="flex items-center justify-center py-2">
-                <div className="w-4 h-4 border-2 border-accent-200 border-t-accent-500 rounded-full animate-spin" />
-              </div>
-            ) : (
-              <Select
-                label="Empresa (Tenant)"
-                value={formData.tenant_id || ""}
-                onChange={(e) =>
-                  setFormData((p) => ({ ...p, tenant_id: e.target.value }))
-                }
-                options={tenants.map((t) => ({
-                  value: t.tenant_id,
-                  label: t.tenant_name,
-                }))}
-                error={formErrors.tenant_id}
-                required
-              />
-            ))}
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Nombre"
-              placeholder="Ej: Juan"
-              value={formData.first_name}
-              onChange={(e) =>
-                setFormData((p) => ({ ...p, first_name: e.target.value }))
-              }
-              error={formErrors.first_name}
-              required
-            />
-            <Input
-              label="Apellido"
-              placeholder="Ej: Pérez"
-              value={formData.last_name}
-              onChange={(e) =>
-                setFormData((p) => ({ ...p, last_name: e.target.value }))
-              }
-              error={formErrors.last_name}
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Tipo de Documento"
-              value={formData.doc_type}
-              onChange={(e) =>
-                setFormData((p) => ({
-                  ...p,
-                  doc_type: e.target.value as DocTypeCode,
-                }))
-              }
-              options={DOCUMENT_TYPES}
-              error={formErrors.doc_type}
-              disabled={!!editingCustomer}
-              required
-            />
-            <Input
-              label="Número de Documento"
-              placeholder="Ej: 123456789"
-              value={formData.doc_number}
-              onChange={(e) =>
-                setFormData((p) => ({ ...p, doc_number: e.target.value }))
-              }
-              error={formErrors.doc_number}
-              disabled={!!editingCustomer}
-              required
-            />
-          </div>
-
-          <Input
-            label="Email"
-            type="email"
-            placeholder="cliente@ejemplo.com"
-            value={formData.email}
-            onChange={(e) =>
-              setFormData((p) => ({ ...p, email: e.target.value }))
-            }
-            error={formErrors.email}
-          />
-
-          <Input
-            label="Teléfono"
-            placeholder="+506 2234 5678"
-            value={formData.phone}
-            onChange={(e) =>
-              setFormData((p) => ({ ...p, phone: e.target.value }))
-            }
-          />
-
-          <Input
-            label="Dirección"
-            placeholder="Calle principal, número 123"
-            value={formData.address}
-            onChange={(e) =>
-              setFormData((p) => ({ ...p, address: e.target.value }))
-            }
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Ciudad"
-              placeholder="Ej: San José"
-              value={formData.city}
-              onChange={(e) =>
-                setFormData((p) => ({ ...p, city: e.target.value }))
-              }
-            />
-            <Input
-              label="Provincia"
-              placeholder="Ej: San José"
-              value={formData.province}
-              onChange={(e) =>
-                setFormData((p) => ({ ...p, province: e.target.value }))
-              }
-            />
-          </div>
-
-          <Input
-            label="Código Postal"
-            placeholder="Ej: 10101"
-            value={formData.postal_code}
-            onChange={(e) =>
-              setFormData((p) => ({ ...p, postal_code: e.target.value }))
-            }
-          />
-
-          {isLoadingSegments ? (
-            <div className="flex items-center justify-center py-2">
-              <div className="w-4 h-4 border-2 border-accent-200 border-t-accent-500 rounded-full animate-spin" />
-            </div>
-          ) : (
-            <Select
-              label="Segmento (Opcional)"
-              value={formData.segment_id}
-              onChange={(e) =>
-                setFormData((p) => ({ ...p, segment_id: e.target.value }))
-              }
-              options={[
-                { value: "", label: "Sin segmento" },
-                ...segments.map((s) => ({
-                  value: s.segment_id,
-                  label: s.segment_name,
-                })),
-              ]}
-            />
-          )}
-
-          <div className="flex gap-3 pt-4 border-t border-gray-200">
-            <Button
-              type="button"
-              variant="ghost"
-              fullWidth
-              onClick={closeModal}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              fullWidth
-              loading={isSubmitting}
-            >
-              {editingCustomer ? "Guardar Cambios" : "Crear Cliente"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      <CustomerUpsertModal
+        key={`${upsertModal.mode}-${upsertModal.customer?.customer_id ?? "new"}`}
+        mode={upsertModal.mode}
+        isOpen={upsertModal.open}
+        customer={upsertModal.customer}
+        currentTenantId={currentUser?.tenant.tenant_id ?? ""}
+        tenants={tenants}
+        isSuperAdmin={isSuperAdmin}
+        defaultSegmentId={4}
+        onClose={() => setUpsertModal((prev) => ({ ...prev, open: false }))}
+        onCreate={handleCreate}
+        onUpdate={handleUpdate}
+      />
     </div>
   );
 }

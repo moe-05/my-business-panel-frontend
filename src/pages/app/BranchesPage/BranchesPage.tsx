@@ -241,10 +241,12 @@ export function BranchesPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex-1 min-w-0">
             <Input
-              placeholder="Buscar por nombre de sucursal..."
+              label="Buscar sucursal"
+              placeholder="Buscar por nombre de sucursal"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full lg:max-w-sm"
+              required
             />
           </div>
           <div className="flex items-center gap-3">
