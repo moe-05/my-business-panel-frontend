@@ -6,7 +6,7 @@ import type { Product } from "@/interfaces/entities/Product.interface";
 
 export const createProduct = async (
   data: CreateProductRequest,
-): Promise<Product> => productApi.create(data);
+): Promise<{ product_variant_id: string }> => productApi.create(data);
 
 export const updateProduct = async (
   productId: string,

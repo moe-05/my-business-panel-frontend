@@ -48,8 +48,7 @@ export function ProductsPage() {
   const { user: currentUser } = useAuth();
 
   const isSuperAdmin = currentUser?.role.role_id === 1;
-  const canManageProducts =
-    isSuperAdmin || currentUser?.role.role_id === 2;
+  const canManageProducts = isSuperAdmin || currentUser?.role.role_id === 2;
 
   const [products, setProducts] = useState<ProductWithVariant[]>(
     (initialProducts?.products ?? []) as ProductWithVariant[],
@@ -105,9 +104,18 @@ export function ProductsPage() {
     setTotal((prev) => prev + 1);
 
     try {
+      console.log("data", data);
       const result = await createProduct(data);
       setProducts((prev) =>
-        prev.map((p) => (p.product_id === tempId ? (result as ProductWithVariant) : p)),
+        prev.map((p) =>
+          p.product_id === tempId
+            ? {
+                ...tempProduct,
+                product_id: result.product_variant_id,
+                product_variant_id: result.product_variant_id,
+              }
+            : p,
+        ),
       );
       setToast({ mode: "success", message: "Producto creado exitosamente" });
     } catch (error) {
@@ -130,7 +138,10 @@ export function ProductsPage() {
           getProductId(p) === productId ? { ...p, ...updated } : p,
         ),
       );
-      setToast({ mode: "success", message: "Producto actualizado exitosamente" });
+      setToast({
+        mode: "success",
+        message: "Producto actualizado exitosamente",
+      });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Error al actualizar producto";
@@ -162,8 +173,7 @@ export function ProductsPage() {
   const openEdit = (p: ProductWithVariant) =>
     setUpsertModal({ open: true, mode: "edit", product: p });
 
-  const closeModal = () =>
-    setUpsertModal({ open: false, mode: "create" });
+  const closeModal = () => setUpsertModal({ open: false, mode: "create" });
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -283,7 +293,9 @@ export function ProductsPage() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <Button
-                          onClick={() => setSelectedProduct(row as ProductWithVariant)}
+                          onClick={() =>
+                            setSelectedProduct(row as ProductWithVariant)
+                          }
                           title="Ver detalles"
                           variant="ghost"
                           className="hover:bg-gray-50 rounded-lg transition-colors"

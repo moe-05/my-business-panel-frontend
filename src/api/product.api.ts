@@ -7,17 +7,39 @@ import type { Product } from "@/interfaces/entities/Product.interface";
 import type { ProductsListResponse } from "@/interfaces/api/responses/ProductsListResponse.interface";
 
 export const productApi = {
-  async create(data: CreateProductRequest): Promise<Product> {
+  async create(data: CreateProductRequest): Promise<{ product_variant_id: string }> {
     try {
       const response = await fetch(`${url}/product`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          products: [
+            {
+              tenant_id: data.tenant_id,
+              sku: data.sku,
+              variant_name: data.product_name,
+              cabys_code: data.cabys_code ?? null,
+              unit_price: data.price,
+            },
+          ],
+        }),
       });
 
-      const json: ApiResponse<Product> = await response.json();
-      return json.data;
+      const json = await response.json();
+
+      if (!response.ok) {
+        const msg = Array.isArray(json.message)
+          ? json.message[0]
+          : (json.message ?? `Error ${response.status}`);
+        throw new Error(msg);
+      }
+
+      const variant = json.data?.product?.[0];
+      if (!variant?.product_variant_id) {
+        throw new Error("El producto ya existe o no pudo crearse");
+      }
+      return variant as { product_variant_id: string };
     } catch (error) {
       throw new Error(
         error instanceof Error ? error.message : "Error al crear producto",

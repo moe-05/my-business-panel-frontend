@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { categoryApi } from "../../api/category.api";
 import type { Category } from "../../interfaces/entities/Category.interface";
 
+type SearchMode = "name" | "cabys";
+
 interface CategoryComboBoxProps {
   value: string; // product_category_id (UUID)
   displayValue?: string; // category_name for display
@@ -22,6 +24,7 @@ export function CategoryComboBox({
   disabled,
 }: CategoryComboBoxProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchMode, setSearchMode] = useState<SearchMode>("name");
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,15 +33,17 @@ export function CategoryComboBox({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync external displayValue
   useEffect(() => {
     if (displayValue) setSelectedName(displayValue);
   }, [displayValue]);
 
-  const fetchCategories = useCallback(async (searchTerm: string) => {
+  const fetchCategories = useCallback(async (searchTerm: string, mode: SearchMode) => {
     setIsLoading(true);
     try {
-      const data = await categoryApi.search(searchTerm, 100, 0);
+      const data =
+        mode === "cabys"
+          ? await categoryApi.searchByCabys(searchTerm, 100, 0)
+          : await categoryApi.search(searchTerm, 100, 0);
       setCategories(data);
     } catch {
       setCategories([]);
@@ -47,19 +52,17 @@ export function CategoryComboBox({
     }
   }, []);
 
-  // Debounced search
   useEffect(() => {
     if (!isOpen) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      fetchCategories(search);
+      fetchCategories(search, searchMode);
     }, 500);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [search, isOpen, fetchCategories]);
+  }, [search, searchMode, isOpen, fetchCategories]);
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
@@ -77,7 +80,15 @@ export function CategoryComboBox({
     if (disabled) return;
     setIsOpen(true);
     setSearch("");
-    fetchCategories("");
+    fetchCategories("", searchMode);
+    setTimeout(() => searchInputRef.current?.focus(), 50);
+  };
+
+  const handleModeChange = (mode: SearchMode) => {
+    setSearchMode(mode);
+    setSearch("");
+    setCategories([]);
+    fetchCategories("", mode);
     setTimeout(() => searchInputRef.current?.focus(), 50);
   };
 
@@ -126,7 +137,7 @@ export function CategoryComboBox({
         <span className="absolute inset-y-0 right-0 flex items-center pr-3 gap-1">
           {value && !disabled && (
             <button
-              aria-label="button"
+              aria-label="limpiar selección"
               type="button"
               onClick={handleClear}
               className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -162,6 +173,34 @@ export function CategoryComboBox({
       {/* Dropdown */}
       {isOpen && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          {/* Mode toggle tabs */}
+          <div className="flex border-b border-gray-100">
+            <button
+              type="button"
+              onClick={() => handleModeChange("name")}
+              className={[
+                "flex-1 px-3 py-2 text-xs font-medium transition-colors",
+                searchMode === "name"
+                  ? "bg-accent-50 text-accent-700 border-b-2 border-accent-500"
+                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50",
+              ].join(" ")}
+            >
+              Por nombre
+            </button>
+            <button
+              type="button"
+              onClick={() => handleModeChange("cabys")}
+              className={[
+                "flex-1 px-3 py-2 text-xs font-medium transition-colors",
+                searchMode === "cabys"
+                  ? "bg-accent-50 text-accent-700 border-b-2 border-accent-500"
+                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50",
+              ].join(" ")}
+            >
+              Por código CABYS
+            </button>
+          </div>
+
           {/* Search input */}
           <div className="p-2 border-b border-gray-100">
             <div className="relative">
@@ -179,8 +218,13 @@ export function CategoryComboBox({
               </svg>
               <input
                 ref={searchInputRef}
-                type="text"
-                placeholder="Buscar por nombre CABYS..."
+                type={searchMode === "cabys" ? "text" : "text"}
+                inputMode={searchMode === "cabys" ? "numeric" : "text"}
+                placeholder={
+                  searchMode === "cabys"
+                    ? "Ingrese el código CABYS..."
+                    : "Buscar por nombre..."
+                }
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-accent-500"
