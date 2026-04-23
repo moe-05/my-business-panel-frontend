@@ -16,7 +16,7 @@ import { getCustomersPageData } from "@/router/loaders/customer.loaders";
 // import { getHaciendaStatus } from "@/router/loaders/hacienda.loaders";
 import { getAllSegments } from "@/router/loaders/segment.loaders";
 import { getMarginsByTenant } from "@/router/loaders/margin.loaders";
-import { getProductsByTenant } from "@/router/loaders/product.loaders";
+import { getProductsPageData } from "@/router/loaders/product.loaders";
 
 export const privateRoutes: RouteObject[] = [
   {
@@ -52,15 +52,7 @@ export const privateRoutes: RouteObject[] = [
           },
           {
             path: "products",
-            loader: async () => {
-              const currentUser = await authApi.getCurrentUser();
-              const tenantId = currentUser?.tenant?.tenant_id;
-              const products = tenantId
-                ? await getProductsByTenant(tenantId)
-                : [];
-
-              return { products };
-            },
+            loader: getProductsPageData,
             lazy: async () => {
               const { ProductsPage } =
                 await import("@/pages/app/ProductsPage/ProductsPage");

@@ -12,6 +12,7 @@ interface CategoryComboBoxProps {
   required?: boolean;
   label?: string;
   disabled?: boolean;
+  hint?: string;
 }
 
 export function CategoryComboBox({
@@ -22,6 +23,7 @@ export function CategoryComboBox({
   required,
   label,
   disabled,
+  hint,
 }: CategoryComboBoxProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<SearchMode>("name");
@@ -131,8 +133,8 @@ export function CategoryComboBox({
       >
         <span className="block truncate pr-8">
           {value && selectedName
-            ? selectedName
-            : "Buscar y seleccionar categoría CABYS..."}
+            ? `${selectedName} (${value})`
+            : "Buscar y seleccionar producto CABYS..."}
         </span>
         <span className="absolute inset-y-0 right-0 flex items-center pr-3 gap-1">
           {value && !disabled && (
@@ -260,7 +262,12 @@ export function CategoryComboBox({
                         : "text-gray-700 hover:bg-gray-50",
                     ].join(" ")}
                   >
-                    <span className="block truncate">{cat.category_name}</span>
+                    <div className="flex justify-between items-center gap-2">
+                      <span className="block truncate">{cat.category_name}</span>
+                      <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded whitespace-nowrap ${(cat.category_id?.length ?? 0) === 13 ? 'bg-green-100 text-green-700 font-bold' : 'bg-gray-100 text-gray-500'}`}>
+                        {cat.category_id ?? 'N/A'}
+                      </span>
+                    </div>
                   </button>
                 </li>
               ))
@@ -269,7 +276,8 @@ export function CategoryComboBox({
         </div>
       )}
 
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {hint && !error && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+      {error && <p className="mt-1 text-xs text-red-600 font-medium">{error}</p>}
     </div>
   );
 }

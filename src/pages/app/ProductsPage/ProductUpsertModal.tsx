@@ -178,6 +178,7 @@ export function ProductUpsertModal({
                 setValue("category_name", name);
               }}
               error={errors.category_id?.message}
+              hint="Seleccione el producto específico (13 dígitos) para facturación electrónica"
               required
             />
           )}
