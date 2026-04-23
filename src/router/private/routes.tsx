@@ -6,17 +6,17 @@ import { ProtectedLayout } from "./ProtectedLayout";
 import { DashboardPage } from "@/pages/app/DashboardPage/DashboardPage";
 import { TenantsPage } from "@/pages/app/TenantsPage";
 import { TenantDetailPage } from "@/pages/app/TenantDetailPage";
-import { ProductsPage } from "@/pages/app/ProductsPage";
 import { ProfilePage } from "@/pages/app/ProfilePage";
 import { ComingSoon } from "@/pages/app/ComingSoon";
 import { authApi } from "@/api/auth.api";
 
-import { getUsersPageData } from "../loaders/user.loaders";
-import { getBranchesPageData } from "../loaders/branch.loaders";
-import { getCustomersPageData } from "../loaders/customer.loaders";
-// import { getHaciendaStatus } from "../loaders/hacienda.loaders";
-import { getAllSegments } from "../loaders/segment.loaders";
-import { getMarginsByTenant } from "../loaders/margin.loaders";
+import { getUsersPageData } from "@/router/loaders/user.loaders";
+import { getBranchesPageData } from "@/router/loaders/branch.loaders";
+import { getCustomersPageData } from "@/router/loaders/customer.loaders";
+// import { getHaciendaStatus } from "@/router/loaders/hacienda.loaders";
+import { getAllSegments } from "@/router/loaders/segment.loaders";
+import { getMarginsByTenant } from "@/router/loaders/margin.loaders";
+import { getProductsByTenant } from "@/router/loaders/product.loaders";
 
 export const privateRoutes: RouteObject[] = [
   {
@@ -50,14 +50,29 @@ export const privateRoutes: RouteObject[] = [
               return { Component: BranchesPage };
             },
           },
-          { path: "products", element: <ProductsPage /> },
+          {
+            path: "products",
+            loader: async () => {
+              const currentUser = await authApi.getCurrentUser();
+              const tenantId = currentUser?.tenant?.tenant_id;
+              const products = tenantId
+                ? await getProductsByTenant(tenantId)
+                : [];
+
+              return { products };
+            },
+            lazy: async () => {
+              const { ProductsPage } =
+                await import("@/pages/app/ProductsPage/ProductsPage");
+              return { Component: ProductsPage };
+            },
+          },
           {
             path: "customers",
             loader: getCustomersPageData,
             lazy: async () => {
-              const { CustomersPage } = await import(
-                "@/pages/app/CustomersPage/CustomersPage"
-              );
+              const { CustomersPage } =
+                await import("@/pages/app/CustomersPage/CustomersPage");
               return { Component: CustomersPage };
             },
           },

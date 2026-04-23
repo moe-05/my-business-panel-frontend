@@ -1,7 +1,31 @@
 import { productApi } from "@/api/product.api";
+import { authApi } from "@/api/auth.api";
+import { tenantApi } from "@/api/tenant.api";
 
 import type { Product } from "@/interfaces/entities/Product.interface";
 import type { ProductsListResponse } from "@/interfaces/api/responses/ProductsListResponse.interface";
+import type { Tenant } from "@/interfaces/entities/Tenant.interface";
+
+export interface ProductsPageLoaderData {
+  initialProducts: ProductsListResponse;
+  tenants: Tenant[];
+}
+
+export const getProductsPageData =
+  async (): Promise<ProductsPageLoaderData> => {
+    const currentUser = await authApi.getCurrentUser();
+    const isSuperAdmin = currentUser?.role?.role_hierarchy === 1;
+
+    const initialProducts = isSuperAdmin
+      ? await productApi.listAll(1, 100)
+      : currentUser?.tenant?.tenant_id
+        ? await productApi.listByTenant(currentUser.tenant.tenant_id, 1, 100)
+        : { products: [], total: 0, page: 1, limit: 100 };
+
+    const tenants = isSuperAdmin ? (await tenantApi.getAll()).tenants : [];
+
+    return { initialProducts, tenants };
+  };
 
 export const getAllProducts = async (
   page = 1,
