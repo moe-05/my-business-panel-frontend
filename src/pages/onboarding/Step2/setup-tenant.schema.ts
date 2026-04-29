@@ -5,7 +5,7 @@ export const setupTenantSchema = z.object({
     .string()
     .min(3, "Mínimo 3 caracteres")
     .max(100, "Máximo 100 caracteres"),
-  identificationType: z.number().min(1, "Selecciona un tipo de identificación"),
+  identificationType: z.coerce.number().min(1, "Selecciona un tipo de identificación"),
   identification: z
     .string()
     .min(5, "Mínimo 5 caracteres")

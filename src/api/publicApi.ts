@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Cliente axios para endpoints públicos (sin credenciales/cookies)
 const publicApi = axios.create({
-  baseURL: 'http://localhost:3000/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1',
   withCredentials: false, // No enviar cookies/JWT para endpoints públicos
   headers: {
     'Content-Type': 'application/json',
