@@ -46,14 +46,18 @@ export function SaleDetailModal({
     setIsLoading(true);
     Promise.all([
       getDigitalInvoiceForSale(sale.sale_id),
-      sale.has_electronic_invoice
-        ? getElectronicInvoiceForSale(sale.sale_id)
-        : Promise.resolve(null),
+      getElectronicInvoiceForSale(sale.sale_id),
     ])
       .then(([digital, electronic]) => {
         if (cancelled) return;
         setDigitalInvoice(digital);
         setElectronicInvoice(electronic);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDigitalInvoice(null);
+          setElectronicInvoice(null);
+        }
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -144,7 +148,7 @@ export function SaleDetailModal({
           )}
         </div>
 
-        {sale.has_electronic_invoice && (
+        {(sale.has_electronic_invoice || electronicInvoice) && (
           <div>
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
               Factura electrónica

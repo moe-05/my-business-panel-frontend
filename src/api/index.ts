@@ -9,6 +9,13 @@ export { branchApi } from "./branch.api";
 export { userApi } from "./user.api";
 export { categoryApi } from "./category.api";
 export { productApi } from "./product.api";
+export { globalAttributeApi, tenantAttributeApi, attributeValueApi } from "./attribute.api";
+export {
+  productGroupTypeApi,
+  productGroupApi,
+  productVariantGroupApi,
+} from "./productGroup.api";
+export { productCompositionApi } from "./productComposition.api";
 export { customerApi } from "./customer.api";
 export { segmentApi } from "./segment.api";
 export { marginApi } from "./margin.api";
@@ -17,6 +24,16 @@ export { loyaltyApi } from "./loyalty.api";
 export { haciendaApi } from "./hacienda.api";
 export { employeeApi } from "./employee.api";
 export { contractApi } from "./contract.api";
+export { conceptApi } from "./concept.api";
+export { clockingApi } from "./clocking.api";
+export { turnsApi } from "./turns.api";
+export { paysheetApi } from "./paysheet.api";
+export { payrollApi } from "./payroll.api";
+export { payrollMovementApi } from "./payrollMovement.api";
+export { foulApi } from "./foul.api";
+export { tardinessApi } from "./tardiness.api";
+export { suspentionApi } from "./suspention.api";
+export { incapacityApi } from "./incapacity.api";
 export { saleApi } from "./sale.api";
 export { cashRegisterApi } from "./cashRegister.api";
 export { returnsApi } from "./returns.api";

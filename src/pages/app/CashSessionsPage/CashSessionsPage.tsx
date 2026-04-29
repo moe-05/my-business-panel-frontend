@@ -520,93 +520,98 @@ export function CashSessionsPage() {
         </div>
       </form>
 
-      <form
-        onSubmit={handleSessionSubmit}
-        className="bg-white rounded-2xl border border-gray-300 p-6 mb-6"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Select
-            label="Sucursal"
-            value={branchId}
-            onChange={(e) => setBranchId(e.target.value)}
-            options={branchFilterOptions}
-          />
-          <Select
-            label="Caja"
-            value={selectedRegisterId}
-            onChange={(e) => setSelectedRegisterId(e.target.value)}
-            options={registerOptions}
-            required
-          />
-          <Select
-            label="Accion"
-            value={actionType}
-            onChange={(e) => setActionType(e.target.value as SessionAction)}
-            options={ACTION_OPTIONS.map((option) => ({
-              value: option.value,
-              label: option.label,
-            }))}
-          />
-          <Input
-            label={
-              actionType === "open" ? "Monto de apertura" : "Monto de cierre"
-            }
-            type="number"
-            inputMode="decimal"
-            min="0.01"
-            step="0.01"
-            placeholder="0.00"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            required
-          />
-        </div>
-
-        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm text-gray-600">
-              {selectedRegisterStateMessage}
-            </p>
-            {formBlockedMessage && (
-              <p className="text-sm text-red-600 mt-1">{formBlockedMessage}</p>
-            )}
+      <div className="bg-white rounded-2xl border border-gray-300 overflow-hidden">
+        {/* Toolbar */}
+        <div className="p-6 border-b border-gray-100 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-900">
+              Sesiones de caja
+            </h2>
+            <span className="text-sm text-gray-500">
+              {sessions.length} sesion{sessions.length !== 1 ? "es" : ""}
+            </span>
           </div>
-          <Button
-            type="submit"
-            size="md"
-            loading={isSubmitting}
-            disabled={actionIsBlocked || !isAmountValid}
-          >
-            {actionType === "open" ? "Abrir sesion" : "Cerrar sesion"}
-          </Button>
-        </div>
-      </form>
 
-      <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Select
-            label="Estado"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as StatusFilter)}
-            options={STATUS_OPTIONS.map((option) => ({
-              value: option.value,
-              label: option.label,
-            }))}
-          />
-          <div className="flex items-end justify-end text-sm text-gray-500 md:col-span-2">
-            {sessions.length} sesion{sessions.length !== 1 ? "es" : ""}
+          {/* Formulario de accion */}
+          <form onSubmit={handleSessionSubmit}>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+              <Select
+                label="Caja"
+                value={selectedRegisterId}
+                onChange={(e) => setSelectedRegisterId(e.target.value)}
+                options={registerOptions}
+                required
+              />
+              <Select
+                label="Accion"
+                value={actionType}
+                onChange={(e) => setActionType(e.target.value as SessionAction)}
+                options={ACTION_OPTIONS}
+              />
+              <Input
+                label={
+                  actionType === "open"
+                    ? "Monto de apertura"
+                    : "Monto de cierre"
+                }
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                step="0.01"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+              />
+              <Button
+                type="submit"
+                size="md"
+                loading={isSubmitting}
+                disabled={actionIsBlocked || !isAmountValid}
+              >
+                {actionType === "open" ? "Abrir sesion" : "Cerrar sesion"}
+              </Button>
+            </div>
+
+            {/* {(selectedRegisterStateMessage || formBlockedMessage) && (
+              <div className="mt-3 space-y-1">
+                <p className="text-sm text-gray-500">
+                  {selectedRegisterStateMessage}
+                </p>
+                {formBlockedMessage && (
+                  <p className="text-sm text-red-500">{formBlockedMessage}</p>
+                )}
+              </div>
+            )} */}
+          </form>
+
+          {/* Filtros de tabla */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Select
+              label="Sucursal"
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              options={branchFilterOptions}
+            />
+            <Select
+              label="Estado"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as StatusFilter)}
+              options={STATUS_OPTIONS}
+            />
           </div>
         </div>
-      </div>
 
-      <div className="bg-white rounded-2xl border border-gray-300 p-6">
-        <Table
-          columns={columns}
-          data={sessions}
-          isLoading={isLoading}
-          emptyMessage="No hay sesiones de caja registradas"
-          onRowClick={(row) => setSelected(row)}
-        />
+        {/* Tabla */}
+        <div className="p-6">
+          <Table
+            columns={columns}
+            data={sessions}
+            isLoading={isLoading}
+            emptyMessage="No hay sesiones de caja registradas"
+            onRowClick={(row) => setSelected(row)}
+          />
+        </div>
       </div>
 
       <CashSessionDetailModal

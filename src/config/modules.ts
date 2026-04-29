@@ -21,8 +21,10 @@ export interface SubModule {
     | "user"
     | "map-pin"
     | "contact"
-    | "building";
-  onlyRoles?: number[];
+    | "building"
+    | "tag";
+  /** Si está definido, solo los roles listados pueden acceder. Si es undefined, todos pueden. */
+  rolesAllowed?: number[];
   end?: boolean;
 }
 
@@ -41,8 +43,8 @@ export interface Module {
     | "briefcase"
     | "credit-card";
   submodules: SubModule[];
-  onlyRoles?: number[];
-  excludeRoles?: number[];
+  /** Si está definido, solo los roles listados pueden acceder. Si es undefined, todos pueden. */
+  rolesAllowed?: number[];
 }
 
 export const MODULES: Record<ModuleId, Module> = {
@@ -75,6 +77,12 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "package",
       },
       {
+        id: "attributes",
+        label: "Atributos y Familias",
+        path: "/app/attributes",
+        icon: "tag",
+      },
+      {
         id: "customers",
         label: "Clientes",
         path: "/app/customers",
@@ -91,7 +99,7 @@ export const MODULES: Record<ModuleId, Module> = {
         label: "Tenants",
         path: "/app/tenants",
         icon: "briefcase",
-        onlyRoles: [1],
+        rolesAllowed: [1],
       },
       { id: "profile", label: "Mi perfil", path: "/app/profile", icon: "user" },
     ],
@@ -123,7 +131,7 @@ export const MODULES: Record<ModuleId, Module> = {
         label: "Registro de ventas",
         path: "/app/pos/sales",
         icon: "trending-up",
-        onlyRoles: [2, 3],
+        rolesAllowed: [2, 3],
         end: true,
       },
       {
@@ -143,8 +151,8 @@ export const MODULES: Record<ModuleId, Module> = {
 
   int: {
     id: "int",
-    label: "INT",
-    description: "Gestion de inventario",
+    label: "Inventory",
+    description: "Gestión de inventario",
     color: "purple",
     code: "INT",
     path: "/app/int",
@@ -179,8 +187,8 @@ export const MODULES: Record<ModuleId, Module> = {
 
   sch: {
     id: "sch",
-    label: "SCH",
-    description: "Gestion de compras",
+    label: "Compras",
+    description: "Gestión de compras",
     color: "amber",
     code: "SCH",
     path: "/app/sch",
@@ -215,8 +223,8 @@ export const MODULES: Record<ModuleId, Module> = {
 
   hr: {
     id: "hr",
-    label: "HR",
-    description: "Gestion de recursos humanos",
+    label: "Recursos Humanos",
+    description: "Gestión de recursos humanos",
     color: "green",
     code: "HR",
     path: "/app/hr",
@@ -229,6 +237,12 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "users",
       },
       {
+        id: "contracts",
+        label: "Contratos",
+        path: "/app/hr/contracts",
+        icon: "briefcase",
+      },
+      {
         id: "payroll",
         label: "Nomina",
         path: "/app/hr/payroll",
@@ -236,22 +250,16 @@ export const MODULES: Record<ModuleId, Module> = {
       },
       {
         id: "attendance",
-        label: "Asistencia",
+        label: "Horarios",
         path: "/app/hr/attendance",
         icon: "calendar",
-      },
-      {
-        id: "reports",
-        label: "Reportes",
-        path: "/app/hr/reports",
-        icon: "file-text",
       },
     ],
   },
 
   fnz: {
     id: "fnz",
-    label: "FNZ",
+    label: "Finanzas",
     description: "Gestion financiera",
     color: "red",
     code: "FNZ",
@@ -285,6 +293,24 @@ export const MODULES: Record<ModuleId, Module> = {
     ],
   },
 };
+
+export function isAllowedForRole(
+  rolesAllowed: number[] | undefined,
+  roleId: number,
+): boolean {
+  if (!rolesAllowed) return true;
+  return rolesAllowed.includes(roleId);
+}
+
+export function getFirstAllowedSubmodulePath(
+  module: Module,
+  roleId: number,
+): string {
+  const first = module.submodules.find((sub) =>
+    isAllowedForRole(sub.rolesAllowed, roleId),
+  );
+  return first?.path ?? module.path;
+}
 
 export function getModuleColor(moduleId: ModuleId): string {
   const colorMap = {

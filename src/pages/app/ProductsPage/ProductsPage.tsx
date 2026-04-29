@@ -85,7 +85,9 @@ export function ProductsPage() {
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
-  const handleCreateProduct = async (data: CreateProductRequest) => {
+  const handleCreateProduct = async (
+    data: CreateProductRequest,
+  ): Promise<string | null> => {
     const tempId = `temp-${Date.now()}`;
     const tempProduct: ProductWithVariant = {
       product_id: tempId,
@@ -104,7 +106,6 @@ export function ProductsPage() {
     setTotal((prev) => prev + 1);
 
     try {
-      console.log("data", data);
       const result = await createProduct(data);
       setProducts((prev) =>
         prev.map((p) =>
@@ -118,19 +119,21 @@ export function ProductsPage() {
         ),
       );
       setToast({ mode: "success", message: "Producto creado exitosamente" });
+      return result.product_variant_id;
     } catch (error) {
       setProducts((prev) => prev.filter((p) => p.product_id !== tempId));
       setTotal((prev) => prev - 1);
       const message =
         error instanceof Error ? error.message : "Error al crear producto";
       setToast({ mode: "error", message });
+      throw error;
     }
   };
 
   const handleUpdateProduct = async (
     productId: string,
     data: UpdateProductRequest,
-  ) => {
+  ): Promise<void> => {
     try {
       const updated = await updateProduct(productId, data);
       setProducts((prev) =>
@@ -146,6 +149,7 @@ export function ProductsPage() {
       const message =
         error instanceof Error ? error.message : "Error al actualizar producto";
       setToast({ mode: "error", message });
+      throw error;
     }
   };
 

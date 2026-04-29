@@ -162,7 +162,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         {label && (
           <label className="text-sm font-medium text-gray-700">
             {label}
-            {required && <span className="ml-0.5 text-accent-500">*</span>}
+            {required && <span className="ml-0.5 text-accent-500"></span>}
           </label>
         )}
         <div className="relative">
@@ -180,7 +180,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
                 | ((event: React.FocusEvent<HTMLButtonElement>) => void)
             }
             className={[
-              "w-full rounded-xl border bg-white px-4 py-2.5 pr-10 text-sm text-left",
+              "w-full rounded-xl border border-gray-300 bg-accent-white px-4 py-2.5 pr-10 text-sm text-left",
               "transition-all duration-150 outline-none",
               "focus-ring-accent",
               disabled

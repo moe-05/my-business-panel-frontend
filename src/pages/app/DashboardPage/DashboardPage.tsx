@@ -1,20 +1,58 @@
+import type { ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
 
 import { Badge, SubscriptionBadge } from "@/components/ui/Badge";
 import { ModuleCard } from "@/components/ui/ModuleCard";
 
-import { IconMail } from "@/assets/icons/IconMail";
-import { IconCalendar } from "@/assets/icons/IconCalendar";
+import {
+  IconBriefcase,
+  IconCreditCard,
+  IconPackage,
+  IconShoppingCart,
+  IconUsers,
+  IconMail,
+  IconCalendar,
+} from "@/assets/icons";
 
-import { mainModules } from "./main-modules";
+import {
+  MODULES,
+  isAllowedForRole,
+  getFirstAllowedSubmodulePath,
+  type Module,
+} from "@/config/modules";
+
 import { generalOptions } from "./general-options";
 import { SuperuserDashboard } from "./SuperUserDashboard";
+
+function getModuleIcon(icon: Module["icon"]): ReactNode {
+  const map: Record<Module["icon"], ReactNode> = {
+    "shopping-cart": <IconShoppingCart />,
+    package: <IconPackage />,
+    "file-text": <IconBriefcase />,
+    users: <IconUsers />,
+    briefcase: <IconBriefcase />,
+    "credit-card": <IconCreditCard />,
+  };
+  return map[icon];
+}
 
 // ─── Tenant user Dashboard ────────────────────────────────────────────────────
 export function TenantDashboard() {
   const { user } = useAuth();
 
+  const roleId = user?.role.role_id ?? 1;
   const tenant = user?.tenant;
+
+  const mainModules = Object.values(MODULES)
+    .filter((mod) => mod.id !== "general" && isAllowedForRole(mod.rolesAllowed, roleId))
+    .map((mod) => ({
+      label: mod.label,
+      description: mod.description,
+      icon: getModuleIcon(mod.icon),
+      to: getFirstAllowedSubmodulePath(mod, roleId),
+      code: mod.code,
+      accentColor: mod.color,
+    }));
 
   const createdAt = tenant?.created_at
     ? new Date(tenant.created_at).toLocaleDateString("es-CR", {

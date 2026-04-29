@@ -21,6 +21,8 @@ export const productApi = {
               variant_name: data.product_name,
               cabys_code: data.cabys_code ?? null,
               unit_price: data.price,
+              attribute_value_ids: data.attribute_value_ids ?? [],
+              group_ids: data.group_ids ?? [],
             },
           ],
         }),
@@ -108,6 +110,44 @@ export const productApi = {
         error instanceof Error ? error.message : "Error al obtener producto",
       );
     }
+  },
+
+  async getByIdWithAttributes(
+    tenantId: string,
+    productId: string,
+  ): Promise<
+    Product & {
+      is_composite?: boolean;
+      attributes: Array<{
+        attribute_value_id: string;
+        value: string;
+        tenant_attribute_id: string;
+        attribute_name: string;
+      }>;
+      groups: Array<{
+        tenant_product_group_id: string;
+        group_name: string;
+        tenant_product_group_type_id: string;
+        type_name: string;
+      }>;
+    }
+  > {
+    const response = await fetch(
+      `${url}/product/${tenantId}/${productId}/with-attributes`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+    const json = await response.json();
+    if (!response.ok) {
+      const msg = Array.isArray(json.message)
+        ? json.message[0]
+        : (json.message ?? `Error ${response.status}`);
+      throw new Error(msg || "Error al obtener producto con atributos");
+    }
+    return json.data ?? json;
   },
 
   async update(productId: string, data: UpdateProductRequest): Promise<Product> {

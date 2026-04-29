@@ -24,8 +24,18 @@
   --accent-950: #15171b;
 }
 
+/* General module group: all /app/* routes that are not in a specific
+   sub-module (pos, hr, fnz, int, sch) use the default dark/black accent. */
 body[data-module="dashboard"],
-body[data-module="auth"] {
+body[data-module="auth"],
+body[data-module="products"],
+body[data-module="customers"],
+body[data-module="branches"],
+body[data-module="users"],
+body[data-module="settings"],
+body[data-module="attributes"],
+body[data-module="profile"],
+body[data-module="tenants"] {
   --accent-50: #f7f7f8;
   --accent-100: #eeeeef;
   --accent-200: #dddee0;
@@ -39,7 +49,7 @@ body[data-module="auth"] {
   --accent-950: #15171b;
 }
 
-body[data-module="tenants"],
+/* pos keeps its own blue accent */
 body[data-module="pos"] {
   --accent-50: #eff6ff;
   --accent-100: #dbeafe;
@@ -54,7 +64,7 @@ body[data-module="pos"] {
   --accent-950: #172554;
 }
 
-body[data-module="users"],
+/* hr keeps its own green accent */
 body[data-module="hr"] {
   --accent-50: #ecfdf5;
   --accent-100: #d1fae5;
@@ -69,7 +79,7 @@ body[data-module="hr"] {
   --accent-950: #022c22;
 }
 
-body[data-module="branches"],
+/* sch keeps its own amber accent */
 body[data-module="sch"] {
   --accent-50: #fffbeb;
   --accent-100: #fef3c7;
@@ -84,6 +94,7 @@ body[data-module="sch"] {
   --accent-950: #451a03;
 }
 
+/* int keeps its own purple accent */
 body[data-module="int"] {
   --accent-50: #faf5ff;
   --accent-100: #f3e8ff;
@@ -98,21 +109,7 @@ body[data-module="int"] {
   --accent-950: #3b0764;
 }
 
-body[data-module="products"] {
-  --accent-50: #f0fdfa;
-  --accent-100: #ccfbf1;
-  --accent-200: #99f6e4;
-  --accent-300: #5eead4;
-  --accent-400: #2dd4bf;
-  --accent-500: #14b8a6;
-  --accent-600: #0d9488;
-  --accent-700: #0f766e;
-  --accent-800: #115e59;
-  --accent-900: #134e4a;
-  --accent-950: #042f2e;
-}
-
-body[data-module="customers"],
+/* fnz keeps its own rose accent */
 body[data-module="fnz"] {
   --accent-50: #fff1f2;
   --accent-100: #ffe4e6;
@@ -125,34 +122,6 @@ body[data-module="fnz"] {
   --accent-800: #9f1239;
   --accent-900: #881337;
   --accent-950: #4c0519;
-}
-
-body[data-module="settings"] {
-  --accent-50: #f8fafc;
-  --accent-100: #f1f5f9;
-  --accent-200: #e2e8f0;
-  --accent-300: #cbd5e1;
-  --accent-400: #94a3b8;
-  --accent-500: #64748b;
-  --accent-600: #475569;
-  --accent-700: #334155;
-  --accent-800: #1e293b;
-  --accent-900: #0f172a;
-  --accent-950: #020617;
-}
-
-body[data-module="profile"] {
-  --accent-50: #f5f5f5;
-  --accent-100: #e8e8e8;
-  --accent-200: #d1d1d1;
-  --accent-300: #b0b0b0;
-  --accent-400: #808080;
-  --accent-500: #595959;
-  --accent-600: #323232;
-  --accent-700: #242424;
-  --accent-800: #171717;
-  --accent-900: #101010;
-  --accent-950: #0a0a0a;
 }
 
 *,
@@ -273,12 +242,12 @@ body {
 }
 
 .btn-accent-primary {
-  background-color: var(--accent-950);
+  background-color: var(--accent-800);
   color: #ffffff;
   box-shadow: 0 1px 2px 0 rgb(17 24 39 / 8%);
 }
 .btn-accent-primary:hover {
-  background-color: var(--accent-800);
+  background-color: var(--accent-950);
 }
 .btn-accent-primary:active {
   background-color: var(--accent-800);

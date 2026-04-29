@@ -38,15 +38,15 @@ export function Table({
   }
 
   return (
-    <div className="overflow-x-auto border border-gray-200 rounded-xl">
+    <div className="overflow-auto max-h-[600px] border border-gray-200 rounded-xl">
       <table className="w-full text-sm">
         {/* Header */}
-        <thead>
-          <tr className="border-b border-gray-200 bg-gray-50">
+        <thead className="sticky top-0 z-10">
+          <tr className="border-b border-gray-200 bg-(--accent-800)">
             {columns.map((col) => (
               <th
                 key={col.key}
-                className="px-4 py-3 text-left font-medium text-gray-700"
+                className="px-4 py-3 text-left font-medium text-white"
                 style={{ width: col.width }}
               >
                 {col.label}
@@ -61,7 +61,7 @@ export function Table({
             <tr
               key={idx}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${onRowClick ? "cursor-pointer" : ""} ${rowClassName}`}
+              className={`border-b border-gray-200 hover:bg-(--accent-100) transition-colors ${onRowClick ? "cursor-pointer" : ""} ${rowClassName}`}
             >
               {columns.map((col) => (
                 <td key={col.key} className="px-4 py-2 text-gray-700">

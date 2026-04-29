@@ -25,6 +25,7 @@ export interface UpdateEmployeePayload {
   phone?: string;
   email?: string;
   payment_schedule_id?: number;
+  branch_id?: string;
 }
 
 export interface UpdateContractPayload {

@@ -2,6 +2,15 @@ import type { RouteObject } from "react-router-dom";
 import { Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedLayout } from "./ProtectedLayout";
+import { MODULES, getFirstAllowedSubmodulePath, type ModuleId } from "@/config/modules";
+import { useAuth } from "@/context/AuthContext";
+
+function ModuleRedirect({ moduleId }: { moduleId: ModuleId }) {
+  const { user } = useAuth();
+  const roleId = user?.role.role_id ?? 1;
+  const path = getFirstAllowedSubmodulePath(MODULES[moduleId], roleId);
+  return <Navigate to={path} replace />;
+}
 
 import { DashboardPage } from "@/pages/app/DashboardPage/DashboardPage";
 import { TenantsPage } from "@/pages/app/TenantsPage";
@@ -33,6 +42,12 @@ import {
   getPurchasesPageData,
   getSuppliersPageData,
 } from "@/router/loaders/purchase.loaders";
+import {
+  getHrAttendancePageData,
+  getHrContractsPageData,
+  getHrEmployeesPageData,
+  getHrPayrollPageData,
+} from "@/router/loaders/hr.loaders";
 
 export const privateRoutes: RouteObject[] = [
   {
@@ -73,6 +88,14 @@ export const privateRoutes: RouteObject[] = [
               const { ProductsPage } =
                 await import("@/pages/app/ProductsPage/ProductsPage");
               return { Component: ProductsPage };
+            },
+          },
+          {
+            path: "attributes",
+            lazy: async () => {
+              const { AttributesPage } =
+                await import("@/pages/app/AttributesPage/AttributesPage");
+              return { Component: AttributesPage };
             },
           },
           {
@@ -157,7 +180,7 @@ export const privateRoutes: RouteObject[] = [
           },
           {
             path: "pos/*",
-            element: <Navigate to="/app/pos/sales/new" replace />,
+            element: <ModuleRedirect moduleId="pos" />,
           },
 
           // INT (Inventory) Module
@@ -203,7 +226,7 @@ export const privateRoutes: RouteObject[] = [
           },
           {
             path: "int/*",
-            element: <Navigate to="/app/int/inventory" replace />,
+            element: <ModuleRedirect moduleId="int" />,
           },
 
           // SCH (Supply Chain) Module
@@ -257,23 +280,53 @@ export const privateRoutes: RouteObject[] = [
           },
           {
             path: "sch/*",
-            element: <Navigate to="/app/sch/purchases" replace />,
+            element: <ModuleRedirect moduleId="sch" />,
           },
 
           // HR (Human Resources) Module
           {
             path: "hr/employees",
-            element: <ComingSoon title="HR - Empleados" />,
+            loader: getHrEmployeesPageData,
+            lazy: async () => {
+              const { HREmployeesPage } = await import(
+                "@/pages/app/HREmployeesPage/HREmployeesPage"
+              );
+              return { Component: HREmployeesPage };
+            },
           },
-          { path: "hr/payroll", element: <ComingSoon title="HR - Nómina" /> },
+          {
+            path: "hr/contracts",
+            loader: getHrContractsPageData,
+            lazy: async () => {
+              const { HRContractsPage } = await import(
+                "@/pages/app/HRContractsPage/HRContractsPage"
+              );
+              return { Component: HRContractsPage };
+            },
+          },
+          {
+            path: "hr/payroll",
+            loader: getHrPayrollPageData,
+            lazy: async () => {
+              const { HRPayrollPage } = await import(
+                "@/pages/app/HRPayrollPage/HRPayrollPage"
+              );
+              return { Component: HRPayrollPage };
+            },
+          },
           {
             path: "hr/attendance",
-            element: <ComingSoon title="HR - Asistencia" />,
+            loader: getHrAttendancePageData,
+            lazy: async () => {
+              const { HRAttendancePage } = await import(
+                "@/pages/app/HRAttendancePage/HRAttendancePage"
+              );
+              return { Component: HRAttendancePage };
+            },
           },
-          { path: "hr/reports", element: <ComingSoon title="HR - Reportes" /> },
           {
             path: "hr/*",
-            element: <Navigate to="/app/hr/employees" replace />,
+            element: <ModuleRedirect moduleId="hr" />,
           },
 
           // FNZ (Finances) Module
@@ -295,7 +348,7 @@ export const privateRoutes: RouteObject[] = [
           },
           {
             path: "fnz/*",
-            element: <Navigate to="/app/fnz/accounting" replace />,
+            element: <ModuleRedirect moduleId="fnz" />,
           },
 
           { path: "*", element: <Navigate to="dashboard" replace /> },
