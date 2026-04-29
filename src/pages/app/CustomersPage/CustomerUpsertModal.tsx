@@ -53,14 +53,14 @@ export function CustomerUpsertModal({
     control,
     formState: { errors },
   } = useForm<CustomerUpsertFormData>({
-    resolver: zodResolver(buildCustomerUpsertSchema(requireTenant)),
+    resolver: zodResolver(buildCustomerUpsertSchema(requireTenant)) as any,
     defaultValues:
       isEditing && customer
         ? {
             first_name: customer.first_name,
             last_name: customer.last_name,
-            doc_type: customer.doc_type,
-            doc_number: customer.doc_number,
+            identification_type: customer.identification_type,
+            document_number: customer.document_number,
             birthdate: customer.birthdate ?? "",
             economic_activity: customer.econ_activity ?? "",
             email: customer.email ?? "",
@@ -75,8 +75,8 @@ export function CustomerUpsertModal({
         : {
             first_name: "",
             last_name: "",
-            doc_type: 1,
-            doc_number: "",
+            identification_type: 1,
+            document_number: "",
             birthdate: "",
             economic_activity: "",
             email: "",
@@ -106,13 +106,12 @@ export function CustomerUpsertModal({
         segment_id: segmentId,
       });
     } else {
-      const tenantId = isSuperAdmin ? data.tenant_id : currentTenantId;
       onCreate({
-        tenant_id: tenantId,
+        tenant_id: isSuperAdmin ? (data.tenant_id || "") : currentTenantId,
         first_name: data.first_name,
         last_name: data.last_name,
-        document_type_id: data.doc_type,
-        document_number: data.doc_number,
+        identification_type: data.identification_type,
+        document_number: data.document_number,
         birthdate: data.birthdate || undefined,
         economic_activity: data.economic_activity || undefined,
         email: data.email || undefined,
@@ -178,16 +177,16 @@ export function CustomerUpsertModal({
 
         <div className="grid grid-cols-2 gap-4">
           <Controller
-            name="doc_type"
+            name="identification_type"
             control={control}
             render={({ field }) => (
               <Select
                 label="Tipo de Documento"
                 value={field.value}
-                onChange={field.onChange}
+                onChange={(val) => field.onChange(Number(val))}
                 name={field.name}
                 options={identificationTypes}
-                error={errors.doc_type?.message}
+                error={errors.identification_type?.message}
                 disabled={isEditing}
                 required
               />
@@ -196,7 +195,7 @@ export function CustomerUpsertModal({
           <Input
             label="Número de Documento"
             placeholder="Ej: 123456789"
-            error={errors.doc_number?.message}
+            error={errors.document_number?.message}
             disabled={isEditing}
             required
             hint={
@@ -204,7 +203,7 @@ export function CustomerUpsertModal({
                 ? "No se puede cambiar el documento de un cliente existente"
                 : undefined
             }
-            {...register("doc_number")}
+            {...register("document_number")}
           />
         </div>
 

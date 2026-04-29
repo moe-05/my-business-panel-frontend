@@ -37,7 +37,7 @@ type AccountErrors = Partial<Record<keyof AccountFields, string>>;
 const EMPTY_EMPLOYEE: EmployeeFields = {
   first_name: "",
   last_name: "",
-  doc_number: "",
+  document_number: "",
   phone: "",
   employee_email: "",
   branch_id: "",
@@ -154,7 +154,7 @@ export function EmployeeUpsertModal({
     setEmployeeData({
       first_name: employee.first_name,
       last_name: employee.last_name,
-      doc_number: employee.doc_number,
+      document_number: employee.document_number,
       phone: employee.phone,
       employee_email: employee.email,
       branch_id: employee.branch_id,
@@ -250,7 +250,7 @@ export function EmployeeUpsertModal({
             branch_id: employeeData.branch_id,
             first_name: employeeData.first_name,
             last_name: employeeData.last_name,
-            doc_number: employeeData.doc_number,
+            document_number: employeeData.document_number,
             phone: employeeData.phone,
             email: employeeData.employee_email,
             payment_schedule_id: Number(employeeData.payment_schedule_id),
@@ -270,7 +270,7 @@ export function EmployeeUpsertModal({
           employee: {
             first_name: employeeData.first_name,
             last_name: employeeData.last_name,
-            doc_number: employeeData.doc_number,
+            document_number: employeeData.document_number,
             phone: employeeData.phone,
             email: employeeData.employee_email,
             payment_schedule_id: Number(employeeData.payment_schedule_id),
@@ -337,14 +337,14 @@ export function EmployeeUpsertModal({
             />
             <Input
               label="Documento"
-              value={employeeData.doc_number}
+              value={employeeData.document_number}
               onChange={(event) =>
                 setEmployeeData((prev) => ({
                   ...prev,
-                  doc_number: event.target.value,
+                  document_number: event.target.value,
                 }))
               }
-              error={employeeErrors.doc_number}
+              error={employeeErrors.document_number}
               required
             />
             <Input

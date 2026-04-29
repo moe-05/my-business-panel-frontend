@@ -148,7 +148,7 @@ export function CreateSalePage() {
 
   const lookupForm = useForm<CustomerLookupForm>({
     resolver: zodResolver(customerLookupSchema),
-    defaultValues: { doc_number: "" },
+    defaultValues: { document_number: "" },
   });
 
   const inlineCustomerForm = useForm<InlineCustomerForm>({
@@ -236,7 +236,7 @@ export function CreateSalePage() {
 
   const handleLookup = async (data: CustomerLookupForm) => {
     try {
-      const found = await getCustomerByDocNumber(data.doc_number.trim());
+      const found = await getCustomerByDocNumber(data.document_number.trim());
       if (found && (found as Customer).document_number) {
         setCustomer(found);
         setShowInlineCreate(false);
@@ -251,7 +251,7 @@ export function CreateSalePage() {
     } catch {
       inlineCustomerForm.reset({
         ...blankCustomer(),
-        document_number: data.doc_number.trim(),
+        document_number: data.document_number.trim(),
       });
       setShowInlineCreate(true);
       setToast({
@@ -271,7 +271,7 @@ export function CreateSalePage() {
         tenant_id: tenantId,
         first_name: data.first_name,
         last_name: data.last_name,
-        document_type_id: Number(data.document_type_id),
+        identification_type: Number(data.document_type_id),
         document_number: data.document_number,
         email: data.email || undefined,
         phone: data.phone || undefined,
@@ -450,7 +450,7 @@ export function CreateSalePage() {
     setLastItemAmount(0);
     setHasElectronicInvoice(false);
     setAppliedPromotion(null);
-    lookupForm.reset({ doc_number: "" });
+    lookupForm.reset({ document_number: "" });
     inlineCustomerForm.reset(blankCustomer());
     setSelectedVariant(null);
     itemForm.reset({
@@ -637,8 +637,8 @@ export function CreateSalePage() {
               <Input
                 label="Número de documento"
                 placeholder="Ej: 105550987"
-                {...lookupForm.register("doc_number")}
-                error={lookupForm.formState.errors.doc_number?.message}
+                {...lookupForm.register("document_number")}
+                error={lookupForm.formState.errors.document_number?.message}
                 required
               />
             </div>
@@ -730,7 +730,7 @@ export function CreateSalePage() {
                 setCustomer(null);
                 setStep("lookup");
                 setShowInlineCreate(false);
-                lookupForm.reset({ doc_number: "" });
+                lookupForm.reset({ document_number: "" });
               }}
             >
               Cambiar

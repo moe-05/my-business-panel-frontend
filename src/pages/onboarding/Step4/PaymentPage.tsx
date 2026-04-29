@@ -100,7 +100,7 @@ function PaymentForm() {
           password: data.password,
           first_name: data.firstName,
           last_name: data.lastName,
-          doc_number: data.docNumber,
+          document_number: data.docNumber,
           phone: data.phone,
         },
         hacienda: {

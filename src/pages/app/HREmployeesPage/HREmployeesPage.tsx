@@ -95,7 +95,7 @@ export function HREmployeesPage() {
         `${employee.first_name} ${employee.last_name}`
           .toLowerCase()
           .includes(normalizedSearch) ||
-        employee.doc_number.toLowerCase().includes(normalizedSearch) ||
+        employee.document_number.toLowerCase().includes(normalizedSearch) ||
         employee.email.toLowerCase().includes(normalizedSearch);
 
       return matchesBranch && matchesStatus && matchesSearch;
@@ -245,7 +245,7 @@ export function HREmployeesPage() {
         </div>
       ),
     },
-    { key: "doc_number", label: "Documento", width: "12%" },
+    { key: "document_number", label: "Documento", width: "12%" },
     { key: "branch_name", label: "Sucursal", width: "14%" },
     {
       key: "payment_schedule_id",

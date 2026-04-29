@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   IconBriefcase,
   IconBuilding,
@@ -56,9 +57,20 @@ export function SidebarContent({
   onLogout,
   onNavClick,
 }: SidebarContentProps) {
+  const navigate = useNavigate();
   const { currentModule, currentModuleId } = useModule();
   const [isModulesExpanded, setIsModulesExpanded] = useState(true);
   const initials = userEmail.slice(0, 2).toUpperCase();
+
+  const handleLogoClick = () => {
+    const generalModule = Object.values(MODULES).find(
+      (module) => module.id === "general",
+    );
+    if (generalModule) {
+      navigate(generalModule.path);
+      onNavClick?.();
+    }
+  };
 
   const visibleModules = Object.values(MODULES).filter((module) =>
     isAllowedForRole(module.rolesAllowed, roleId),
@@ -75,7 +87,10 @@ export function SidebarContent({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-2 flex items-center gap-2.5 px-4 py-5">
+      <div
+        onClick={handleLogoClick}
+        className="mb-2 flex items-center gap-2.5 px-4 py-5 cursor-pointer rounded-lg transition-colors hover:bg-gray-100"
+      >
         <div className="text-accent-600">
           <LogoMark size={28} />
         </div>

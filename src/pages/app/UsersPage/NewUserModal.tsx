@@ -33,7 +33,7 @@ type AccountErrors = Partial<Record<keyof AccountFields, string>>;
 const INITIAL_EMPLOYEE: EmployeeFields = {
   first_name: "",
   last_name: "",
-  doc_number: "",
+  document_number: "",
   phone: "",
   employee_email: "",
   branch_id: "",
@@ -202,7 +202,7 @@ export function NewUserModal({
         branch_id: employee.branch_id,
         first_name: employee.first_name,
         last_name: employee.last_name,
-        doc_number: employee.doc_number,
+        document_number: employee.document_number,
         phone: employee.phone,
         email: employee.employee_email,
         payment_schedule_id: Number(employee.payment_schedule_id),
@@ -263,11 +263,11 @@ export function NewUserModal({
         <Input
           label="Número de documento"
           placeholder="123456789"
-          value={employee.doc_number}
+          value={employee.document_number}
           onChange={(e) =>
-            setEmployee((p) => ({ ...p, doc_number: e.target.value }))
+            setEmployee((p) => ({ ...p, document_number: e.target.value }))
           }
-          error={empErrors.doc_number}
+          error={empErrors.document_number}
           required
         />
         <Input

@@ -139,7 +139,7 @@ export function UserDetailModal({
                       "Nombre completo",
                       `${currentUser.employee.first_name} ${currentUser.employee.last_name}`.trim(),
                     )}
-                    {field("Documento", currentUser.employee.doc_number)}
+                    {field("Documento", currentUser.employee.document_number)}
                     {field("Teléfono", currentUser.employee.phone)}
                     {field("Email", currentUser.employee.employee_email)}
                     {field(
