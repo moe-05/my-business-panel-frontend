@@ -5,7 +5,6 @@ import type { LoginRequest } from "@/interfaces/api/requests/LoginRequest.interf
 import type { ChangePasswordRequest } from "@/interfaces/api/requests/ChangePasswordRequest.interface";
 import type { LoginResponse } from "@/interfaces/api/responses/LoginResponse.interface";
 import type { CurrentUserResponse } from "@/interfaces/api/responses/CurrentUserResponse.interface";
-import type { LoginHistoryResponse } from "@/interfaces/api/responses/LoginHistoryResponse.interface";
 
 export const authApi = {
   async login(data: LoginRequest): Promise<LoginResponse> {
@@ -85,22 +84,4 @@ export const authApi = {
     }
   },
 
-  async getLoginHistory(): Promise<LoginHistoryResponse[]> {
-    try {
-      const response = await fetch(`${url}/auth/login-history`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-
-      const json: ApiResponse<LoginHistoryResponse[]> = await response.json();
-      return json.data;
-    } catch (error) {
-      throw new Error(
-        error instanceof Error
-          ? error.message
-          : "Error al obtener historial de inicio de sesión",
-      );
-    }
-  },
 };

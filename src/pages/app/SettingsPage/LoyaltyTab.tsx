@@ -25,8 +25,11 @@ export function LoyaltyTab({ tenantId }: { tenantId: string }) {
     setIsLoading(true);
     loyaltyApi
       .getByTenant(tenantId)
-      .then(setPrograms)
-      .catch(console.error)
+      .then((data) => setPrograms(Array.isArray(data) ? data : []))
+      .catch((error) => {
+        console.error(error);
+        setPrograms([]);
+      })
       .finally(() => setIsLoading(false));
   };
 
