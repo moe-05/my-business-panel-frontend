@@ -229,28 +229,13 @@ export function CashSessionsPage() {
     return map;
   }, [sessionsForActions]);
 
-  const latestSessionByRegister = useMemo(() => {
-    const map = new Map<string, CashRegisterSession>();
-    for (const session of sessionsForActions) {
-      if (!map.has(session.cash_register_id)) {
-        map.set(session.cash_register_id, session);
-      }
-    }
-    return map;
-  }, [sessionsForActions]);
 
-  const selectedRegister =
-    availableRegisters.find(
-      (register) => register.cash_register_id === selectedRegisterId,
-    ) ?? null;
+
 
   const selectedActiveSession = selectedRegisterId
     ? (activeSessionByRegister.get(selectedRegisterId) ?? null)
     : null;
 
-  const latestSelectedSession = selectedRegisterId
-    ? (latestSessionByRegister.get(selectedRegisterId) ?? null)
-    : null;
 
   const canOpen = !!selectedRegisterId && !selectedActiveSession;
   const canClose = !!selectedRegisterId && !!selectedActiveSession;
@@ -260,21 +245,6 @@ export function CashSessionsPage() {
 
   const actionIsBlocked = actionType === "open" ? !canOpen : !canClose;
 
-  const formBlockedMessage = !selectedRegisterId
-    ? "Seleccione una caja para operar."
-    : actionType === "open" && selectedActiveSession
-      ? "No se puede abrir la sesion porque la caja ya esta abierta."
-      : actionType === "close" && !selectedActiveSession
-        ? "No se puede cerrar la sesion porque la caja ya esta cerrada."
-        : null;
-
-  const selectedRegisterStateMessage = !selectedRegister
-    ? "Seleccione una caja para consultar su estado actual."
-    : selectedActiveSession
-      ? `La caja ${selectedRegister.register_name} esta abierta desde ${formatDate(selectedActiveSession.opened_at)}.`
-      : latestSelectedSession
-        ? `La caja ${selectedRegister.register_name} esta cerrada. Ultimo cierre: ${formatDate(latestSelectedSession.closed_at)}.`
-        : `La caja ${selectedRegister.register_name} no tiene sesiones registradas.`;
 
   const refreshSessions = async () => {
     const isActive =

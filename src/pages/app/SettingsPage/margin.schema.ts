@@ -65,8 +65,7 @@ export const marginSchema = z
           code: "custom",
           message: "El umbral debe ser mayor a 0",
           path: ["spending_threshold"],
-          input: data.spending_threshold,
-        } as z.ZodCustomIssue & { path: string[] });
+        });
       }
     }
 
@@ -77,8 +76,7 @@ export const marginSchema = z
           code: "custom",
           message: "Debe ser al menos 1 mes",
           path: ["seniority_months"],
-          input: data.seniority_months,
-        } as z.ZodCustomIssue & { path: string[] });
+        });
       }
     }
 
@@ -89,8 +87,7 @@ export const marginSchema = z
           code: "custom",
           message: "Debe ser al menos 1 por mes",
           path: ["frequency_per_month"],
-          input: data.frequency_per_month,
-        } as z.ZodCustomIssue & { path: string[] });
+        });
       }
     }
   });

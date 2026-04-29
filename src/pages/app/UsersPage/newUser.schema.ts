@@ -3,7 +3,7 @@ import z from "zod";
 export const employeeSchema = z.object({
   first_name: z.string().trim().min(1, "Requerido"),
   last_name: z.string().trim().min(1, "Requerido"),
-  doc_number: z.string().trim().min(1, "Requerido"),
+  document_number: z.string().trim().min(1, "Requerido"),
   phone: z.string().trim().min(1, "Requerido"),
   employee_email: z.string().trim().min(1, "Requerido").email("Email inválido"),
   branch_id: z.string().trim().min(1, "Selecciona una sucursal"),

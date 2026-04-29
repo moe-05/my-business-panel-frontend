@@ -20,8 +20,8 @@ export function CustomerDetailModal({
       ?.label ?? (customer.segment_id ? `Segmento ${customer.segment_id}` : null);
 
   const docTypeLabel =
-    identificationTypes.find((t) => t.value === customer.doc_type)?.label ??
-    String(customer.doc_type);
+    identificationTypes.find((t) => t.value === customer.identification_type)?.label ??
+    String(customer.identification_type);
 
   const tenantName = (customer as CustomerWithTenant).tenant_name;
 
@@ -45,7 +45,7 @@ export function CustomerDetailModal({
           <div className="grid grid-cols-2 gap-4">
             {field("Nombre", `${customer.first_name} ${customer.last_name}`)}
             {field("Tipo Doc.", docTypeLabel)}
-            {field("Documento", customer.doc_number)}
+            {field("Documento", customer.document_number)}
             {field("Segmento", segmentName)}
           </div>
         </div>

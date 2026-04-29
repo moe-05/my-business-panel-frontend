@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { tenantApi } from "../../api/tenant.api";
-import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Table, Pagination } from "../../components/ui/Table";
 import { Badge } from "../../components/ui/Badge";
