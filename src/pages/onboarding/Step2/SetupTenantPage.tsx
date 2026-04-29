@@ -36,7 +36,7 @@ export function SetupTenantPage() {
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    resolver: zodResolver(setupTenantSchema),
+    resolver: zodResolver(setupTenantSchema) as any,
     defaultValues: {
       tenantName: data.tenantName,
       identificationType: data.identificationType ?? 1,
@@ -168,9 +168,7 @@ export function SetupTenantPage() {
             }))}
             error={errors.identificationType?.message}
             hint={loadingRegions ? "Cargando regiones..." : undefined}
-            {...register("identificationType", {
-              valueAsNumber: true,
-            })}
+            {...register("identificationType")}
           />
 
           <Input
