@@ -169,7 +169,7 @@ export function SetupTenantPage() {
             error={errors.identificationType?.message}
             hint={loadingRegions ? "Cargando regiones..." : undefined}
             {...register("identificationType", {
-              setValueAs: (value) => Number(value),
+              valueAsNumber: true,
             })}
           />
 
