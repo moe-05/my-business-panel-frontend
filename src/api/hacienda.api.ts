@@ -17,6 +17,11 @@ export const haciendaApi = {
       );
 
       const json: ApiResponse<HaciendaConfigStatus> = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          json.message || "Error al obtener configuración de Hacienda",
+        );
+      }
       return json.data;
     } catch (error) {
       throw new Error(
@@ -40,6 +45,11 @@ export const haciendaApi = {
 
       const json: ApiResponse<{ tenant_hacienda_config_id: string }> =
         await response.json();
+      if (!response.ok) {
+        throw new Error(
+          json.message || "Error al guardar configuración de Hacienda",
+        );
+      }
       return json.data;
     } catch (error) {
       throw new Error(
@@ -63,6 +73,11 @@ export const haciendaApi = {
 
       const json: ApiResponse<{ deactivated: boolean }> =
         await response.json();
+      if (!response.ok) {
+        throw new Error(
+          json.message || "Error al desactivar configuración de Hacienda",
+        );
+      }
       return json.data;
     } catch (error) {
       throw new Error(
