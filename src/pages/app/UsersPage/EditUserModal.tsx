@@ -31,7 +31,7 @@ const editAccountSchema = z.object({
 const editEmployeeSchema = z.object({
   first_name: z.string().trim().min(1, "Requerido"),
   last_name: z.string().trim().min(1, "Requerido"),
-  doc_number: z.string().trim().min(1, "Requerido"),
+  document_number: z.string().trim().min(1, "Requerido"),
   phone: z.string().trim().min(1, "Requerido"),
   employee_email: z.string().trim().min(1, "Requerido").email("Email inválido"),
   payment_schedule_id: z
@@ -58,7 +58,7 @@ type ContractErrors = Partial<Record<keyof ContractFields, string>>;
 const EMPTY_EMP: EmployeeFields = {
   first_name: "",
   last_name: "",
-  doc_number: "",
+  document_number: "",
   phone: "",
   employee_email: "",
   branch_id: "",
@@ -157,7 +157,7 @@ export function EditUserModal({
           setEmpData({
             first_name: empDetail.first_name,
             last_name: empDetail.last_name,
-            doc_number: empDetail.doc_number,
+            document_number: empDetail.document_number,
             phone: empDetail.phone,
             employee_email: empDetail.email,
             branch_id: empDetail.branch_id,
@@ -260,7 +260,7 @@ export function EditUserModal({
           updateEmployee(employeeId, {
             first_name: empData.first_name,
             last_name: empData.last_name,
-            doc_number: empData.doc_number,
+            document_number: empData.document_number,
             phone: empData.phone,
             email: empData.employee_email,
             payment_schedule_id: Number(empData.payment_schedule_id),
@@ -320,11 +320,11 @@ export function EditUserModal({
       <div className="grid grid-cols-2 gap-4">
         <Input
           label="Número de documento"
-          value={empData.doc_number}
+          value={empData.document_number}
           onChange={(e) =>
-            setEmpData((p) => ({ ...p, doc_number: e.target.value }))
+            setEmpData((p) => ({ ...p, document_number: e.target.value }))
           }
-          error={empErrors.doc_number}
+          error={empErrors.document_number}
           required
         />
         <Input

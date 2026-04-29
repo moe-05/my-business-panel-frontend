@@ -61,7 +61,7 @@ export function BranchesPage() {
     initialBranches?.branches ?? [],
   );
   const [page, setPage] = useState(initialBranches?.page ?? 1);
-  const [totalPages, setTotalPages] = useState(
+  const [totalPages] = useState(
     Math.ceil(
       (initialBranches?.total ?? 0) / (initialBranches?.limit ?? LIMIT),
     ),

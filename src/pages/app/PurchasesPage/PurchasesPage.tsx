@@ -37,7 +37,6 @@ import type {
   PurchaseOrder,
   PurchaseOrderDetail,
 } from "@/interfaces/entities/Purchase.interface";
-import type { Warehouse } from "@/interfaces/entities/Warehouse.interface";
 import type { PurchasesPageLoaderData } from "@/router/loaders/purchase.loaders";
 
 import {

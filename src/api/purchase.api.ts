@@ -23,9 +23,10 @@ import type {
 const json = async <T>(res: Response, fallback: string): Promise<T> => {
   const body = (await res.json()) as ApiResponse<T>;
   if (!res.ok) {
-    const message = Array.isArray(body?.message)
-      ? body.message.join(", ")
-      : (body?.message ?? body?.error ?? fallback);
+    const errorBody = body as any;
+    const message = Array.isArray(errorBody?.message)
+      ? errorBody.message.join(", ")
+      : (errorBody?.message ?? errorBody?.error ?? fallback);
     throw new Error(message);
   }
 

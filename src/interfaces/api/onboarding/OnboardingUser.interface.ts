@@ -3,6 +3,6 @@ export interface OnboardingUser {
   password: string;
   first_name: string;
   last_name: string;
-  doc_number: string;
+  document_number: string;
   phone: string;
 }

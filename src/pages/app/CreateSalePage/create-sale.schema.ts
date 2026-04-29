@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const customerLookupSchema = z.object({
-  doc_number: z.string().min(1, "Número de documento requerido"),
+  document_number: z.string().min(1, "Número de documento requerido"),
 });
 export type CustomerLookupForm = z.infer<typeof customerLookupSchema>;
 
