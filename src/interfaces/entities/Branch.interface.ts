@@ -7,4 +7,8 @@ export interface Branch {
   tenant_id: string;
   created_at?: string;
   updated_at?: string;
+  provincia?: string;
+  canton?: string;
+  distrito?: string;
+  otras_senas?: string;
 }

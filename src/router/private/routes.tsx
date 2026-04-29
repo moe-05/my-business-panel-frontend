@@ -13,10 +13,26 @@ import { authApi } from "@/api/auth.api";
 import { getUsersPageData } from "@/router/loaders/user.loaders";
 import { getBranchesPageData } from "@/router/loaders/branch.loaders";
 import { getCustomersPageData } from "@/router/loaders/customer.loaders";
-// import { getHaciendaStatus } from "@/router/loaders/hacienda.loaders";
 import { getAllSegments } from "@/router/loaders/segment.loaders";
 import { getMarginsByTenant } from "@/router/loaders/margin.loaders";
 import { getProductsPageData } from "@/router/loaders/product.loaders";
+import {
+  getCreateSalePageData,
+  getSalesHistoryPageData,
+} from "@/router/loaders/sale.loaders";
+import { getCashSessionsPageData } from "@/router/loaders/cashRegister.loaders";
+import { getRefundsPageData } from "@/router/loaders/returns.loaders";
+import { getPromotionsPageData } from "@/router/loaders/promotion.loaders";
+import { getWarehousesPageData } from "@/router/loaders/warehouse.loaders";
+import { getInventoryPageData } from "@/router/loaders/inventory.loaders";
+import { getMovementsPageData } from "@/router/loaders/inventoryTransfer.loaders";
+import { getReportsPageData } from "@/router/loaders/inventoryReports.loaders";
+import {
+  getAccountsPayablePageData,
+  getPaymentAlertsPageData,
+  getPurchasesPageData,
+  getSuppliersPageData,
+} from "@/router/loaders/purchase.loaders";
 
 export const privateRoutes: RouteObject[] = [
   {
@@ -89,31 +105,101 @@ export const privateRoutes: RouteObject[] = [
           { path: "profile", element: <ProfilePage /> },
 
           // POS Module
-          { path: "pos/sales", element: <ComingSoon title="POS - Ventas" /> },
-          { path: "pos/orders", element: <ComingSoon title="POS - Órdenes" /> },
           {
-            path: "pos/analytics",
-            element: <ComingSoon title="POS - Análisis" />,
+            path: "pos/sales/new",
+            loader: getCreateSalePageData,
+            lazy: async () => {
+              const { CreateSalePage } = await import(
+                "@/pages/app/CreateSalePage/CreateSalePage"
+              );
+              return { Component: CreateSalePage };
+            },
           },
           {
-            path: "pos/settings",
-            element: <ComingSoon title="POS - Configuración" />,
+            path: "pos/sales",
+            loader: getSalesHistoryPageData,
+            lazy: async () => {
+              const { SalesHistoryPage } = await import(
+                "@/pages/app/SalesHistoryPage/SalesHistoryPage"
+              );
+              return { Component: SalesHistoryPage };
+            },
           },
-          { path: "pos/*", element: <Navigate to="/app/pos/sales" replace /> },
+          {
+            path: "pos/cash-sessions",
+            loader: getCashSessionsPageData,
+            lazy: async () => {
+              const { CashSessionsPage } = await import(
+                "@/pages/app/CashSessionsPage/CashSessionsPage"
+              );
+              return { Component: CashSessionsPage };
+            },
+          },
+          {
+            path: "pos/refunds",
+            loader: getRefundsPageData,
+            lazy: async () => {
+              const { RefundsPage } = await import(
+                "@/pages/app/RefundsPage/RefundsPage"
+              );
+              return { Component: RefundsPage };
+            },
+          },
+          {
+            path: "pos/promotions",
+            loader: getPromotionsPageData,
+            lazy: async () => {
+              const { PromotionsPage } = await import(
+                "@/pages/app/PromotionsPage/PromotionsPage"
+              );
+              return { Component: PromotionsPage };
+            },
+          },
+          {
+            path: "pos/*",
+            element: <Navigate to="/app/pos/sales/new" replace />,
+          },
 
           // INT (Inventory) Module
           {
             path: "int/inventory",
-            element: <ComingSoon title="INT - Inventario" />,
+            loader: getInventoryPageData,
+            lazy: async () => {
+              const { InventoryPage } = await import(
+                "@/pages/app/InventoryPage/InventoryPage"
+              );
+              return { Component: InventoryPage };
+            },
           },
-          { path: "int/stock", element: <ComingSoon title="INT - Stock" /> },
+          {
+            path: "int/warehouses",
+            loader: getWarehousesPageData,
+            lazy: async () => {
+              const { WarehousesPage } = await import(
+                "@/pages/app/WarehousesPage/WarehousesPage"
+              );
+              return { Component: WarehousesPage };
+            },
+          },
           {
             path: "int/movements",
-            element: <ComingSoon title="INT - Movimientos" />,
+            loader: getMovementsPageData,
+            lazy: async () => {
+              const { MovementsPage } = await import(
+                "@/pages/app/MovementsPage/MovementsPage"
+              );
+              return { Component: MovementsPage };
+            },
           },
           {
             path: "int/reports",
-            element: <ComingSoon title="INT - Reportes" />,
+            loader: getReportsPageData,
+            lazy: async () => {
+              const { ReportsPage } = await import(
+                "@/pages/app/ReportsPage/ReportsPage"
+              );
+              return { Component: ReportsPage };
+            },
           },
           {
             path: "int/*",
@@ -123,19 +209,51 @@ export const privateRoutes: RouteObject[] = [
           // SCH (Supply Chain) Module
           {
             path: "sch/purchases",
-            element: <ComingSoon title="SCH - Compras" />,
+            loader: getPurchasesPageData,
+            lazy: async () => {
+              const { PurchasesPage } = await import(
+                "@/pages/app/PurchasesPage/PurchasesPage"
+              );
+              return { Component: PurchasesPage };
+            },
           },
           {
             path: "sch/orders",
-            element: <ComingSoon title="SCH - Órdenes de Compra" />,
+            element: <Navigate to="/app/sch/payables" replace />,
           },
           {
             path: "sch/suppliers",
-            element: <ComingSoon title="SCH - Proveedores" />,
+            loader: getSuppliersPageData,
+            lazy: async () => {
+              const { SuppliersPage } = await import(
+                "@/pages/app/SuppliersPage/SuppliersPage"
+              );
+              return { Component: SuppliersPage };
+            },
+          },
+          {
+            path: "sch/payables",
+            loader: getAccountsPayablePageData,
+            lazy: async () => {
+              const { AccountsPayablePage } = await import(
+                "@/pages/app/AccountsPayablePage/AccountsPayablePage"
+              );
+              return { Component: AccountsPayablePage };
+            },
           },
           {
             path: "sch/analytics",
-            element: <ComingSoon title="SCH - Análisis" />,
+            element: <Navigate to="/app/sch/payment-alerts" replace />,
+          },
+          {
+            path: "sch/payment-alerts",
+            loader: getPaymentAlertsPageData,
+            lazy: async () => {
+              const { PaymentAlertsPage } = await import(
+                "@/pages/app/PaymentAlertsPage/PaymentAlertsPage"
+              );
+              return { Component: PaymentAlertsPage };
+            },
           },
           {
             path: "sch/*",

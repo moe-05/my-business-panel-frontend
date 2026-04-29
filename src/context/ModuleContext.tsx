@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useEffect, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MODULES, type ModuleId, type Module } from '../config/modules';
 
@@ -41,6 +41,20 @@ export function ModuleProvider({ children }: { children: ReactNode }) {
       currentModuleId,
       currentModule,
     };
+  }, [location.pathname]);
+
+  // Update body data-module for CSS theme variables
+  useEffect(() => {
+    const segments = location.pathname.split('/').filter(Boolean);
+    let theme = 'dashboard';
+
+    if (segments[0] === 'auth') {
+      theme = 'auth';
+    } else if (segments.length >= 2) {
+      theme = segments[1];
+    }
+
+    document.body.dataset.module = theme;
   }, [location.pathname]);
 
   return (

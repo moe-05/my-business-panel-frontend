@@ -7,8 +7,8 @@ export interface Customer {
   tenant_id: string;
   first_name: string;
   last_name: string;
-  doc_type: number;
-  doc_number: string;
+  identification_type: number;
+  document_number: string;
   econ_activity?: string;
   birthdate?: string;
   email?: string;

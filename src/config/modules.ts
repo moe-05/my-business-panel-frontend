@@ -23,6 +23,7 @@ export interface SubModule {
     | "contact"
     | "building";
   onlyRoles?: number[];
+  end?: boolean;
 }
 
 export interface Module {
@@ -40,16 +41,15 @@ export interface Module {
     | "briefcase"
     | "credit-card";
   submodules: SubModule[];
-  onlyRoles?: number[]; // If not specified, available to all roles
-  excludeRoles?: number[]; // If specified, not available to these roles
+  onlyRoles?: number[];
+  excludeRoles?: number[];
 }
 
 export const MODULES: Record<ModuleId, Module> = {
-  // General module (always available)
   general: {
     id: "general",
     label: "General",
-    description: "Gestión general del sistema",
+    description: "Gestion general del sistema",
     color: "blue",
     code: "GEN",
     path: "/app",
@@ -82,7 +82,7 @@ export const MODULES: Record<ModuleId, Module> = {
       },
       {
         id: "settings",
-        label: "Configuración",
+        label: "Configuracion",
         path: "/app/settings",
         icon: "settings",
       },
@@ -93,11 +93,10 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "briefcase",
         onlyRoles: [1],
       },
-      { id: "profile", label: "Mi Perfil", path: "/app/profile", icon: "user" },
+      { id: "profile", label: "Mi perfil", path: "/app/profile", icon: "user" },
     ],
   },
 
-  // POS Module - Point of Sale
   pos: {
     id: "pos",
     label: "POS",
@@ -108,49 +107,61 @@ export const MODULES: Record<ModuleId, Module> = {
     icon: "shopping-cart",
     submodules: [
       {
-        id: "sales",
-        label: "Ventas",
-        path: "/app/pos/sales",
+        id: "cash-sessions",
+        label: "Sesiones de caja",
+        path: "/app/pos/cash-sessions",
+        icon: "credit-card",
+      },
+      {
+        id: "create-sale",
+        label: "Crear venta",
+        path: "/app/pos/sales/new",
         icon: "shopping-cart",
       },
       {
-        id: "orders",
-        label: "Órdenes",
-        path: "/app/pos/orders",
-        icon: "file-text",
-      },
-      {
-        id: "analytics",
-        label: "Análisis",
-        path: "/app/pos/analytics",
+        id: "sales-history",
+        label: "Registro de ventas",
+        path: "/app/pos/sales",
         icon: "trending-up",
+        onlyRoles: [2, 3],
+        end: true,
       },
       {
-        id: "settings",
-        label: "Configuración",
-        path: "/app/pos/settings",
-        icon: "settings",
+        id: "refunds",
+        label: "Reembolsos",
+        path: "/app/pos/refunds",
+        icon: "package",
+      },
+      {
+        id: "promotions",
+        label: "Promociones",
+        path: "/app/pos/promotions",
+        icon: "trending-up",
       },
     ],
   },
 
-  // INT Module - Inventory
   int: {
     id: "int",
     label: "INT",
-    description: "Gestión de inventario",
+    description: "Gestion de inventario",
     color: "purple",
     code: "INT",
     path: "/app/int",
     icon: "package",
     submodules: [
       {
+        id: "warehouses",
+        label: "Almacenes",
+        path: "/app/int/warehouses",
+        icon: "building",
+      },
+      {
         id: "inventory",
         label: "Inventario",
         path: "/app/int/inventory",
         icon: "package",
       },
-      { id: "stock", label: "Stock", path: "/app/int/stock", icon: "package" },
       {
         id: "movements",
         label: "Movimientos",
@@ -166,16 +177,21 @@ export const MODULES: Record<ModuleId, Module> = {
     ],
   },
 
-  // SCH Module - Supply Chain / Purchase
   sch: {
     id: "sch",
     label: "SCH",
-    description: "Gestión de compras",
+    description: "Gestion de compras",
     color: "amber",
     code: "SCH",
     path: "/app/sch",
     icon: "file-text",
     submodules: [
+      {
+        id: "suppliers",
+        label: "Proveedores",
+        path: "/app/sch/suppliers",
+        icon: "briefcase",
+      },
       {
         id: "purchases",
         label: "Compras",
@@ -184,30 +200,23 @@ export const MODULES: Record<ModuleId, Module> = {
       },
       {
         id: "orders",
-        label: "Órdenes de Compra",
-        path: "/app/sch/orders",
-        icon: "file-text",
-      },
-      {
-        id: "suppliers",
-        label: "Proveedores",
-        path: "/app/sch/suppliers",
-        icon: "briefcase",
+        label: "Cuentas por pagar",
+        path: "/app/sch/payables",
+        icon: "credit-card",
       },
       {
         id: "analytics",
-        label: "Análisis",
-        path: "/app/sch/analytics",
-        icon: "trending-up",
+        label: "Alertas de pago",
+        path: "/app/sch/payment-alerts",
+        icon: "calendar",
       },
     ],
   },
 
-  // HR Module - Human Resources
   hr: {
     id: "hr",
     label: "HR",
-    description: "Gestión de recursos humanos",
+    description: "Gestion de recursos humanos",
     color: "green",
     code: "HR",
     path: "/app/hr",
@@ -221,7 +230,7 @@ export const MODULES: Record<ModuleId, Module> = {
       },
       {
         id: "payroll",
-        label: "Nómina",
+        label: "Nomina",
         path: "/app/hr/payroll",
         icon: "credit-card",
       },
@@ -240,11 +249,10 @@ export const MODULES: Record<ModuleId, Module> = {
     ],
   },
 
-  // FNZ Module - Finances
   fnz: {
     id: "fnz",
     label: "FNZ",
-    description: "Gestión financiera",
+    description: "Gestion financiera",
     color: "red",
     code: "FNZ",
     path: "/app/fnz",
@@ -270,7 +278,7 @@ export const MODULES: Record<ModuleId, Module> = {
       },
       {
         id: "analytics",
-        label: "Análisis",
+        label: "Analisis",
         path: "/app/fnz/analytics",
         icon: "trending-up",
       },

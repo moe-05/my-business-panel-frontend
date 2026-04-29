@@ -4,6 +4,10 @@ import type { CreateCustomerRequest } from "@/interfaces/api/requests/CreateCust
 import type { UpdateCustomerRequest } from "@/interfaces/api/requests/UpdateCustomerRequest.interface";
 import type { Customer } from "@/interfaces/entities/Customer.interface";
 
+export const getCustomerByDocNumber = async (
+  docNumber: string,
+): Promise<Customer | null> => customerApi.getByDocNumber(docNumber);
+
 export const createCustomer = async (
   data: CreateCustomerRequest,
 ): Promise<Customer> => customerApi.create(data);

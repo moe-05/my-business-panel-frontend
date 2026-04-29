@@ -44,7 +44,7 @@ const TOAST_CONFIG: Record<
   },
   success: {
     label: "Exito",
-    durationMs: 5000,
+    durationMs: 4000,
     containerClassName:
       "border-green-200 bg-green-50 text-green-900 shadow-green-200/50",
     icon: (

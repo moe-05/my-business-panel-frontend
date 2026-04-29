@@ -4,8 +4,15 @@ import { haciendaApi } from "@/api/hacienda.api";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 
 import type { HaciendaConfigStatus } from "@/interfaces/api/responses/HaciendaConfigStatus.interface";
+import type { HaciendaConfigUpdate } from "@/interfaces/api/requests/HaciendaConfigUpdate.interface";
+
+const CLIENT_ID_OPTIONS = [
+  { value: "api-stag", label: "api-stag (Sandbox / Pruebas)" },
+  { value: "api-prod", label: "api-prod (Producción)" },
+];
 
 export function HaciendaTab({ tenantId }: { tenantId: string }) {
   const [status, setStatus] = useState<HaciendaConfigStatus | null>(null);
@@ -16,7 +23,7 @@ export function HaciendaTab({ tenantId }: { tenantId: string }) {
   const [form, setForm] = useState({
     hacienda_username: "",
     hacienda_password: "",
-    hacienda_client_id: "",
+    hacienda_client_id: "api-stag",
     p12_base64: "",
     p12_password: "",
   });
@@ -73,23 +80,42 @@ export function HaciendaTab({ tenantId }: { tenantId: string }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const isUpdate = status?.configured === true;
     const errs: Record<string, string> = {};
+
     if (!form.hacienda_username.trim())
       errs.hacienda_username = "Usuario es requerido";
-    if (!form.hacienda_password.trim())
-      errs.hacienda_password = "Contraseña es requerida";
     if (!form.hacienda_client_id.trim())
       errs.hacienda_client_id = "Client ID es requerido";
-    if (!form.p12_base64.trim())
-      errs.p12_base64 = "Certificado P12 (Base64) es requerido";
-    if (!form.p12_password.trim())
-      errs.p12_password = "Contraseña del certificado es requerida";
+
+    // En creación (no hay config previa), todos los secretos son requeridos.
+    // En actualización, son opcionales: si están vacíos se conservan los actuales.
+    if (!isUpdate) {
+      if (!form.hacienda_password.trim())
+        errs.hacienda_password = "Contraseña es requerida";
+      if (!form.p12_base64.trim())
+        errs.p12_base64 = "Certificado P12 es requerido";
+      if (!form.p12_password.trim())
+        errs.p12_password = "Contraseña del certificado es requerida";
+    }
+
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
     setIsSubmitting(true);
     try {
-      await haciendaApi.save({ tenant_id: tenantId, ...form });
+      const payload: HaciendaConfigUpdate = {
+        tenant_id: tenantId,
+        hacienda_username: form.hacienda_username,
+        hacienda_client_id: form.hacienda_client_id,
+      };
+      if (form.hacienda_password.trim())
+        payload.hacienda_password = form.hacienda_password;
+      if (form.p12_base64.trim()) payload.p12_base64 = form.p12_base64;
+      if (form.p12_password.trim())
+        payload.p12_password = form.p12_password;
+
+      await haciendaApi.save(payload);
       await loadStatus();
       setForm((p) => ({
         ...p,
@@ -97,10 +123,11 @@ export function HaciendaTab({ tenantId }: { tenantId: string }) {
         p12_base64: "",
         p12_password: "",
       }));
+      setP12FileName("");
       alert("Configuración de Hacienda guardada correctamente.");
     } catch (error) {
       setErrors({
-        hacienda_username:
+        _form:
           error instanceof Error
             ? error.message
             : "Error guardando configuración",
@@ -136,6 +163,12 @@ export function HaciendaTab({ tenantId }: { tenantId: string }) {
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4 max-w-lg">
+        {errors._form && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            {errors._form}
+          </div>
+        )}
+
         <Input
           label="Usuario OVI (Hacienda)"
           placeholder="Ej: cpf-04-1234-5678"
@@ -161,19 +194,20 @@ export function HaciendaTab({ tenantId }: { tenantId: string }) {
               ? "Dejar vacío si no deseas cambiarla"
               : undefined
           }
-          required
+          required={!status?.configured}
         />
 
-        {/* <Input
+        <Select
           label="Client ID"
-          placeholder="Client ID de la API de Hacienda"
           value={form.hacienda_client_id}
           onChange={(e) =>
             setForm((p) => ({ ...p, hacienda_client_id: e.target.value }))
           }
+          options={CLIENT_ID_OPTIONS}
           error={errors.hacienda_client_id}
+          hint="api-stag para pruebas (sandbox), api-prod para producción"
           required
-        /> */}
+        />
 
         <Input
           label="Certificado P12"
@@ -184,7 +218,9 @@ export function HaciendaTab({ tenantId }: { tenantId: string }) {
           hint={
             p12FileName
               ? `Archivo seleccionado: ${p12FileName}`
-              : "Sube tu certificado .p12"
+              : status?.configured
+                ? "Dejar vacío si no deseas cambiarlo"
+                : "Sube tu certificado .p12"
           }
           className="cursor-pointer"
         />
@@ -198,6 +234,12 @@ export function HaciendaTab({ tenantId }: { tenantId: string }) {
             setForm((p) => ({ ...p, p12_password: e.target.value }))
           }
           error={errors.p12_password}
+          hint={
+            status?.configured
+              ? "Dejar vacío si no deseas cambiarla"
+              : undefined
+          }
+          required={!status?.configured}
         />
 
         <Button type="submit" variant="primary" loading={isSubmitting}>

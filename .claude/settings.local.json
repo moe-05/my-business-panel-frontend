@@ -48,7 +48,8 @@
       "WebFetch(domain:facturacion-electronica-4-4.facturelo.com)",
       "WebFetch(domain:www.novitec.cr)",
       "Bash(npm run:*)",
-      "Bash(node -e \"console.log\\(require\\('./node_modules/zod/package.json'\\).version\\)\")"
+      "Bash(node -e \"console.log\\(require\\('./node_modules/zod/package.json'\\).version\\)\")",
+      "Bash(npx eslint *)"
     ]
   }
 }

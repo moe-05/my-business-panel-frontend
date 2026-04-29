@@ -46,7 +46,7 @@ function getIconByName(iconName: string): ReactNode {
 // ─── Sidebar content ──────────────────────────────────────────────────────────
 
 interface SidebarNavItemProps {
-  item: { label: string; path: string; icon: ReactNode };
+  item: { label: string; path: string; icon: ReactNode; end?: boolean };
   onClick?: () => void;
 }
 
@@ -54,6 +54,7 @@ function SidebarNavItem({ item, onClick }: SidebarNavItemProps) {
   return (
     <NavLink
       to={item.path}
+      end={item.end}
       onClick={onClick}
       className={({ isActive }) =>
         [
@@ -117,6 +118,7 @@ function SidebarContent({
       label: submod.label,
       path: submod.path,
       icon: getIconByName(submod.icon),
+      end: submod.end,
     }));
 
   return (

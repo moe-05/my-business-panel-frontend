@@ -22,6 +22,11 @@ export const customerApi = {
       }
 
       const json: ApiResponse<Customer> = await response.json();
+
+      if (!json.data?.customer_id) {
+        throw new Error("El servidor no devolvió el ID del cliente creado");
+      }
+
       return json.data;
     } catch (error) {
       throw new Error(
@@ -95,20 +100,23 @@ export const customerApi = {
   },
 
   async getByDocNumber(docNumber: string): Promise<Customer> {
-    try {
-      const response = await fetch(`${url}/customers/doc/${docNumber}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
+    const response = await fetch(`${url}/customers/doc/${docNumber}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
 
-      const json: ApiResponse<Customer> = await response.json();
-      return json.data;
-    } catch (error) {
-      throw new Error(
-        error instanceof Error ? error.message : "Error al obtener cliente",
-      );
+    if (!response.ok) {
+      throw new Error(`Cliente no encontrado (${response.status})`);
     }
+
+    const json: ApiResponse<Customer> = await response.json();
+
+    if (!json.data?.customer_id) {
+      throw new Error("Respuesta del servidor no incluye el ID del cliente");
+    }
+
+    return json.data;
   },
 
   async update(
