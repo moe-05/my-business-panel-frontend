@@ -1,12 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useOnboarding } from "@/context/OnboardingContext";
 
 import { tenantApi } from "@/api/tenant.api";
+import {
+  specialCodeApi,
+  type SpecialCodeValidationReason,
+} from "@/api/specialCode.api";
+
+import { useDebounce } from "@/hooks/useDebounce";
 
 import { OnboardingLayout } from "@/components/layout/OnboardingLayout";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 import { SUBSCRIPTION_PLANS } from "@/constants/subscription-plans";
 
@@ -39,6 +46,27 @@ const CARD_ELEMENT_OPTIONS = {
   },
 };
 
+type PaymentMode = "card" | "special_code";
+type CodeStatus =
+  | "idle"
+  | "checking"
+  | "valid"
+  | "invalid";
+
+const codeReasonLabel = (
+  reason?: SpecialCodeValidationReason,
+): string => {
+  switch (reason) {
+    case "already_used":
+      return "Este código ya fue canjeado.";
+    case "expired":
+      return "El código está vencido.";
+    case "not_found":
+    default:
+      return "Código no encontrado.";
+  }
+};
+
 function PaymentForm() {
   const stripe = useStripe();
   const elements = useElements();
@@ -50,28 +78,89 @@ function PaymentForm() {
   const [currentStep, setCurrentStep] = useState("");
   const [cardComplete, setCardComplete] = useState(false);
 
+  // Modo de pago: tarjeta (Stripe) o código especial
+  const [mode, setMode] = useState<PaymentMode>("card");
+  const [specialCode, setSpecialCode] = useState("");
+  const [codeStatus, setCodeStatus] = useState<CodeStatus>("idle");
+  const [codeError, setCodeError] = useState<string | null>(null);
+
+  // Debounced validation: el usuario escribe el código y a los 500 ms
+  // sin teclear validamos contra el backend. NO consume el código.
+  const debouncedCode = useDebounce(specialCode.trim().toUpperCase(), 500);
+
+  useEffect(() => {
+    if (mode !== "special_code") {
+      setCodeStatus("idle");
+      setCodeError(null);
+      return;
+    }
+    if (!debouncedCode || debouncedCode.length < 4) {
+      setCodeStatus("idle");
+      setCodeError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setCodeStatus("checking");
+    setCodeError(null);
+
+    specialCodeApi
+      .validate(debouncedCode)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.valid) {
+          setCodeStatus("valid");
+          setCodeError(null);
+        } else {
+          setCodeStatus("invalid");
+          setCodeError(codeReasonLabel(result.reason));
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCodeStatus("invalid");
+        setCodeError("No se pudo verificar el código. Intenta más tarde.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedCode, mode]);
+
   const handleSubscribe = async () => {
-    if (!stripe || !elements) return;
-
-    const cardElement = elements.getElement(CardElement);
-    if (!cardElement) return;
-
     setError("");
+
+    if (mode === "card" && (!stripe || !elements)) return;
+
     setIsLoading(true);
 
     try {
-      // 1. Crear payment method en Stripe (client-side)
-      setCurrentStep("Preparando el pago...");
-      const { error: pmError, paymentMethod } =
-        await stripe.createPaymentMethod({
-          type: "card",
-          card: cardElement,
-        });
+      // 1. Si es modo tarjeta: crear payment method en Stripe
+      let stripePaymentMethodId: string | undefined;
+      if (mode === "card") {
+        const cardElement = elements!.getElement(CardElement);
+        if (!cardElement) throw new Error("Tarjeta no inicializada");
 
-      if (pmError || !paymentMethod) {
-        throw new Error(
-          pmError?.message ?? "No se pudo crear el método de pago.",
-        );
+        setCurrentStep("Preparando el pago...");
+        const { error: pmError, paymentMethod } =
+          await stripe!.createPaymentMethod({
+            type: "card",
+            card: cardElement,
+          });
+
+        if (pmError || !paymentMethod) {
+          throw new Error(
+            pmError?.message ?? "No se pudo crear el método de pago.",
+          );
+        }
+        stripePaymentMethodId = paymentMethod.id;
+      } else {
+        // Validamos una vez más antes de comprometer el onboarding.
+        if (codeStatus !== "valid") {
+          throw new Error(
+            codeError ?? "Ingresa un código especial válido para continuar.",
+          );
+        }
       }
 
       // 2. Calcular fechas de suscripción
@@ -80,7 +169,11 @@ function PaymentForm() {
       endDate.setMonth(endDate.getMonth() + PLAN.months);
 
       // 3. Enviar solicitud única de onboarding al backend
-      setCurrentStep("Creando tu cuenta...");
+      setCurrentStep(
+        mode === "special_code"
+          ? "Canjeando tu código de acceso..."
+          : "Creando tu cuenta...",
+      );
       const result = await tenantApi.onboard({
         tenant_name: data.tenantName,
         contact_email: data.email,
@@ -111,31 +204,40 @@ function PaymentForm() {
           p12_password: data.p12Password,
         },
         subscription: {
-          stripe_payment_method_id: paymentMethod.id,
+          stripe_payment_method_id: stripePaymentMethodId,
           plan: PLAN.plan,
           payment_method_id: 1,
-          payment_amount: PLAN.price,
+          payment_amount: mode === "special_code" ? 0 : PLAN.price,
           subscription_type_id: PLAN.id,
           start_date: startDate.toISOString().split("T")[0],
           end_date: endDate.toISOString().split("T")[0],
+          special_code:
+            mode === "special_code" ? debouncedCode : undefined,
         },
       });
 
-      if (!result.subscription?.clientSecret) {
-        throw new Error("No se recibió el token de pago del servidor.");
-      }
+      // 4. Si es modo tarjeta: confirmar el pago en Stripe.
+      // Si es modo special_code: el backend ya finalizó la transacción y no
+      // hay clientSecret, así que saltamos directo al success.
+      if (mode === "card") {
+        if (!result.subscription?.clientSecret) {
+          throw new Error("No se recibió el token de pago del servidor.");
+        }
+        setCurrentStep("Procesando el pago...");
+        const { error: stripeError, paymentIntent } =
+          await stripe!.confirmCardPayment(result.subscription.clientSecret);
 
-      // 4. Confirmar el pago (client-side Stripe)
-      setCurrentStep("Procesando el pago...");
-      const { error: stripeError, paymentIntent } =
-        await stripe.confirmCardPayment(result.subscription.clientSecret);
+        if (stripeError) {
+          throw new Error(
+            stripeError.message ?? "Error al procesar el pago.",
+          );
+        }
 
-      if (stripeError) {
-        throw new Error(stripeError.message ?? "Error al procesar el pago.");
-      }
-
-      if (paymentIntent?.status !== "succeeded") {
-        throw new Error(`Pago no completado. Estado: ${paymentIntent?.status}`);
+        if (paymentIntent?.status !== "succeeded") {
+          throw new Error(
+            `Pago no completado. Estado: ${paymentIntent?.status}`,
+          );
+        }
       }
 
       const credentials = { email: data.email, password: data.password };
@@ -155,6 +257,16 @@ function PaymentForm() {
       setCurrentStep("");
     }
   };
+
+  const submitDisabled =
+    isLoading ||
+    (mode === "card" && (!cardComplete || !stripe)) ||
+    (mode === "special_code" && codeStatus !== "valid");
+
+  const submitLabel =
+    mode === "special_code"
+      ? "Activar acceso con código"
+      : `Pagar — $${PLAN.price}/mes`;
 
   return (
     <OnboardingLayout
@@ -218,36 +330,89 @@ function PaymentForm() {
           </ul>
         </div>
 
-        {/* Datos de la tarjeta */}
-        <div className="mb-5">
-          <label className="text-sm font-medium text-gray-700 block mb-1.5">
-            Datos de tarjeta
-          </label>
-          <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 transition-all duration-150 focus-within:border-gray-800 focus-within:ring-2 focus-within:ring-gray-800/20">
-            <CardElement
-              options={CARD_ELEMENT_OPTIONS}
-              onChange={(e) => {
-                setCardComplete(e.complete);
-                if (e.error) setError(e.error.message ?? "");
-                else setError("");
-              }}
+        {/* Selector de modo de pago */}
+        <div className="grid grid-cols-2 gap-2 mb-5 p-1 rounded-xl bg-gray-100">
+          <button
+            type="button"
+            onClick={() => setMode("card")}
+            className={[
+              "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              mode === "card"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-700",
+            ].join(" ")}
+            disabled={isLoading}
+          >
+            Pagar con tarjeta
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("special_code")}
+            className={[
+              "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              mode === "special_code"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-700",
+            ].join(" ")}
+            disabled={isLoading}
+          >
+            Tengo un código especial
+          </button>
+        </div>
+
+        {mode === "card" ? (
+          <div className="mb-5">
+            <label className="text-sm font-medium text-gray-700 block mb-1.5">
+              Datos de tarjeta
+            </label>
+            <div className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 transition-all duration-150 focus-within:border-gray-800 focus-within:ring-2 focus-within:ring-gray-800/20">
+              <CardElement
+                options={CARD_ELEMENT_OPTIONS}
+                onChange={(e) => {
+                  setCardComplete(e.complete);
+                  if (e.error) setError(e.error.message ?? "");
+                  else setError("");
+                }}
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-gray-400 flex items-center gap-1">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              Pago cifrado y seguro procesado por Stripe
+            </p>
+          </div>
+        ) : (
+          <div className="mb-5">
+            <Input
+              label="Código especial"
+              placeholder="Ej: VIP-2026-001"
+              value={specialCode}
+              onChange={(e) =>
+                setSpecialCode(e.target.value.toUpperCase().replace(/\s/g, ""))
+              }
+              maxLength={64}
+              error={codeStatus === "invalid" ? codeError ?? undefined : undefined}
+              hint={
+                codeStatus === "checking"
+                  ? "Verificando código..."
+                  : codeStatus === "valid"
+                    ? "Código válido. Puedes activar tu cuenta sin cargo."
+                    : "Solo los superusuarios pueden emitir estos códigos. Cada código se usa una sola vez."
+              }
+              required
+              autoComplete="off"
             />
           </div>
-          <p className="mt-1.5 text-xs text-gray-400 flex items-center gap-1">
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-            Pago cifrado y seguro procesado por Stripe
-          </p>
-        </div>
+        )}
 
         {/* Resumen */}
         <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 mb-5 text-sm">
@@ -261,7 +426,11 @@ function PaymentForm() {
           </div>
           <div className="border-t border-gray-200 pt-2.5 flex justify-between font-semibold text-gray-900">
             <span>Total hoy</span>
-            <span>${PLAN.price} USD</span>
+            <span>
+              {mode === "special_code"
+                ? "$0 USD (código especial)"
+                : `$${PLAN.price} USD`}
+            </span>
           </div>
         </div>
 
@@ -321,14 +490,16 @@ function PaymentForm() {
             size="lg"
             className="flex-2"
             onClick={handleSubscribe}
-            disabled={!cardComplete || !stripe}
+            disabled={submitDisabled}
           >
-            Pagar — ${PLAN.price}/mes
+            {submitLabel}
           </Button>
         </div>
 
         <p className="mt-4 text-center text-xs text-gray-400">
-          Pago procesado de forma segura. Cancela cuando quieras.
+          {mode === "special_code"
+            ? "Los códigos especiales son emitidos por el equipo y se canjean una sola vez."
+            : "Pago procesado de forma segura. Cancela cuando quieras."}
         </p>
       </div>
     </OnboardingLayout>

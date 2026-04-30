@@ -1,12 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
 import { branchApi } from "@/api/branch.api";
+import { employeeApi } from "@/api/employee.api";
+import { userApi } from "@/api/user.api";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/Modal";
+
+import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
 
 import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type { NewUserModalProps } from "@/interfaces/components/ui/NewUserModalProps.interface";
@@ -19,6 +23,8 @@ import {
   employeeSchema,
 } from "./newUser.schema";
 import { StepIndicator } from "../../../components/ui/StepIndicator";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
@@ -34,6 +40,7 @@ const INITIAL_EMPLOYEE: EmployeeFields = {
   first_name: "",
   last_name: "",
   document_number: "",
+  identification_type_id: 1,
   phone: "",
   employee_email: "",
   branch_id: "",
@@ -172,12 +179,122 @@ export function NewUserModal({
     return false;
   };
 
+  // ── Uniqueness probes ─────────────────────────────────────────────────────────
+
+  const checkEmployeeDoc = useCallback(
+    async (value: string) => {
+      const { exists } = await employeeApi.checkAvailability({
+        field: "doc_number",
+        value,
+      });
+      return exists;
+    },
+    [],
+  );
+
+  const checkEmployeePhone = useCallback(
+    async (value: string) => {
+      if (!tenantId) return false;
+      const { exists } = await employeeApi.checkAvailability({
+        field: "phone",
+        value,
+        tenantId,
+      });
+      return exists;
+    },
+    [tenantId],
+  );
+
+  const checkEmployeeEmail = useCallback(
+    async (value: string) => {
+      const [employeeProbe, userProbe] = await Promise.all([
+        employeeApi.checkAvailability({ field: "email", value }),
+        userApi.checkEmailAvailability(value),
+      ]);
+      return employeeProbe.exists || userProbe.exists;
+    },
+    [],
+  );
+
+  const checkAccountEmail = useCallback(
+    async (value: string) => {
+      const { exists } = await userApi.checkEmailAvailability(value);
+      return exists;
+    },
+    [],
+  );
+
+  const docStatus = useUniqueAvailability(
+    employee.document_number,
+    checkEmployeeDoc,
+    {
+      skip: isSystemUser,
+      minLength: 3,
+    },
+  );
+
+  const empPhoneStatus = useUniqueAvailability(
+    employee.phone,
+    checkEmployeePhone,
+    {
+      skip: isSystemUser || !tenantId,
+      minLength: 5,
+    },
+  );
+
+  const empEmailStatus = useUniqueAvailability(
+    employee.employee_email,
+    checkEmployeeEmail,
+    {
+      skip: isSystemUser,
+      minLength: 5,
+      isWellFormed: (value) => EMAIL_REGEX.test(value),
+    },
+  );
+
+  const accountEmailStatus = useUniqueAvailability(
+    account.email,
+    checkAccountEmail,
+    {
+      // System users only have an account email; for employees we already
+      // probe employee_email, which (when it differs) is the unique key on
+      // the users.email column.
+      skip: !account.email,
+      minLength: 5,
+      isWellFormed: (value) => EMAIL_REGEX.test(value),
+    },
+  );
+
+  const employeeStepBlocked = useMemo(() => {
+    if (isSystemUser) return false;
+    return (
+      docStatus === "taken" ||
+      empPhoneStatus === "taken" ||
+      empEmailStatus === "taken"
+    );
+  }, [docStatus, empEmailStatus, empPhoneStatus, isSystemUser]);
+
+  const employeeStepProbing = useMemo(() => {
+    if (isSystemUser) return false;
+    return (
+      docStatus === "checking" ||
+      empPhoneStatus === "checking" ||
+      empEmailStatus === "checking"
+    );
+  }, [docStatus, empEmailStatus, empPhoneStatus, isSystemUser]);
+
+  const accountStepBlocked = accountEmailStatus === "taken";
+  const accountStepProbing = accountEmailStatus === "checking";
+
   // ── Navigation ────────────────────────────────────────────────────────────────
 
   const totalSteps = isSystemUser ? 1 : 3;
 
   const handleNext = () => {
-    if (step === 1 && !isSystemUser && !validateEmployee()) return;
+    if (step === 1 && !isSystemUser) {
+      if (!validateEmployee()) return;
+      if (employeeStepBlocked) return;
+    }
     if (step === 2 && !validateContract()) return;
     setStep((s) => Math.min(s + 1, totalSteps) as 1 | 2 | 3);
   };
@@ -188,6 +305,8 @@ export function NewUserModal({
 
   const handleSubmit = () => {
     if (!validateAccount()) return;
+    if (accountStepBlocked) return;
+    if (!isSystemUser && employeeStepBlocked) return;
 
     const payload: CreateUserRequest = {
       tenant_id: tenantId,
@@ -202,7 +321,8 @@ export function NewUserModal({
         branch_id: employee.branch_id,
         first_name: employee.first_name,
         last_name: employee.last_name,
-        document_number: employee.document_number,
+        doc_number: employee.document_number,
+        identification_type_id: Number(employee.identification_type_id),
         phone: employee.phone,
         email: employee.employee_email,
         payment_schedule_id: Number(employee.payment_schedule_id),
@@ -267,7 +387,19 @@ export function NewUserModal({
           onChange={(e) =>
             setEmployee((p) => ({ ...p, document_number: e.target.value }))
           }
-          error={empErrors.document_number}
+          error={
+            empErrors.document_number ??
+            (docStatus === "taken"
+              ? "Ya existe un empleado con este documento"
+              : undefined)
+          }
+          hint={
+            docStatus === "checking"
+              ? "Verificando disponibilidad…"
+              : docStatus === "available"
+                ? "Documento disponible"
+                : undefined
+          }
           required
         />
         <Input
@@ -277,7 +409,19 @@ export function NewUserModal({
           onChange={(e) =>
             setEmployee((p) => ({ ...p, phone: e.target.value }))
           }
-          error={empErrors.phone}
+          error={
+            empErrors.phone ??
+            (empPhoneStatus === "taken"
+              ? "Ya existe un empleado con este teléfono"
+              : undefined)
+          }
+          hint={
+            empPhoneStatus === "checking"
+              ? "Verificando disponibilidad…"
+              : empPhoneStatus === "available"
+                ? "Teléfono disponible"
+                : undefined
+          }
           required
         />
       </div>
@@ -289,7 +433,19 @@ export function NewUserModal({
         onChange={(e) =>
           setEmployee((p) => ({ ...p, employee_email: e.target.value }))
         }
-        error={empErrors.employee_email}
+        error={
+          empErrors.employee_email ??
+          (empEmailStatus === "taken"
+            ? "Ya existe un empleado o usuario con este email"
+            : undefined)
+        }
+        hint={
+          empEmailStatus === "checking"
+            ? "Verificando disponibilidad…"
+            : empEmailStatus === "available"
+              ? "Email disponible"
+              : undefined
+        }
         required
         autoComplete="email"
       />
@@ -418,7 +574,19 @@ export function NewUserModal({
         placeholder="usuario@empresa.com"
         value={account.email}
         onChange={(e) => handleAccountEmailChange(e.target.value)}
-        error={accErrors.email}
+        error={
+          accErrors.email ??
+          (accountEmailStatus === "taken"
+            ? "Ya existe un usuario con este email"
+            : undefined)
+        }
+        hint={
+          accountEmailStatus === "checking"
+            ? "Verificando disponibilidad…"
+            : accountEmailStatus === "available"
+              ? "Email disponible"
+              : undefined
+        }
         required
       />
       {isLoadingRoles ? (
@@ -537,7 +705,15 @@ export function NewUserModal({
         <div className="flex-1" />
 
         {step < totalSteps ? (
-          <Button type="button" variant="primary" onClick={handleNext}>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={handleNext}
+            disabled={
+              (step === 1 &&
+                (employeeStepBlocked || employeeStepProbing))
+            }
+          >
             Siguiente
             <svg
               width="16"
@@ -552,7 +728,16 @@ export function NewUserModal({
             </svg>
           </Button>
         ) : (
-          <Button type="button" variant="primary" onClick={handleSubmit}>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={
+              accountStepBlocked ||
+              accountStepProbing ||
+              (!isSystemUser && (employeeStepBlocked || employeeStepProbing))
+            }
+          >
             Crear Usuario
             <svg
               width="16"

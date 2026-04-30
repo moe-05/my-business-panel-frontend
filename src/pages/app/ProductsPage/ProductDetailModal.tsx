@@ -77,10 +77,17 @@ export function ProductDetailModal({
 
         <div className="border-t border-gray-100 pt-4">
           <div className="grid grid-cols-2 gap-4">
-            {field("Creado", new Date(pv.created_at).toLocaleString("es-CR"))}
+            {field(
+              "Creado",
+              pv.created_at
+                ? new Date(pv.created_at).toLocaleString("es-CR")
+                : "—",
+            )}
             {field(
               "Actualizado",
-              new Date(pv.updated_at).toLocaleString("es-CR"),
+              pv.updated_at
+                ? new Date(pv.updated_at).toLocaleString("es-CR")
+                : "—",
             )}
           </div>
         </div>

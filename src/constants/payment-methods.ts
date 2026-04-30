@@ -6,7 +6,8 @@ export interface PaymentMethodOption {
     | "debit_card"
     | "credit_card"
     | "loyalty_points"
-    | "credit";
+    | "credit"
+    | "bank_transfer";
 }
 
 export const paymentMethods: PaymentMethodOption[] = [
@@ -15,6 +16,7 @@ export const paymentMethods: PaymentMethodOption[] = [
   { value: 3, label: "Tarjeta de crédito", code: "credit_card" },
   { value: 4, label: "Puntos de fidelidad", code: "loyalty_points" },
   { value: 5, label: "Crédito", code: "credit" },
+  { value: 6, label: "Transferencia bancaria", code: "bank_transfer" },
 ];
 
 export const refundStatuses = [

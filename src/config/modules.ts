@@ -22,7 +22,8 @@ export interface SubModule {
     | "map-pin"
     | "contact"
     | "building"
-    | "tag";
+    | "tag"
+    | "shield";
   /** Si está definido, solo los roles listados pueden acceder. Si es undefined, todos pueden. */
   rolesAllowed?: number[];
   end?: boolean;
@@ -101,6 +102,13 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "briefcase",
         rolesAllowed: [1],
       },
+      {
+        id: "special-codes",
+        label: "Códigos especiales",
+        path: "/app/special-codes",
+        icon: "shield",
+        rolesAllowed: [1],
+      },
       { id: "profile", label: "Mi perfil", path: "/app/profile", icon: "user" },
     ],
   },
@@ -159,12 +167,6 @@ export const MODULES: Record<ModuleId, Module> = {
     icon: "package",
     submodules: [
       {
-        id: "warehouses",
-        label: "Almacenes",
-        path: "/app/int/warehouses",
-        icon: "building",
-      },
-      {
         id: "inventory",
         label: "Inventario",
         path: "/app/int/inventory",
@@ -175,6 +177,12 @@ export const MODULES: Record<ModuleId, Module> = {
         label: "Movimientos",
         path: "/app/int/movements",
         icon: "trending-up",
+      },
+      {
+        id: "warehouses",
+        label: "Almacenes",
+        path: "/app/int/warehouses",
+        icon: "building",
       },
       {
         id: "reports",
@@ -195,12 +203,6 @@ export const MODULES: Record<ModuleId, Module> = {
     icon: "file-text",
     submodules: [
       {
-        id: "suppliers",
-        label: "Proveedores",
-        path: "/app/sch/suppliers",
-        icon: "briefcase",
-      },
-      {
         id: "purchases",
         label: "Compras",
         path: "/app/sch/purchases",
@@ -211,6 +213,12 @@ export const MODULES: Record<ModuleId, Module> = {
         label: "Cuentas por pagar",
         path: "/app/sch/payables",
         icon: "credit-card",
+      },
+      {
+        id: "suppliers",
+        label: "Proveedores",
+        path: "/app/sch/suppliers",
+        icon: "briefcase",
       },
       {
         id: "analytics",
@@ -253,6 +261,12 @@ export const MODULES: Record<ModuleId, Module> = {
         label: "Horarios",
         path: "/app/hr/attendance",
         icon: "calendar",
+      },
+      {
+        id: "amonestaciones",
+        label: "Amonestaciones",
+        path: "/app/hr/amonestaciones",
+        icon: "shield",
       },
     ],
   },

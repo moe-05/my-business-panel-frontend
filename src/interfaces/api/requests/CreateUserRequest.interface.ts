@@ -13,7 +13,8 @@ export interface EmployeeInfo {
   branch_id: string;
   first_name: string;
   last_name: string;
-  document_number: string;
+  doc_number: string;
+  identification_type_id: number;
   phone: string;
   email: string;
   payment_schedule_id: number;

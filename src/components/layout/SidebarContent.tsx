@@ -11,6 +11,7 @@ import {
   IconMapPin,
   IconPackage,
   IconSettings,
+  IconShield,
   IconShoppingCart,
   IconTrendingUp,
   IconUser,
@@ -37,6 +38,7 @@ function getIconByName(iconName: string): ReactNode {
     building: <IconBuilding />,
     "map-pin": <IconMapPin />,
     contact: <IconContact />,
+    shield: <IconShield />,
   };
 
   return iconMap[iconName] || <IconGrid />;

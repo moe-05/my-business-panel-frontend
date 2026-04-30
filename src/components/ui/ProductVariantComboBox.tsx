@@ -232,7 +232,7 @@ export function ProductVariantComboBox({
             </p>
           </div>
 
-          <ul className="max-h-60 overflow-y-auto">
+          <ul className="max-h-80 overflow-y-auto">
             {isLoading ? (
               <li className="flex items-center justify-center py-6">
                 <div className="w-5 h-5 border-2 border-accent-200 border-t-accent-500 rounded-full animate-spin" />

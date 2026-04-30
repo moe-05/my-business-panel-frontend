@@ -28,6 +28,31 @@ export const tenantApi = {
     }
   },
 
+  /**
+   * Sondeo público (sin sesión) usado por el onboarding para avisar
+   * conflictos antes del submit. La constraint UNIQUE de la BD sigue
+   * siendo la fuente de verdad final.
+   */
+  async checkOnboardingAvailability(params: {
+    field: "email" | "doc_number" | "tenant_identification" | "tenant_name";
+    value: string;
+  }): Promise<{ exists: boolean }> {
+    const search = new URLSearchParams({
+      field: params.field,
+      value: params.value,
+    });
+    const response = await fetch(
+      `${url}/tenant/availability?${search.toString()}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    if (!response.ok) return { exists: false };
+    const json: ApiResponse<{ exists: boolean }> = await response.json();
+    return json.data ?? { exists: false };
+  },
+
   async onboard(data: OnboardingRequest): Promise<OnboardingResponse> {
     const response = await fetch(`${url}/tenant`, {
       method: "POST",

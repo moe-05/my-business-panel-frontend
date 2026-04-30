@@ -6,9 +6,7 @@ import {
   createWarehouse,
   updateWarehouse,
   deleteWarehouse,
-  createBranchWithSalesFloor,
 } from "@/router/actions/warehouse.actions";
-import { warehouseApi } from "@/api/warehouse.api";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -32,11 +30,6 @@ const initialFormState: WarehouseFormState = {
   branch_id: "",
   warehouse_name: "",
   warehouse_address: "",
-  is_branch: false,
-  branch_name: "",
-  branch_number: "",
-  branch_address: "",
-  branch_is_main: false,
 };
 
 export function WarehousesPage() {
@@ -81,11 +74,9 @@ export function WarehousesPage() {
   const handleEdit = (w: Warehouse) => {
     setEditing(w);
     setFormData({
-      ...initialFormState,
       branch_id: w.branch_id,
       warehouse_name: w.warehouse_name,
       warehouse_address: w.warehouse_address,
-      is_branch: w.is_branch,
     });
     setFormErrors({});
     setIsModalOpen(true);
@@ -93,19 +84,12 @@ export function WarehousesPage() {
 
   const validate = (): boolean => {
     const errors: WarehouseFormErrors = {};
-    if (formData.is_branch && !editing) {
-      if (!formData.branch_name.trim())
-        errors.branch_name = "El nombre de la sucursal es requerido";
-      if (!formData.branch_number.trim())
-        errors.branch_number = "El número de sucursal es requerido";
-    } else {
-      if (!editing && !formData.branch_id)
-        errors.branch_id = "Selecciona una sucursal";
-      if (!formData.warehouse_name.trim())
-        errors.warehouse_name = "El nombre del almacén es requerido";
-      if (!formData.warehouse_address.trim())
-        errors.warehouse_address = "La dirección del almacén es requerida";
-    }
+    if (!editing && !formData.branch_id)
+      errors.branch_id = "Selecciona una sucursal";
+    if (!formData.warehouse_name.trim())
+      errors.warehouse_name = "El nombre de la bodega es requerido";
+    if (!formData.warehouse_address.trim())
+      errors.warehouse_address = "La dirección de la bodega es requerida";
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -117,57 +101,35 @@ export function WarehousesPage() {
 
     try {
       if (editing) {
+        // Sales-floor warehouses keep their is_branch flag — we never expose
+        // a way to toggle it from this page.
         const updated = await updateWarehouse(editing.warehouse_id, {
           warehouse_name: formData.warehouse_name,
           warehouse_address: formData.warehouse_address,
-          is_branch: formData.is_branch,
         });
         setWarehouses((prev) =>
           prev.map((w) =>
             w.warehouse_id === editing.warehouse_id ? { ...w, ...updated } : w,
           ),
         );
-        setToast({ mode: "success", message: "Almacén actualizado" });
-      } else if (formData.is_branch) {
-        if (!tenantId) throw new Error("Tenant no disponible para esta sesión");
-
-        const { warehouse } = await createBranchWithSalesFloor({
-          branch: {
-            tenant_id: tenantId,
-            branch_name: formData.branch_name,
-            branch_number: formData.branch_number,
-            branch_address: formData.branch_address,
-            is_main_branch: formData.branch_is_main,
-          },
-          warehouse: { warehouse_address: formData.branch_address },
-        });
-
-        const refreshed = await warehouseApi.listByTenant();
-        setWarehouses(refreshed);
-        setToast({
-          mode: "success",
-          message: warehouse
-            ? "Sucursal y piso de venta creados"
-            : "Sucursal creada (verifica el almacén asociado)",
-        });
+        setToast({ mode: "success", message: "Bodega actualizada" });
       } else {
         const created = await createWarehouse({
           branch_id: formData.branch_id,
           warehouse_name: formData.warehouse_name,
           warehouse_address: formData.warehouse_address,
-          is_branch: false,
         });
         const branch = branches.find((b) => b.branch_id === created.branch_id);
         setWarehouses((prev) => [
           { ...created, branch_name: branch?.branch_name },
           ...prev,
         ]);
-        setToast({ mode: "success", message: "Almacén creado" });
+        setToast({ mode: "success", message: "Bodega creada" });
       }
       closeModal();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Error al guardar almacén";
+        error instanceof Error ? error.message : "Error al guardar bodega";
       setToast({ mode: "error", message });
     } finally {
       setIsSubmitting(false);
@@ -175,9 +137,17 @@ export function WarehousesPage() {
   };
 
   const handleDelete = async (warehouse: Warehouse) => {
+    if (warehouse.is_branch) {
+      setToast({
+        mode: "error",
+        message:
+          "No se puede eliminar el piso de venta. Elimina la sucursal asociada en el módulo de Sucursales.",
+      });
+      return;
+    }
     if (
       !confirm(
-        `¿Eliminar el almacén "${warehouse.warehouse_name}"? Esta acción es irreversible.`,
+        `¿Eliminar la bodega "${warehouse.warehouse_name}"? Esta acción es irreversible.`,
       )
     )
       return;
@@ -189,11 +159,11 @@ export function WarehousesPage() {
 
     try {
       await deleteWarehouse(warehouse.warehouse_id);
-      setToast({ mode: "success", message: "Almacén eliminado" });
+      setToast({ mode: "success", message: "Bodega eliminada" });
     } catch (error) {
       setWarehouses(snapshot);
       const message =
-        error instanceof Error ? error.message : "Error al eliminar almacén";
+        error instanceof Error ? error.message : "Error al eliminar bodega";
       setToast({ mode: "error", message });
     }
   };
@@ -206,7 +176,7 @@ export function WarehousesPage() {
         const result = await branchApi.listByTenant(tenantId, 1, 200);
         setBranches(result.branches ?? []);
       } catch {
-        // silent: el formulario seguirá pidiendo branch
+        // silent: el formulario seguirá pidiendo sucursal
       }
     }
   };
@@ -224,7 +194,9 @@ export function WarehousesPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Almacenes</h1>
         <p className="text-gray-600">
-          Gestiona bodegas y pisos de venta del tenant
+          Bodegas auxiliares por sucursal. Los pisos de venta se generan
+          automáticamente al crear cada sucursal y se administran desde el
+          módulo de Sucursales.
         </p>
       </div>
 
@@ -246,7 +218,7 @@ export function WarehousesPage() {
             </span>
             <Button variant="primary" size="md" onClick={handleOpenCreate}>
               <IconPlus />
-              Nuevo Almacén
+              Nueva bodega
             </Button>
           </div>
         </div>
@@ -285,15 +257,24 @@ export function WarehousesPage() {
                 >
                   <Button
                     onClick={() => handleEdit(row)}
-                    title="Editar"
+                    title={
+                      row.is_branch
+                        ? "Editar piso de venta"
+                        : "Editar bodega"
+                    }
                     variant="ghost"
                   >
                     <IconEdit />
                   </Button>
                   <Button
                     onClick={() => handleDelete(row)}
-                    title="Eliminar"
+                    title={
+                      row.is_branch
+                        ? "El piso de venta se elimina junto con la sucursal"
+                        : "Eliminar bodega"
+                    }
                     variant="danger"
+                    disabled={row.is_branch}
                   >
                     <IconTrash />
                   </Button>
@@ -309,6 +290,7 @@ export function WarehousesPage() {
       <WarehouseUpsertModal
         isOpen={isModalOpen}
         isEditing={!!editing}
+        isSalesFloor={editing?.is_branch === true}
         formData={formData}
         formErrors={formErrors}
         branches={branches}

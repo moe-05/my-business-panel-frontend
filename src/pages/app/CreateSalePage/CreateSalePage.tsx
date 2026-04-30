@@ -31,8 +31,13 @@ import {
   getOpenCashSessionsByBranch,
 } from "@/router/actions/cashRegister.actions";
 
+import { customerApi } from "@/api/customer.api";
+import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
+
 import { identificationTypes } from "@/constants/identification-types";
 import { paymentMethods, currencies } from "@/constants/payment-methods";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 import type { CreateSalePageLoaderData } from "@/router/loaders/sale.loaders";
 import type { Customer } from "@/interfaces/entities/Customer.interface";
@@ -117,6 +122,10 @@ export function CreateSalePage() {
   const [step, setStep] = useState<"lookup" | "items">("lookup");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [showInlineCreate, setShowInlineCreate] = useState(false);
+  // Walk-in / counter sale: no customer attached. The DB columns
+  // (sale.tenant_customer_id and customer_payment.tenant_customer_id) are
+  // nullable, so we send null for those rows.
+  const [isWalkInSale, setIsWalkInSale] = useState(false);
 
   const [items, setItems] = useState<CartItem[]>([]);
   const [lastItemAmount, setLastItemAmount] = useState(0);
@@ -155,6 +164,85 @@ export function CreateSalePage() {
     resolver: zodResolver(inlineCustomerSchema),
     defaultValues: blankCustomer(),
   });
+
+  // Live uniqueness probes for the inline-creation flow. We only fire them
+  // while the inline section is open and a tenant is known.
+  const inlineDoc = inlineCustomerForm.watch("document_number") ?? "";
+  const inlineEmail = inlineCustomerForm.watch("email") ?? "";
+  const inlinePhone = inlineCustomerForm.watch("phone") ?? "";
+
+  const checkInlineDoc = useCallback(
+    async (value: string) => {
+      if (!tenantId) return false;
+      const { exists } = await customerApi.checkAvailability({
+        tenantId,
+        field: "document_number",
+        value,
+      });
+      return exists;
+    },
+    [tenantId],
+  );
+
+  const checkInlineEmail = useCallback(
+    async (value: string) => {
+      if (!tenantId) return false;
+      const { exists } = await customerApi.checkAvailability({
+        tenantId,
+        field: "email",
+        value,
+      });
+      return exists;
+    },
+    [tenantId],
+  );
+
+  const checkInlinePhone = useCallback(
+    async (value: string) => {
+      if (!tenantId) return false;
+      const { exists } = await customerApi.checkAvailability({
+        tenantId,
+        field: "phone",
+        value,
+      });
+      return exists;
+    },
+    [tenantId],
+  );
+
+  const inlineDocStatus = useUniqueAvailability(inlineDoc, checkInlineDoc, {
+    skip: !showInlineCreate || !tenantId,
+    minLength: 3,
+  });
+
+  const inlineEmailStatus = useUniqueAvailability(
+    inlineEmail,
+    checkInlineEmail,
+    {
+      skip: !showInlineCreate || !tenantId || !inlineEmail,
+      minLength: 5,
+      isWellFormed: (value) => EMAIL_REGEX.test(value),
+    },
+  );
+
+  const inlinePhoneStatus = useUniqueAvailability(
+    inlinePhone,
+    checkInlinePhone,
+    {
+      skip: !showInlineCreate || !tenantId || !inlinePhone,
+      minLength: 5,
+    },
+  );
+
+  const inlineUniquenessBlocked =
+    inlineDocStatus === "taken" ||
+    inlineEmailStatus === "taken" ||
+    inlinePhoneStatus === "taken";
+
+  const inlineUniquenessProbing =
+    inlineDocStatus === "checking" ||
+    inlineEmailStatus === "checking" ||
+    inlinePhoneStatus === "checking";
 
   const itemForm = useForm<SaleItemForm>({
     resolver: zodResolver(saleItemSchema),
@@ -266,12 +354,26 @@ export function CreateSalePage() {
       setToast({ mode: "error", message: "No se identificó el tenant" });
       return;
     }
+    if (inlineUniquenessBlocked) {
+      setToast({
+        mode: "error",
+        message: "Hay datos del cliente que ya están registrados",
+      });
+      return;
+    }
+    if (inlineUniquenessProbing) {
+      setToast({
+        mode: "info",
+        message: "Verificando disponibilidad… intenta de nuevo en un momento",
+      });
+      return;
+    }
     try {
       const created = await createCustomer({
         tenant_id: tenantId,
         first_name: data.first_name,
         last_name: data.last_name,
-        identification_type: Number(data.document_type_id),
+        document_type_id: Number(data.document_type_id),
         document_number: data.document_number,
         email: data.email || undefined,
         phone: data.phone || undefined,
@@ -352,7 +454,8 @@ export function CreateSalePage() {
   // ─── Submit ─────────────────────────────────────────────────────────────────
 
   const handleSubmitSale = async () => {
-    if (!customer || !branchId || !cashRegisterId || items.length === 0) {
+    const hasCustomerOrWalkIn = Boolean(customer) || isWalkInSale;
+    if (!hasCustomerOrWalkIn || !branchId || !cashRegisterId || items.length === 0) {
       setToast({
         mode: "error",
         message: "Complete los datos antes de procesar la venta",
@@ -362,7 +465,7 @@ export function CreateSalePage() {
 
     setIsSubmitting(true);
 
-    const customerId = customer.customer_id;
+    const customerId = customer?.customer_id ?? null;
     const now = new Date().toISOString();
 
     const itemsPayload: SaleItemPayload[] = items.map((item) => {
@@ -408,7 +511,7 @@ export function CreateSalePage() {
       items: itemsPayload,
       payments: [
         {
-          tenant_customer_id: customerId,
+          tenant_customer_id: customerId ?? null,
           payment_method_id: paymentMethodId,
           is_points_redemption: false,
           points_redeemed: 0,
@@ -446,6 +549,7 @@ export function CreateSalePage() {
     setStep("lookup");
     setCustomer(null);
     setShowInlineCreate(false);
+    setIsWalkInSale(false);
     setItems([]);
     setLastItemAmount(0);
     setHasElectronicInvoice(false);
@@ -457,6 +561,17 @@ export function CreateSalePage() {
       product_variant_id: "",
       quantity: 1,
       unit_price: 0,
+    });
+  };
+
+  const startWalkInSale = () => {
+    setIsWalkInSale(true);
+    setShowInlineCreate(false);
+    setStep("items");
+    setToast({
+      mode: "info",
+      message:
+        "Venta de mostrador (sin cliente). Los puntos de fidelidad no aplican.",
     });
   };
 
@@ -626,26 +741,70 @@ export function CreateSalePage() {
               Listo
             </Badge>
           )}
+          {isWalkInSale && step === "items" && (
+            <Badge variant="yellow" className="ml-2">
+              Venta de mostrador
+            </Badge>
+          )}
         </div>
 
-        {!customer && (
-          <form
-            onSubmit={lookupForm.handleSubmit(handleLookup)}
-            className="flex flex-col md:flex-row md:items-end gap-3"
-          >
-            <div className="flex-1">
-              <Input
-                label="Número de documento"
-                placeholder="Ej: 105550987"
-                {...lookupForm.register("document_number")}
-                error={lookupForm.formState.errors.document_number?.message}
-                required
-              />
+        {!customer && !isWalkInSale && (
+          <>
+            <form
+              onSubmit={lookupForm.handleSubmit(handleLookup)}
+              className="flex flex-col md:flex-row md:items-end gap-3"
+            >
+              <div className="flex-1">
+                <Input
+                  label="Número de documento"
+                  placeholder="Ej: 105550987"
+                  {...lookupForm.register("document_number")}
+                  error={lookupForm.formState.errors.document_number?.message}
+                  required
+                />
+              </div>
+              <Button type="submit" variant="primary">
+                Buscar cliente
+              </Button>
+            </form>
+            <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between text-sm">
+              <p className="text-gray-500">
+                ¿Cliente ocasional o no identificado? Puedes registrar la venta
+                sin asociarla a un cliente.
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={startWalkInSale}
+              >
+                Continuar sin cliente
+              </Button>
             </div>
-            <Button type="submit" variant="primary">
-              Buscar cliente
+          </>
+        )}
+
+        {isWalkInSale && !customer && (
+          <div className="mt-2 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <IconUser />
+            <div className="flex-1">
+              <p className="font-semibold text-amber-900">
+                Venta de mostrador
+              </p>
+              <p className="text-xs text-amber-700">
+                No se asociará ningún cliente a esta venta.
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setIsWalkInSale(false);
+                setStep("lookup");
+              }}
+            >
+              Cambiar
             </Button>
-          </form>
+          </div>
         )}
 
         {showInlineCreate && !customer && (
@@ -684,7 +843,17 @@ export function CreateSalePage() {
               label="Número de documento"
               {...inlineCustomerForm.register("document_number")}
               error={
-                inlineCustomerForm.formState.errors.document_number?.message
+                inlineCustomerForm.formState.errors.document_number?.message ??
+                (inlineDocStatus === "taken"
+                  ? "Ya existe un cliente con este documento"
+                  : undefined)
+              }
+              hint={
+                inlineDocStatus === "checking"
+                  ? "Verificando disponibilidad…"
+                  : inlineDocStatus === "available"
+                    ? "Documento disponible"
+                    : undefined
               }
               required
             />
@@ -692,9 +861,36 @@ export function CreateSalePage() {
               label="Email"
               type="email"
               {...inlineCustomerForm.register("email")}
-              error={inlineCustomerForm.formState.errors.email?.message}
+              error={
+                inlineCustomerForm.formState.errors.email?.message ??
+                (inlineEmailStatus === "taken"
+                  ? "Ya existe un cliente con este email"
+                  : undefined)
+              }
+              hint={
+                inlineEmailStatus === "checking"
+                  ? "Verificando disponibilidad…"
+                  : inlineEmailStatus === "available"
+                    ? "Email disponible"
+                    : undefined
+              }
             />
-            <Input label="Teléfono" {...inlineCustomerForm.register("phone")} />
+            <Input
+              label="Teléfono"
+              {...inlineCustomerForm.register("phone")}
+              error={
+                inlinePhoneStatus === "taken"
+                  ? "Ya existe un cliente con este teléfono"
+                  : undefined
+              }
+              hint={
+                inlinePhoneStatus === "checking"
+                  ? "Verificando disponibilidad…"
+                  : inlinePhoneStatus === "available"
+                    ? "Teléfono disponible"
+                    : undefined
+              }
+            />
             <div className="md:col-span-2 flex justify-end gap-2 pt-2">
               <Button
                 type="button"
@@ -703,7 +899,18 @@ export function CreateSalePage() {
               >
                 Cancelar
               </Button>
-              <Button type="submit" variant="primary">
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={inlineUniquenessBlocked || inlineUniquenessProbing}
+                title={
+                  inlineUniquenessBlocked
+                    ? "Hay datos duplicados que deben corregirse"
+                    : inlineUniquenessProbing
+                      ? "Verificando disponibilidad…"
+                      : undefined
+                }
+              >
                 <IconPlus />
                 Crear cliente y continuar
               </Button>
@@ -922,7 +1129,7 @@ export function CreateSalePage() {
             onClick={handleSubmitSale}
             loading={isSubmitting}
             disabled={
-              !customer ||
+              (!customer && !isWalkInSale) ||
               items.length === 0 ||
               !branchId ||
               !cashRegisterId ||

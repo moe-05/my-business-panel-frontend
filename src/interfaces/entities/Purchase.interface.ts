@@ -19,6 +19,20 @@ export interface PurchaseOrderItem {
   quantity_ordered: number;
   unit_price: NumericLike;
   line_total?: NumericLike;
+  /** Total units of this variant sold across all time (completed sales only). */
+  sales_quantity_lifetime?: NumericLike;
+  /** Gross revenue from this variant across all time. */
+  sales_revenue_lifetime?: NumericLike;
+  /** Units sold of this variant in the last 30 days (current rotation). */
+  sales_quantity_30d?: NumericLike;
+  /** Revenue from the last 30 days. */
+  sales_revenue_30d?: NumericLike;
+  /** Units sold since this purchase order was placed. */
+  sales_quantity_since_po?: NumericLike;
+  /** Revenue since this purchase order was placed. */
+  sales_revenue_since_po?: NumericLike;
+  /** Date of the most recent completed sale of this variant, if any. */
+  last_sold_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }

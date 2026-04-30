@@ -143,7 +143,7 @@ export function CustomersPage() {
       tenant_id: data.tenant_id,
       first_name: data.first_name,
       last_name: data.last_name,
-      identification_type: data.identification_type,
+      identification_type: data.document_type_id,
       document_number: data.document_number,
       birthdate: data.birthdate,
       econ_activity: data.economic_activity,

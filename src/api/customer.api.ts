@@ -99,6 +99,39 @@ export const customerApi = {
     }
   },
 
+  async checkAvailability(params: {
+    tenantId: string;
+    field: "document_number" | "email" | "phone";
+    value: string;
+    excludeId?: string;
+  }): Promise<{ exists: boolean }> {
+    const search = new URLSearchParams({
+      tenant_id: params.tenantId,
+      field: params.field,
+      value: params.value,
+    });
+    if (params.excludeId) search.set("exclude_id", params.excludeId);
+
+    const response = await fetch(
+      `${url}/customers/availability?${search.toString()}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+
+    if (!response.ok) {
+      // If the probe itself fails, fall back to "not taken" so the user is
+      // not blocked. The unique constraint at the DB level remains the source
+      // of truth on submit.
+      return { exists: false };
+    }
+
+    const json: ApiResponse<{ exists: boolean }> = await response.json();
+    return json.data ?? { exists: false };
+  },
+
   async getByDocNumber(docNumber: string): Promise<Customer> {
     const response = await fetch(`${url}/customers/doc/${docNumber}`, {
       method: "GET",
