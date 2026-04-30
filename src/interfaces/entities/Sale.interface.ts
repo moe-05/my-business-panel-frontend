@@ -32,7 +32,8 @@ export interface SaleItemPayload {
 }
 
 export interface SalePaymentPayload {
-  tenant_customer_id: string;
+  /** Optional: walk-in / anonymous sales record payments without a customer. */
+  tenant_customer_id?: string | null;
   payment_method_id: number;
   is_points_redemption: boolean;
   points_redeemed: number;

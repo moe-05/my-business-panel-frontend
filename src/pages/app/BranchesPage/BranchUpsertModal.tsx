@@ -132,6 +132,18 @@ export function BranchUpsertModal({
           }
         />
 
+        {!isEditing && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900">
+            <p className="font-semibold">Piso de venta automático</p>
+            <p className="mt-1">
+              Al crear esta sucursal se generará su piso de venta como
+              almacén principal usando los datos ingresados arriba. Si
+              necesitas bodegas auxiliares adicionales, regístralas más
+              tarde desde el módulo de Almacenes.
+            </p>
+          </div>
+        )}
+
         <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <input
             type="checkbox"

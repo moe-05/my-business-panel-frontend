@@ -2,7 +2,7 @@ export interface CreateCustomerRequest {
   tenant_id: string;
   first_name: string;
   last_name: string;
-  identification_type: number;
+  document_type_id: number;
   document_number: string;
   birthdate?: string;
   economic_activity?: string;

@@ -24,6 +24,7 @@ import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface"
 
 import { ProductDetailModal } from "./ProductDetailModal";
 import { ProductUpsertModal } from "./ProductUpsertModal";
+import { BulkPackageModal } from "./BulkPackageModal";
 
 const LIMIT = 100;
 
@@ -67,6 +68,7 @@ export function ProductsPage() {
     open: false,
     mode: "create",
   });
+  const [isBulkPackageOpen, setIsBulkPackageOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const [toast, setToast] = useState<{
@@ -220,15 +222,27 @@ export function ProductsPage() {
               {total} producto{total !== 1 ? "s" : ""}
             </span>
             {canManageProducts && (
-              <Button
-                variant="primary"
-                size="md"
-                onClick={openCreate}
-                className="w-full lg:w-auto"
-              >
-                <IconPlus />
-                Nuevo Producto
-              </Button>
+              <>
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setIsBulkPackageOpen(true)}
+                  className="w-full lg:w-auto"
+                  title="Crear un lote y todas sus unidades en una sola operación"
+                >
+                  <IconPlus />
+                  Crear lote
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={openCreate}
+                  className="w-full lg:w-auto"
+                >
+                  <IconPlus />
+                  Nuevo Producto
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -283,7 +297,7 @@ export function ProductsPage() {
               label: "Creado",
               width: "10%",
               render: (date: unknown) =>
-                new Date(String(date)).toLocaleDateString("es-CR"),
+                date ? new Date(String(date)).toLocaleDateString("es-CR") : "—",
             },
             ...(canManageProducts
               ? [
@@ -363,6 +377,19 @@ export function ProductsPage() {
         onClose={closeModal}
         onCreate={handleCreateProduct}
         onUpdate={handleUpdateProduct}
+      />
+
+      <BulkPackageModal
+        isOpen={isBulkPackageOpen}
+        tenantId={currentUser?.tenant.tenant_id ?? ""}
+        onClose={() => setIsBulkPackageOpen(false)}
+        onCreated={() => {
+          setIsBulkPackageOpen(false);
+          setToast({
+            mode: "success",
+            message: "Lote creado. Recarga la página para verlo en la lista.",
+          });
+        }}
       />
     </div>
   );

@@ -6,7 +6,40 @@ import type { UpdateProductRequest } from "@/interfaces/api/requests/UpdateProdu
 import type { Product } from "@/interfaces/entities/Product.interface";
 import type { ProductsListResponse } from "@/interfaces/api/responses/ProductsListResponse.interface";
 
+export interface BulkProductInput {
+  tenant_id: string;
+  sku: string;
+  variant_name: string;
+  cabys_code?: string | null;
+  unit_price: number;
+  cost_price?: number;
+  attribute_value_ids?: string[];
+  group_ids?: string[];
+}
+
 export const productApi = {
+  async createBulk(
+    products: BulkProductInput[],
+  ): Promise<Array<{ product_variant_id: string }>> {
+    const response = await fetch(`${url}/product`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ products }),
+    });
+
+    const json = await response.json();
+    if (!response.ok) {
+      const msg = Array.isArray(json.message)
+        ? json.message[0]
+        : (json.message ?? `Error ${response.status}`);
+      throw new Error(msg);
+    }
+
+    const created = json.data?.product ?? [];
+    return created as Array<{ product_variant_id: string }>;
+  },
+
   async create(data: CreateProductRequest): Promise<{ product_variant_id: string }> {
     try {
       const response = await fetch(`${url}/product`, {
@@ -21,6 +54,7 @@ export const productApi = {
               variant_name: data.product_name,
               cabys_code: data.cabys_code ?? null,
               unit_price: data.price,
+              cost_price: data.cost_price ?? 0,
               attribute_value_ids: data.attribute_value_ids ?? [],
               group_ids: data.group_ids ?? [],
             },

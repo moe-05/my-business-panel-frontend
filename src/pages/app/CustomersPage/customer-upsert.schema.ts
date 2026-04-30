@@ -3,7 +3,7 @@ import { z } from "zod";
 const baseCustomerUpsertSchema = z.object({
   first_name: z.string().min(1, "Nombre es requerido"),
   last_name: z.string().min(1, "Apellido es requerido"),
-  identification_type: z.number().int().min(1, "Tipo de documento es requerido"),
+  document_type_id: z.number().int().min(1, "Tipo de documento es requerido"),
   document_number: z.string().min(1, "Número de documento es requerido"),
   birthdate: z.string().optional().or(z.literal("")),
   economic_activity: z

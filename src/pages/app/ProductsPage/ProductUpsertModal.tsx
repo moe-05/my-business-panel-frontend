@@ -34,6 +34,7 @@ import {
 type ProductWithVariant = Product & {
   variant_name?: string;
   unit_price?: number;
+  cost_price?: number;
   product_variant_id?: string;
   is_composite?: boolean;
 };
@@ -96,6 +97,10 @@ export function ProductUpsertModal({
             category_id: product.category_id ?? "",
             category_name: product.category?.category_name ?? "",
             price: String(product.unit_price ?? product.price ?? ""),
+            cost_price:
+              product.cost_price !== undefined && product.cost_price !== null
+                ? String(product.cost_price)
+                : "",
             tenant_id: "",
           }
         : {
@@ -105,6 +110,7 @@ export function ProductUpsertModal({
             category_id: "",
             category_name: "",
             price: "",
+            cost_price: "",
             tenant_id: "",
           },
   });
@@ -128,6 +134,10 @@ export function ProductUpsertModal({
             category_id: product.category_id ?? "",
             category_name: product.category?.category_name ?? "",
             price: String(product.unit_price ?? product.price ?? ""),
+            cost_price:
+              product.cost_price !== undefined && product.cost_price !== null
+                ? String(product.cost_price)
+                : "",
             tenant_id: "",
           }
         : {
@@ -137,6 +147,7 @@ export function ProductUpsertModal({
             category_id: "",
             category_name: "",
             price: "",
+            cost_price: "",
             tenant_id: "",
           },
     );
@@ -232,6 +243,10 @@ export function ProductUpsertModal({
   const onSubmit = async (data: ProductUpsertFormData) => {
     setSaveError(null);
     const price = parseFloat(data.price);
+    const costPrice =
+      data.cost_price && data.cost_price !== ""
+        ? parseFloat(data.cost_price)
+        : undefined;
     const tenantId = isSuperAdmin
       ? data.tenant_id || currentTenantId
       : currentTenantId;
@@ -249,6 +264,7 @@ export function ProductUpsertModal({
           description: data.description || undefined,
           category_id: data.category_id,
           price,
+          cost_price: costPrice,
           attribute_value_ids,
           group_ids: groupIds,
         });
@@ -261,6 +277,7 @@ export function ProductUpsertModal({
           description: data.description || undefined,
           category_id: data.category_id,
           price,
+          cost_price: costPrice,
           cabys_code: data.category_id,
           attribute_value_ids,
           group_ids: groupIds,
@@ -371,6 +388,19 @@ export function ProductUpsertModal({
             />
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Costo unitario"
+              type="number"
+              placeholder="Ej: 12000.00"
+              step="0.01"
+              min="0"
+              hint="Costo de adquisición. Se actualiza al recibir compras."
+              error={errors.cost_price?.message}
+              {...register("cost_price")}
+            />
+          </div>
+
           <Input
             label="Nombre del Producto"
             placeholder="Ej: Laptop Dell XPS 13"
@@ -454,18 +484,28 @@ export function ProductUpsertModal({
         </section>
 
         {/* ─── Composition / Lote ───────────────────── */}
-        <section className="space-y-2">
-          <header className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900">
+        <section
+          className={[
+            "space-y-5 rounded-2xl border border-gray-200 bg-white p-5 transition-colors",
+            isComposite ? "border-accent-200 bg-accent-50/30" : "",
+          ].join(" ")}
+        >
+          <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="md:max-w-xl">
+              <h3 className="text-base font-semibold text-gray-900">
                 Es un lote / compuesto
               </h3>
-              <p className="text-xs text-gray-500">
-                Activa para definir un producto que se desglosa en otros (ej.
-                six-pack → 6 botellas, lote → 12 camisas).
+              <p className="mt-1 text-sm text-gray-500">
+                Activa esta opción para definir un producto que se desglosa en
+                otros (por ejemplo: six-pack → 6 botellas, lote → 12 camisas).
+                Cuando llega una compra del padre, el inventario se reparte
+                automáticamente entre los componentes.
               </p>
             </div>
-            <label className="inline-flex items-center cursor-pointer">
+            <label className="inline-flex items-center gap-3 cursor-pointer self-start md:self-center">
+              <span className="text-sm font-medium text-gray-700">
+                {isComposite ? "Activado" : "Desactivado"}
+              </span>
               <input
                 type="checkbox"
                 checked={isComposite}
@@ -473,11 +513,11 @@ export function ProductUpsertModal({
                 onChange={(e) => setIsComposite(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="relative w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-accent-500 transition-colors">
+              <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-accent-500 transition-colors">
                 <div
                   className={[
                     "absolute top-0.5 left-0.5 bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform",
-                    isComposite ? "translate-x-4" : "",
+                    isComposite ? "translate-x-5" : "",
                   ].join(" ")}
                 />
               </div>
@@ -485,17 +525,19 @@ export function ProductUpsertModal({
           </header>
 
           {isComposite && (
-            <CompositionEditor
-              tenantId={targetTenantId}
-              parentVariantId={
-                isEditing
-                  ? (product?.product_variant_id ?? product?.product_id)
-                  : undefined
-              }
-              rows={composition}
-              onChange={setComposition}
-              disabled={isSaving || !targetTenantId}
-            />
+            <div className="pt-2 border-t border-gray-100">
+              <CompositionEditor
+                tenantId={targetTenantId}
+                parentVariantId={
+                  isEditing
+                    ? (product?.product_variant_id ?? product?.product_id)
+                    : undefined
+                }
+                rows={composition}
+                onChange={setComposition}
+                disabled={isSaving || !targetTenantId}
+              />
+            </div>
           )}
         </section>
 

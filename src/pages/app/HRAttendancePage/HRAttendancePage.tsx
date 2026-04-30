@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router-dom";
 
 import { clockingApi } from "@/api/clocking.api";
-import { foulApi } from "@/api/foul.api";
 import { incapacityApi } from "@/api/incapacity.api";
-import { suspentionApi } from "@/api/suspention.api";
-import { tardinessApi } from "@/api/tardiness.api";
 import { turnsApi } from "@/api/turns.api";
 
 import { Badge } from "@/components/ui/Badge";
@@ -28,9 +25,7 @@ import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
 import type {
   HrClockingRecord,
-  HrFoulRecord,
   HrIncapacity,
-  HrSuspention,
   HrTurn,
 } from "@/interfaces/entities/Hr.interface";
 import type { HrAttendancePageLoaderData } from "@/router/loaders/hr.loaders";
@@ -46,13 +41,6 @@ export function HRAttendancePage() {
   );
   const [turns, setTurns] = useState(initialTurns);
   const [clockings, setClockings] = useState<HrClockingRecord[]>([]);
-  const [tardiness, setTardiness] = useState<
-    { type: string; log: string; registered_at: string }[]
-  >([]);
-  const [tardinessTotal, setTardinessTotal] = useState(0);
-  const [fouls, setFouls] = useState<HrFoulRecord[]>([]);
-  const [foulTotal, setFoulTotal] = useState(0);
-  const [suspentions, setSuspentions] = useState<HrSuspention[]>([]);
   const [incapacities, setIncapacities] = useState<HrIncapacity[]>([]);
   const [selectedTurn, setSelectedTurn] = useState<HrTurn | null>(null);
   const [turnModalOpen, setTurnModalOpen] = useState(false);
@@ -61,22 +49,6 @@ export function HRAttendancePage() {
     mode: ToastMode;
     message: string;
   } | null>(null);
-
-  const [foulEmployeeId, setFoulEmployeeId] = useState("");
-  const [foulDate, setFoulDate] = useState(new Date().toISOString().slice(0, 10));
-  const [foulHour, setFoulHour] = useState("08:00");
-  const [foulDescription, setFoulDescription] = useState("");
-  const [isSubmittingFoul, setIsSubmittingFoul] = useState(false);
-
-  const [suspentionEmployeeId, setSuspentionEmployeeId] = useState("");
-  const [suspentionStart, setSuspentionStart] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
-  const [suspentionEnd, setSuspentionEnd] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
-  const [suspentionReason, setSuspentionReason] = useState("");
-  const [isSubmittingSuspention, setIsSubmittingSuspention] = useState(false);
 
   const [incapacityEmployeeId, setIncapacityEmployeeId] = useState("");
   const [incapacityType, setIncapacityType] = useState("general");
@@ -124,21 +96,12 @@ export function HRAttendancePage() {
     setIsLoadingRecords(true);
 
     try {
-      const [clockingRows, tardinessSummary, foulSummary, branchSuspentions, branchIncapacities] =
-        await Promise.all([
-          clockingApi.listByBranch(branchId),
-          tardinessApi.getByBranch(branchId),
-          foulApi.getByBranch(branchId),
-          suspentionApi.getByBranch(branchId),
-          incapacityApi.getByBranch(branchId),
-        ]);
+      const [clockingRows, branchIncapacities] = await Promise.all([
+        clockingApi.listByBranch(branchId),
+        incapacityApi.getByBranch(branchId),
+      ]);
 
       setClockings(clockingRows);
-      setTardiness(tardinessSummary.tardiness ?? []);
-      setTardinessTotal(Number(tardinessSummary.totalCount ?? 0));
-      setFouls(foulSummary.fouls ?? []);
-      setFoulTotal(Number(foulSummary.totalFouls ?? 0));
-      setSuspentions(branchSuspentions);
       setIncapacities(branchIncapacities);
     } catch (error) {
       setToast({
@@ -162,22 +125,8 @@ export function HRAttendancePage() {
 
   useEffect(() => {
     if (!branchEmployees.length) {
-      setFoulEmployeeId("");
-      setSuspentionEmployeeId("");
       setIncapacityEmployeeId("");
       return;
-    }
-
-    if (!branchEmployees.some((employee) => employee.employee_id === foulEmployeeId)) {
-      setFoulEmployeeId(branchEmployees[0].employee_id);
-    }
-
-    if (
-      !branchEmployees.some(
-        (employee) => employee.employee_id === suspentionEmployeeId,
-      )
-    ) {
-      setSuspentionEmployeeId(branchEmployees[0].employee_id);
     }
 
     if (
@@ -187,12 +136,7 @@ export function HRAttendancePage() {
     ) {
       setIncapacityEmployeeId(branchEmployees[0].employee_id);
     }
-  }, [
-    branchEmployees,
-    foulEmployeeId,
-    incapacityEmployeeId,
-    suspentionEmployeeId,
-  ]);
+  }, [branchEmployees, incapacityEmployeeId]);
 
   const handleOpenCreateTurn = () => {
     setSelectedTurn(null);
@@ -251,87 +195,6 @@ export function HRAttendancePage() {
     }
   };
 
-  const handleRegisterFoul = async () => {
-    if (!selectedBranchId || !foulEmployeeId || !foulDescription.trim()) {
-      setToast({
-        mode: "error",
-        message: "Complete empleado, fecha, hora y descripción de la falta",
-      });
-      return;
-    }
-
-    setIsSubmittingFoul(true);
-
-    try {
-      await foulApi.create({
-        employee_id: foulEmployeeId,
-        branch_id: selectedBranchId,
-        identificator: `F-${foulEmployeeId.slice(0, 8)}-${Date.now()}`,
-        foul_date: foulDate,
-        foul_hour: foulHour,
-        description: foulDescription.trim(),
-      });
-      await loadBranchRecords(selectedBranchId);
-      setFoulDescription("");
-      setToast({
-        mode: "success",
-        message: "Falta registrada correctamente",
-      });
-    } catch (error) {
-      setToast({
-        mode: "error",
-        message:
-          error instanceof Error ? error.message : "No se pudo registrar la falta",
-      });
-    } finally {
-      setIsSubmittingFoul(false);
-    }
-  };
-
-  const handleRegisterSuspention = async () => {
-    if (
-      !selectedBranchId ||
-      !suspentionEmployeeId ||
-      !suspentionReason.trim() ||
-      !suspentionStart ||
-      !suspentionEnd
-    ) {
-      setToast({
-        mode: "error",
-        message: "Complete los datos de suspensión",
-      });
-      return;
-    }
-
-    setIsSubmittingSuspention(true);
-
-    try {
-      await suspentionApi.create({
-        employee_id: suspentionEmployeeId,
-        branchId: selectedBranchId,
-        suspentionStart: suspentionStart,
-        suspentionEnd: suspentionEnd,
-        reason: suspentionReason.trim(),
-      });
-      await loadBranchRecords(selectedBranchId);
-      setSuspentionReason("");
-      setToast({
-        mode: "success",
-        message: "Suspensión registrada correctamente",
-      });
-    } catch (error) {
-      setToast({
-        mode: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "No se pudo registrar la suspensión",
-      });
-    } finally {
-      setIsSubmittingSuspention(false);
-    }
-  };
-
   const handleRegisterIncapacity = async () => {
     if (
       !selectedBranchId ||
@@ -374,23 +237,6 @@ export function HRAttendancePage() {
       });
     } finally {
       setIsSubmittingIncapacity(false);
-    }
-  };
-
-  const handleCloseSuspention = async (suspentionId: number) => {
-    try {
-      await suspentionApi.close(suspentionId);
-      await loadBranchRecords(selectedBranchId);
-      setToast({
-        mode: "success",
-        message: "Suspensión cerrada correctamente",
-      });
-    } catch (error) {
-      setToast({
-        mode: "error",
-        message:
-          error instanceof Error ? error.message : "No se pudo cerrar la suspensión",
-      });
     }
   };
 
@@ -492,39 +338,6 @@ export function HRAttendancePage() {
     },
   ];
 
-  const tardinessColumns: Column[] = [
-    { key: "type", label: "Tipo", width: "14%" },
-    { key: "registered_at", label: "Fecha", width: "20%" },
-    { key: "log", label: "Registro", width: "66%" },
-  ];
-
-  const foulColumns: Column[] = [
-    { key: "identificator", label: "ID", width: "18%" },
-    { key: "foul_date", label: "Fecha", width: "18%" },
-    { key: "foul_hour", label: "Hora", width: "14%" },
-    { key: "description", label: "Descripción", width: "50%" },
-  ];
-
-  const suspentionColumns: Column[] = [
-    { key: "suspention_start", label: "Inicio", width: "18%" },
-    { key: "suspention_end", label: "Fin", width: "18%" },
-    { key: "reason", label: "Motivo", width: "48%" },
-    {
-      key: "actions",
-      label: "Acciones",
-      width: "16%",
-      render: (_value: unknown, row: HrSuspention) => (
-        <Button
-          type="button"
-          variant="warning"
-          onClick={() => handleCloseSuspention(row.suspention_id)}
-        >
-          Cerrar
-        </Button>
-      ),
-    },
-  ];
-
   const incapacityColumns: Column[] = [
     { key: "type", label: "Tipo", width: "16%" },
     { key: "period_start", label: "Inicio", width: "16%" },
@@ -560,8 +373,7 @@ export function HRAttendancePage() {
       <div className="mb-8">
         <h1 className="mb-2 text-3xl font-bold text-gray-900">Horarios</h1>
         <p className="text-gray-600">
-          Clocking automático, turnos, tardanzas y novedades que afectan la
-          nómina.
+          Clocking automático, turnos e incapacidades que afectan la nómina.
         </p>
       </div>
 
@@ -600,7 +412,7 @@ export function HRAttendancePage() {
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-4">
+      <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <StatCard
           label="Turnos"
           value={branchTurns.length}
@@ -615,16 +427,10 @@ export function HRAttendancePage() {
           icon={<IconUsers />}
         />
         <StatCard
-          label="Tardanzas"
-          value={tardinessTotal}
-          sublabel="Últimos 30 días"
+          label="Incapacidades activas"
+          value={incapacities.filter((inc) => inc.is_active).length}
+          sublabel={branchName}
           icon={<IconCalendar />}
-        />
-        <StatCard
-          label="Faltas"
-          value={foulTotal}
-          sublabel="Últimos 30 días"
-          icon={<IconUsers />}
         />
       </div>
 
@@ -669,207 +475,73 @@ export function HRAttendancePage() {
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="rounded-2xl border border-gray-300 bg-white p-6">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Registrar falta
-            </h2>
-            <p className="text-sm text-gray-500">
-              Estas faltas alimentan deducciones y reportes de conducta.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Select
-              label="Empleado"
-              value={foulEmployeeId}
-              onChange={(event) => setFoulEmployeeId(event.target.value)}
-              options={employeeOptions}
-            />
-            <Input
-              label="Fecha"
-              type="date"
-              value={foulDate}
-              onChange={(event) => setFoulDate(event.target.value)}
-            />
-            <Input
-              label="Hora"
-              type="time"
-              value={foulHour}
-              onChange={(event) => setFoulHour(event.target.value)}
-            />
-            <Input
-              label="Descripción"
-              value={foulDescription}
-              onChange={(event) => setFoulDescription(event.target.value)}
-            />
-          </div>
-
-          <div className="mt-4 flex justify-end">
-            <Button loading={isSubmittingFoul} onClick={handleRegisterFoul}>
-              Registrar falta
-            </Button>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-gray-300 bg-white p-6">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Tardanzas</h2>
-            <p className="text-sm text-gray-500">
-              Se generan automáticamente cuando el clocking cae fuera del turno.
-            </p>
-          </div>
-
-          <Table
-            columns={tardinessColumns}
-            data={tardiness}
-            isLoading={isLoadingRecords}
-            emptyMessage="No hay tardanzas registradas"
-          />
-        </div>
-      </div>
-
-      <div className="mb-6 rounded-2xl border border-gray-300 bg-white p-6">
+      <div className="rounded-2xl border border-gray-300 bg-white p-6">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Faltas</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Incapacidades
+          </h2>
           <p className="text-sm text-gray-500">
-            Historial reciente de fouls registrados manualmente.
+            Controle incapacidades vigentes para el cálculo de nómina.
           </p>
         </div>
 
-        <Table
-          columns={foulColumns}
-          data={fouls}
-          isLoading={isLoadingRecords}
-          emptyMessage="No hay faltas registradas"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="rounded-2xl border border-gray-300 bg-white p-6">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Suspensiones
-            </h2>
-            <p className="text-sm text-gray-500">
-              Registre periodos de suspensión que afecten pagos.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Select
-              label="Empleado"
-              value={suspentionEmployeeId}
-              onChange={(event) => setSuspentionEmployeeId(event.target.value)}
-              options={employeeOptions}
-            />
-            <Input
-              label="Motivo"
-              value={suspentionReason}
-              onChange={(event) => setSuspentionReason(event.target.value)}
-            />
-            <Input
-              label="Inicio"
-              type="date"
-              value={suspentionStart}
-              onChange={(event) => setSuspentionStart(event.target.value)}
-            />
-            <Input
-              label="Fin"
-              type="date"
-              value={suspentionEnd}
-              onChange={(event) => setSuspentionEnd(event.target.value)}
-            />
-          </div>
-
-          <div className="mt-4 flex justify-end">
-            <Button
-              loading={isSubmittingSuspention}
-              onClick={handleRegisterSuspention}
-            >
-              Registrar suspensión
-            </Button>
-          </div>
-
-          <div className="mt-6">
-            <Table
-              columns={suspentionColumns}
-              data={suspentions}
-              isLoading={isLoadingRecords}
-              emptyMessage="No hay suspensiones activas"
-            />
-          </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Select
+            label="Empleado"
+            value={incapacityEmployeeId}
+            onChange={(event) => setIncapacityEmployeeId(event.target.value)}
+            options={employeeOptions}
+          />
+          <Input
+            label="Tipo"
+            value={incapacityType}
+            onChange={(event) => setIncapacityType(event.target.value)}
+          />
+          <Input
+            label="Inicio"
+            type="date"
+            value={incapacityStart}
+            onChange={(event) => setIncapacityStart(event.target.value)}
+          />
+          <Input
+            label="Fin"
+            type="date"
+            value={incapacityEnd}
+            onChange={(event) => setIncapacityEnd(event.target.value)}
+          />
+          <Input
+            label="Días a pagar"
+            type="number"
+            min="0"
+            value={incapacityDays}
+            onChange={(event) => setIncapacityDays(event.target.value)}
+          />
+          <Input
+            label="% a pagar"
+            type="number"
+            min="0"
+            step="0.01"
+            value={incapacityPercent}
+            onChange={(event) => setIncapacityPercent(event.target.value)}
+          />
         </div>
 
-        <div className="rounded-2xl border border-gray-300 bg-white p-6">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Incapacidades
-            </h2>
-            <p className="text-sm text-gray-500">
-              Controle incapacidades vigentes para el cálculo de nómina.
-            </p>
-          </div>
+        <div className="mt-4 flex justify-end">
+          <Button
+            loading={isSubmittingIncapacity}
+            onClick={handleRegisterIncapacity}
+          >
+            Registrar incapacidad
+          </Button>
+        </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Select
-              label="Empleado"
-              value={incapacityEmployeeId}
-              onChange={(event) => setIncapacityEmployeeId(event.target.value)}
-              options={employeeOptions}
-            />
-            <Input
-              label="Tipo"
-              value={incapacityType}
-              onChange={(event) => setIncapacityType(event.target.value)}
-            />
-            <Input
-              label="Inicio"
-              type="date"
-              value={incapacityStart}
-              onChange={(event) => setIncapacityStart(event.target.value)}
-            />
-            <Input
-              label="Fin"
-              type="date"
-              value={incapacityEnd}
-              onChange={(event) => setIncapacityEnd(event.target.value)}
-            />
-            <Input
-              label="Días a pagar"
-              type="number"
-              min="0"
-              value={incapacityDays}
-              onChange={(event) => setIncapacityDays(event.target.value)}
-            />
-            <Input
-              label="% a pagar"
-              type="number"
-              min="0"
-              step="0.01"
-              value={incapacityPercent}
-              onChange={(event) => setIncapacityPercent(event.target.value)}
-            />
-          </div>
-
-          <div className="mt-4 flex justify-end">
-            <Button
-              loading={isSubmittingIncapacity}
-              onClick={handleRegisterIncapacity}
-            >
-              Registrar incapacidad
-            </Button>
-          </div>
-
-          <div className="mt-6">
-            <Table
-              columns={incapacityColumns}
-              data={incapacities}
-              isLoading={isLoadingRecords}
-              emptyMessage="No hay incapacidades activas"
-            />
-          </div>
+        <div className="mt-6">
+          <Table
+            columns={incapacityColumns}
+            data={incapacities}
+            isLoading={isLoadingRecords}
+            emptyMessage="No hay incapacidades activas"
+          />
         </div>
       </div>
 

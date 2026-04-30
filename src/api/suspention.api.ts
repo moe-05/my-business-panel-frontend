@@ -4,6 +4,7 @@ import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
 import type {
   CreateHrSuspentionPayload,
   HrSuspention,
+  UpdateHrSuspentionPayload,
 } from "@/interfaces/entities/Hr.interface";
 
 const buildError = async (response: Response, fallback: string) => {
@@ -29,6 +30,22 @@ export const suspentionApi = {
     return Array.isArray(json.data) ? json.data : [];
   },
 
+  async getByEmployee(employeeId: string): Promise<HrSuspention[]> {
+    const response = await fetch(`${url}/suspention/employee/${employeeId}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      await buildError(response, "Error al cargar suspensiones del empleado");
+    }
+
+    const json: ApiResponse<HrSuspention[] | { message: string }> =
+      await response.json();
+    return Array.isArray(json.data) ? json.data : [];
+  },
+
   async create(
     data: CreateHrSuspentionPayload,
   ): Promise<{ suspentionId: number }> {
@@ -45,6 +62,22 @@ export const suspentionApi = {
 
     const json: ApiResponse<{ suspentionId: number }> = await response.json();
     return json.data;
+  },
+
+  async update(
+    suspentionId: number,
+    data: UpdateHrSuspentionPayload,
+  ): Promise<void> {
+    const response = await fetch(`${url}/suspention/${suspentionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      await buildError(response, "Error al actualizar suspensión");
+    }
   },
 
   async close(suspentionId: number): Promise<void> {

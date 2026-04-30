@@ -204,6 +204,12 @@ export interface CreateHrSuspentionPayload {
   branchId: string;
 }
 
+export interface UpdateHrSuspentionPayload {
+  suspentionStart?: string;
+  suspentionEnd?: string;
+  reason?: string;
+}
+
 export interface CreateHrIncapacityPayload {
   employee_id: string;
   branch_id: string;

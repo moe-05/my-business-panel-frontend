@@ -29,6 +29,7 @@ import { PurchaseOrderDetailPanel } from "@/pages/app/SupplyChain/PurchaseOrderD
 import type {
   CreatePurchaseOrderRequest,
   CreatePurchaseOrderItemRequest,
+  CreatePurchasePaymentRequest,
 } from "@/interfaces/api/requests/PurchaseModuleRequests.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
 import type { Product } from "@/interfaces/entities/Product.interface";
@@ -334,6 +335,19 @@ export function PurchasesPage() {
       }
 
       return { ...prev, items };
+    });
+  };
+
+  const handleRegisterPayment = async (
+    payload: CreatePurchasePaymentRequest,
+  ) => {
+    const result = await purchaseApi.registerPayment(payload);
+    // Refresh the open detail and the row in the table.
+    setSelectedOrder(result.order);
+    updateOrderRow(result.order);
+    setToast({
+      mode: "success",
+      message: "Abono registrado correctamente",
     });
   };
 
@@ -844,6 +858,8 @@ export function PurchasesPage() {
             order={selectedOrder}
             matching={selectedMatching}
             showTenant={isSuperuser}
+            paymentMethods={canManage ? catalogs.payment_methods : undefined}
+            onRegisterPayment={canManage ? handleRegisterPayment : undefined}
           />
         )}
       </Modal>

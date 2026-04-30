@@ -157,3 +157,29 @@ export const getHrAttendancePageData =
       turns,
     };
   };
+
+export type HrAmonestacionesPageLoaderData = {
+  currentUser: CurrentUserResponse;
+  currentEmployee: IEmployeeDetail | null;
+  branches: Branch[];
+  employees: HrEmployeeRecord[];
+};
+
+export const getHrAmonestacionesPageData =
+  async (): Promise<HrAmonestacionesPageLoaderData> => {
+    const { currentUser, tenantId, branches } = await getCurrentTenantContext();
+
+    const [currentEmployee, employees] = await Promise.all([
+      currentUser.user_id
+        ? employeeApi.getByUserId(currentUser.user_id)
+        : Promise.resolve(null),
+      tenantId ? employeeApi.listByTenant(tenantId) : Promise.resolve([]),
+    ]);
+
+    return {
+      currentUser,
+      currentEmployee,
+      branches,
+      employees,
+    };
+  };

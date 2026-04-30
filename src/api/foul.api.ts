@@ -3,6 +3,7 @@ import { url } from ".";
 import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
 import type {
   CreateHrFoulPayload,
+  HrFoulRecord,
   HrFoulSummary,
 } from "@/interfaces/entities/Hr.interface";
 
@@ -26,6 +27,39 @@ export const foulApi = {
 
     const json: ApiResponse<HrFoulSummary> = await response.json();
     return json.data;
+  },
+
+  async getByEmployee(employeeId: string): Promise<HrFoulSummary> {
+    const response = await fetch(`${url}/foul/employee/${employeeId}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      await buildError(response, "Error al cargar faltas del empleado");
+    }
+
+    const json: ApiResponse<HrFoulSummary> = await response.json();
+    return json.data;
+  },
+
+  async getByPeriod(start: string, end: string): Promise<HrFoulRecord[]> {
+    const response = await fetch(
+      `${url}/foul/period?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+
+    if (!response.ok) {
+      await buildError(response, "Error al cargar faltas del periodo");
+    }
+
+    const json: ApiResponse<HrFoulRecord[]> = await response.json();
+    return Array.isArray(json.data) ? json.data : [];
   },
 
   async create(data: CreateHrFoulPayload): Promise<{ foulId: number }> {

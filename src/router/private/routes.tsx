@@ -43,6 +43,7 @@ import {
   getSuppliersPageData,
 } from "@/router/loaders/purchase.loaders";
 import {
+  getHrAmonestacionesPageData,
   getHrAttendancePageData,
   getHrContractsPageData,
   getHrEmployeesPageData,
@@ -61,6 +62,15 @@ export const privateRoutes: RouteObject[] = [
           { path: "dashboard", element: <DashboardPage /> },
           { path: "tenants", element: <TenantsPage /> },
           { path: "tenants/:tenantId", element: <TenantDetailPage /> },
+          {
+            path: "special-codes",
+            lazy: async () => {
+              const { SpecialCodesPage } = await import(
+                "@/pages/app/SpecialCodesPage/SpecialCodesPage"
+              );
+              return { Component: SpecialCodesPage };
+            },
+          },
 
           {
             path: "users",
@@ -322,6 +332,16 @@ export const privateRoutes: RouteObject[] = [
                 "@/pages/app/HRAttendancePage/HRAttendancePage"
               );
               return { Component: HRAttendancePage };
+            },
+          },
+          {
+            path: "hr/amonestaciones",
+            loader: getHrAmonestacionesPageData,
+            lazy: async () => {
+              const { HRAmonestacionesPage } = await import(
+                "@/pages/app/HRAmonestacionesPage/HRAmonestacionesPage"
+              );
+              return { Component: HRAmonestacionesPage };
             },
           },
           {

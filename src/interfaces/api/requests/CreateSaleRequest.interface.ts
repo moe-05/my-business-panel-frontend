@@ -7,7 +7,8 @@ export interface CreateSaleRequest {
   tenant_id: string;
   branch_id: string;
   currency_id: number;
-  tenant_customer_id: string;
+  /** Optional: walk-in / anonymous sales pueden omitir el cliente. */
+  tenant_customer_id?: string | null;
   cash_register_id?: string;
   sale_condition: string;
   sale_date: string;

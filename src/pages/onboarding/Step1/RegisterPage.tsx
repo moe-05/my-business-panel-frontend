@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useOnboarding } from "@/context/OnboardingContext";
+
+import { tenantApi } from "@/api/tenant.api";
+import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
 
 import { OnboardingLayout } from "@/components/layout/OnboardingLayout";
 import { Button } from "@/components/ui/Button";
@@ -14,6 +17,8 @@ import { registerSchema } from "./register.schema";
 
 type FormValues = z.infer<typeof registerSchema>;
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function RegisterPage() {
   const { data, setStep1 } = useOnboarding();
   const navigate = useNavigate();
@@ -22,6 +27,7 @@ export function RegisterPage() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(registerSchema),
@@ -36,8 +42,45 @@ export function RegisterPage() {
     },
   });
 
+  // Sondeo de unicidad en vivo. La constraint UNIQUE de la BD sigue
+  // siendo la fuente de verdad — esto solo evita comprometer el flujo
+  // hasta el último paso y luego ver el error.
+  const watchedEmail = watch("email") ?? "";
+  const watchedDoc = watch("docNumber") ?? "";
+
+  const checkEmail = useCallback(async (value: string) => {
+    const { exists } = await tenantApi.checkOnboardingAvailability({
+      field: "email",
+      value,
+    });
+    return exists;
+  }, []);
+
+  const checkDoc = useCallback(async (value: string) => {
+    const { exists } = await tenantApi.checkOnboardingAvailability({
+      field: "doc_number",
+      value,
+    });
+    return exists;
+  }, []);
+
+  const emailStatus = useUniqueAvailability(watchedEmail, checkEmail, {
+    minLength: 5,
+    isWellFormed: (value) => EMAIL_REGEX.test(value),
+  });
+
+  const docStatus = useUniqueAvailability(watchedDoc, checkDoc, {
+    minLength: 4,
+  });
+
+  const uniquenessBlocked =
+    emailStatus === "taken" || docStatus === "taken";
+  const uniquenessProbing =
+    emailStatus === "checking" || docStatus === "checking";
+
   const onSubmit = async (values: FormValues) => {
     setError("");
+    if (uniquenessBlocked || uniquenessProbing) return;
     setStep1({
       firstName: values.firstName,
       lastName: values.lastName,
@@ -48,6 +91,32 @@ export function RegisterPage() {
     });
     navigate("/auth/register/setup-tenant");
   };
+
+  const emailError =
+    errors.email?.message ??
+    (emailStatus === "taken"
+      ? "Ya existe una cuenta con este correo."
+      : undefined);
+
+  const emailHint =
+    emailStatus === "checking"
+      ? "Verificando disponibilidad…"
+      : emailStatus === "available"
+        ? "Correo disponible"
+        : "Correo administrador para acceder a tu cuenta y gestionar tu negocio";
+
+  const docError =
+    errors.docNumber?.message ??
+    (docStatus === "taken"
+      ? "Ya existe un usuario registrado con este documento."
+      : undefined);
+
+  const docHint =
+    docStatus === "checking"
+      ? "Verificando disponibilidad…"
+      : docStatus === "available"
+        ? "Documento disponible"
+        : "Cédula o pasaporte";
 
   return (
     <OnboardingLayout
@@ -104,8 +173,8 @@ export function RegisterPage() {
             placeholder="juan@empresa.com"
             required
             autoComplete="email"
-            error={errors.email?.message}
-            hint="Correo administrador para acceder a tu cuenta y gestionar tu negocio"
+            error={emailError}
+            hint={emailHint}
             {...register("email")}
           />
 
@@ -146,14 +215,27 @@ export function RegisterPage() {
               label="Número de identificación"
               placeholder="3140002575"
               required
-              error={errors.docNumber?.message}
-              hint="Cédula o pasaporte"
+              error={docError}
+              hint={docHint}
               {...register("docNumber")}
             />
           </div>
 
           <div className="pt-2">
-            <Button type="submit" fullWidth loading={isSubmitting} size="lg">
+            <Button
+              type="submit"
+              fullWidth
+              loading={isSubmitting}
+              size="lg"
+              disabled={uniquenessBlocked || uniquenessProbing}
+              title={
+                uniquenessBlocked
+                  ? "Hay datos duplicados que deben corregirse"
+                  : uniquenessProbing
+                    ? "Verificando disponibilidad…"
+                    : undefined
+              }
+            >
               Continuar
               <svg
                 width="16"
