@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +20,11 @@ import {
   getOrderStatusTone,
   getPayableStatusTone,
 } from "@/utils/purchase";
+import { exchangeRateApi } from "@/api/exchangeRate.api";
+import { currencies } from "@/constants/payment-methods";
+
+const CRC_CURRENCY_ID = 1;
+const USD_CURRENCY_ID = 2;
 
 interface PurchaseOrderDetailPanelProps {
   order: PurchaseOrderDetail;
@@ -55,6 +60,7 @@ export function PurchaseOrderDetailPanel({
   const [quickPaymentError, setQuickPaymentError] = useState<string | null>(
     null,
   );
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
 
   const balanceDue = Number(order.balance_due ?? 0);
   const accountPayableId = order.purchase_account_payable_id ?? "";
@@ -76,11 +82,60 @@ export function PurchaseOrderDetailPanel({
     amount_paid: string;
     payment_method_id: number;
     payment_reference: string;
+    currency_id: number;
+    exchange_rate_override: string;
   }>(() => ({
     amount_paid: balanceDue > 0 ? String(balanceDue) : "",
     payment_method_id: defaultMethodId,
     payment_reference: "",
+    currency_id: CRC_CURRENCY_ID,
+    exchange_rate_override: "",
   }));
+
+  const round2 = (value: number) => Number(value.toFixed(2));
+
+  const effectiveExchangeRate = useMemo(() => {
+    const parsed = parseFloat(quickPaymentForm.exchange_rate_override);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    return exchangeRate ?? 0;
+  }, [quickPaymentForm.exchange_rate_override, exchangeRate]);
+
+  const amount = Number(quickPaymentForm.amount_paid) || 0;
+  const convertedAmount = useMemo(() => {
+    if (quickPaymentForm.currency_id === CRC_CURRENCY_ID) {
+      if (effectiveExchangeRate <= 0) return null;
+      return round2(amount / effectiveExchangeRate);
+    } else {
+      if (effectiveExchangeRate <= 0) return null;
+      return round2(amount * effectiveExchangeRate);
+    }
+  }, [amount, quickPaymentForm.currency_id, effectiveExchangeRate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (quickPaymentForm.currency_id === CRC_CURRENCY_ID) {
+      exchangeRateApi
+        .getLatest(USD_CURRENCY_ID, CRC_CURRENCY_ID)
+        .then((rate) => {
+          if (!cancelled) setExchangeRate(rate ? Number(rate.rate) : null);
+        })
+        .catch(() => {
+          if (!cancelled) setExchangeRate(null);
+        });
+    } else {
+      exchangeRateApi
+        .getLatest(CRC_CURRENCY_ID, USD_CURRENCY_ID)
+        .then((rate) => {
+          if (!cancelled) setExchangeRate(rate ? Number(rate.rate) : null);
+        })
+        .catch(() => {
+          if (!cancelled) setExchangeRate(null);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [quickPaymentForm.currency_id]);
 
   const openQuickPayment = () => {
     setQuickPaymentError(null);
@@ -88,6 +143,8 @@ export function PurchaseOrderDetailPanel({
       amount_paid: balanceDue > 0 ? String(balanceDue) : "",
       payment_method_id: defaultMethodId,
       payment_reference: "",
+      currency_id: CRC_CURRENCY_ID,
+      exchange_rate_override: "",
     });
     setShowQuickPayment(true);
   };
@@ -397,7 +454,7 @@ export function PurchaseOrderDetailPanel({
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <Input
                   label="Monto"
                   type="number"
@@ -410,6 +467,22 @@ export function PurchaseOrderDetailPanel({
                       amount_paid: e.target.value,
                     }))
                   }
+                  required
+                />
+                <Select
+                  label="Moneda"
+                  value={String(quickPaymentForm.currency_id)}
+                  onChange={(e) =>
+                    setQuickPaymentForm((p) => ({
+                      ...p,
+                      currency_id: Number(e.target.value),
+                      exchange_rate_override: "",
+                    }))
+                  }
+                  options={currencies.map((c) => ({
+                    value: String(c.value),
+                    label: c.code,
+                  }))}
                   required
                 />
                 <Select
@@ -440,6 +513,92 @@ export function PurchaseOrderDetailPanel({
                 />
               </div>
 
+              {amount > 0 && convertedAmount !== null && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                        Conversión en vivo
+                      </p>
+                      <p className="text-sm font-medium text-blue-900 mt-1">
+                        {amount.toLocaleString("es-CR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        {currencies.find((c) => c.value === quickPaymentForm.currency_id)?.symbol} ={" "}
+                        <span className="font-semibold">
+                          {convertedAmount.toLocaleString("es-CR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          {quickPaymentForm.currency_id === CRC_CURRENCY_ID ? "$" : "₡"}
+                        </span>
+                      </p>
+                    </div>
+                    {effectiveExchangeRate > 0 && (
+                      <div className="text-right text-xs text-blue-700">
+                        <p className="font-medium">
+                          Tasa:{" "}
+                          {effectiveExchangeRate.toLocaleString("es-CR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 6,
+                          })}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {amount > 0 && effectiveExchangeRate <= 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-medium text-amber-800">
+                    No hay tasa de cambio disponible. Ingresa una manualmente:
+                  </p>
+                  <Input
+                    label="Tasa de cambio (override)"
+                    type="number"
+                    min="0"
+                    step="0.000001"
+                    placeholder="Ej: 510.00"
+                    value={quickPaymentForm.exchange_rate_override}
+                    onChange={(e) =>
+                      setQuickPaymentForm((p) => ({
+                        ...p,
+                        exchange_rate_override: e.target.value,
+                      }))
+                    }
+                    className="mt-2"
+                  />
+                </div>
+              )}
+
+              {amount > 0 && effectiveExchangeRate > 0 && quickPaymentForm.exchange_rate_override && (
+                <div className="rounded-xl border border-purple-200 bg-purple-50 p-3">
+                  <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
+                    Usando tasa personalizada
+                  </p>
+                  <Input
+                    label="Tasa de cambio personalizada"
+                    type="number"
+                    min="0"
+                    step="0.000001"
+                    value={quickPaymentForm.exchange_rate_override}
+                    onChange={(e) =>
+                      setQuickPaymentForm((p) => ({
+                        ...p,
+                        exchange_rate_override: e.target.value,
+                      }))
+                    }
+                    className="mt-2"
+                    hint={`Tasa del sistema: ${exchangeRate?.toLocaleString("es-CR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 6,
+                    })}`}
+                  />
+                </div>
+              )}
+
               {quickPaymentError && (
                 <p className="text-xs text-red-600 font-medium">
                   {quickPaymentError}
@@ -462,7 +621,7 @@ export function PurchaseOrderDetailPanel({
           <StackList
             items={order.payments.map((payment) => ({
               id: payment.purchase_order_payment_id,
-              title: formatCurrency(payment.amount_paid),
+              title: `${formatCurrency(payment.amount_paid)} ${payment.currency_code && payment.currency_code !== "CRC" ? `(${payment.currency_code})` : ""}`.trim(),
               meta: `${formatPaymentMethodName(payment.payment_method_name)} · ${formatDateTime(payment.payment_date)}`,
               description: payment.payment_reference ?? "Sin referencia",
             }))}

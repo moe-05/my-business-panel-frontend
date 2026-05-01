@@ -17,6 +17,7 @@ import {
   updatePromotion,
 } from "@/router/actions/promotion.actions";
 import { getPromotionsByTenant } from "@/router/loaders/promotion.loaders";
+import { promotionApi } from "@/api/promotion.api";
 
 import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 import type { CreatePromotionRequest } from "@/interfaces/api/requests/CreatePromotionRequest.interface";
@@ -146,6 +147,41 @@ export function PromotionsPage() {
     }
   };
 
+  const handleToggleActive = async (promotion: Promotion) => {
+    const promotionId = promotion.promotion_id;
+    if (!promotionId) return;
+
+    const previous = items;
+    const nextActive = !promotion.is_active;
+
+    setItems((prev) =>
+      prev.map((item) =>
+        item.promotion_id === promotionId
+          ? { ...item, is_active: nextActive }
+          : item,
+      ),
+    );
+
+    try {
+      await updatePromotion(promotionId, { is_active: nextActive });
+      setToast({
+        mode: "success",
+        message: nextActive
+          ? "Promoción activada"
+          : "Promoción desactivada",
+      });
+    } catch (error) {
+      setItems(previous);
+      setToast({
+        mode: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error al cambiar el estado de la promoción",
+      });
+    }
+  };
+
   const isUpsertOpen = isCreateOpen || !!editingPromotion;
   const isEditing = !!editingPromotion;
 
@@ -201,7 +237,30 @@ export function PromotionsPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <Button
-                  onClick={() => setEditingPromotion(row)}
+                  onClick={() => handleToggleActive(row)}
+                  title={
+                    row.is_active
+                      ? "Desactivar promoción"
+                      : "Activar promoción"
+                  }
+                  variant="secondary"
+                  className="hover:bg-gray-50 rounded-lg transition-colors"
+                  disabled={!row.promotion_id}
+                >
+                  {row.is_active ? "Off" : "On"}
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!row.promotion_id) return;
+                    // Fetch full info so the modal can pre-fill rules and
+                    // group targets that the list endpoint doesn't include.
+                    try {
+                      const full = await promotionApi.getInfo(row.promotion_id);
+                      setEditingPromotion(full ?? row);
+                    } catch {
+                      setEditingPromotion(row);
+                    }
+                  }}
                   title="Editar promoción"
                   variant="ghost"
                   className="hover:bg-gray-50 rounded-lg transition-colors"

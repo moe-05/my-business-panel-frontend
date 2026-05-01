@@ -9,11 +9,13 @@ export const createCashRegister = async (data: {
   branchId: string;
   registerName: string;
   isActive?: boolean;
+  cashRegisterKey?: string | null;
 }): Promise<CashRegister> =>
   cashRegisterApi.create(
     data.branchId,
     data.registerName,
     data.isActive ?? true,
+    data.cashRegisterKey ?? null,
   );
 
 export const getCashRegistersByBranch = async (
@@ -32,12 +34,24 @@ export const startCashRegisterSession = async (
   cashRegisterId: string,
   openingAmount: number,
   openedAt?: string,
+  cashRegisterKey?: string,
 ): Promise<CashRegisterSession> =>
-  cashRegisterApi.startSession(cashRegisterId, openingAmount, openedAt);
+  cashRegisterApi.startSession(
+    cashRegisterId,
+    openingAmount,
+    openedAt,
+    cashRegisterKey,
+  );
 
 export const closeCashRegisterSession = async (
   sessionId: string,
   closingAmount: number,
   closedAt?: string,
+  cashRegisterKey?: string,
 ): Promise<CashRegisterSession> =>
-  cashRegisterApi.closeSession(sessionId, closingAmount, closedAt);
+  cashRegisterApi.closeSession(
+    sessionId,
+    closingAmount,
+    closedAt,
+    cashRegisterKey,
+  );

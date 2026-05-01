@@ -9,6 +9,9 @@ export interface InventoryItem {
   sku: string | null;
   product_id: string;
   product_name: string;
+  is_composite?: boolean;
+  unit_price?: number;
   created_at?: string;
   updated_at?: string;
 }
+

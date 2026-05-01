@@ -187,6 +187,17 @@ export interface CreateHrClockInPayload {
   branchId: string;
 }
 
+export interface ManualClockInPayload {
+  employeeId: string;
+  branchId: string;
+  clockIn: string;
+}
+
+export interface ManualClockOutPayload {
+  clockingId: number;
+  clockOut: string;
+}
+
 export interface CreateHrFoulPayload {
   employee_id: string;
   branch_id: string;

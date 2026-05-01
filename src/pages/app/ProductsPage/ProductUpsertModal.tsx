@@ -12,13 +12,8 @@ import {
   type AttributeAssignmentRow,
 } from "@/components/ui/AttributeAssignmentEditor";
 import { GroupAssignmentEditor } from "@/components/ui/GroupAssignmentEditor";
-import {
-  CompositionEditor,
-  type CompositionEditorRow,
-} from "@/components/ui/CompositionEditor";
 
 import { productApi } from "@/api/product.api";
-import { productCompositionApi } from "@/api/productComposition.api";
 import { productVariantGroupApi } from "@/api/productGroup.api";
 
 import type { Product } from "@/interfaces/entities/Product.interface";
@@ -47,9 +42,7 @@ interface ProductUpsertModalProps {
   tenants: Tenant[];
   isSuperAdmin: boolean;
   onClose: () => void;
-  /** Returns the new product_variant_id so the modal can wire composition. */
   onCreate: (data: CreateProductRequest) => Promise<string | null>;
-  /** Returns void; modal handles its own follow-up calls if needed. */
   onUpdate: (productId: string, data: UpdateProductRequest) => Promise<void>;
 }
 
@@ -71,10 +64,6 @@ export function ProductUpsertModal({
     [],
   );
   const [groupIds, setGroupIds] = useState<string[]>([]);
-  const [isComposite, setIsComposite] = useState<boolean>(
-    product?.is_composite === true,
-  );
-  const [composition, setComposition] = useState<CompositionEditorRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -94,8 +83,9 @@ export function ProductUpsertModal({
             sku: product.sku,
             product_name: product.variant_name ?? product.product_name ?? "",
             description: product.description ?? "",
-            category_id: product.category_id ?? "",
-            category_name: product.category?.category_name ?? "",
+            category_id: product.category_id ?? product.cabys_code ?? "",
+            category_name:
+              product.category?.category_name ?? product.cabys_code ?? "",
             price: String(product.unit_price ?? product.price ?? ""),
             cost_price:
               product.cost_price !== undefined && product.cost_price !== null
@@ -122,8 +112,6 @@ export function ProductUpsertModal({
     if (!isOpen) return;
     setAttributeRows([]);
     setGroupIds([]);
-    setIsComposite(product?.is_composite === true);
-    setComposition([]);
     setSaveError(null);
     reset(
       isEditing && product
@@ -131,8 +119,9 @@ export function ProductUpsertModal({
             sku: product.sku,
             product_name: product.variant_name ?? product.product_name ?? "",
             description: product.description ?? "",
-            category_id: product.category_id ?? "",
-            category_name: product.category?.category_name ?? "",
+            category_id: product.category_id ?? product.cabys_code ?? "",
+            category_name:
+              product.category?.category_name ?? product.cabys_code ?? "",
             price: String(product.unit_price ?? product.price ?? ""),
             cost_price:
               product.cost_price !== undefined && product.cost_price !== null
@@ -153,8 +142,8 @@ export function ProductUpsertModal({
     );
   }, [isOpen, product, isEditing, reset]);
 
-  // Edit mode: fetch the full state (attributes, groups, composition) so the
-  // sub-sections open already populated with what's in the database.
+  // Edit mode: fetch the full state (attributes, groups) so the sub-sections
+  // open already populated with what's in the database.
   useEffect(() => {
     if (!isOpen || !isEditing || !product) return;
     const productId = product.product_variant_id ?? product.product_id;
@@ -198,25 +187,6 @@ export function ProductUpsertModal({
         setGroupIds(
           (detail.groups ?? []).map((g) => g.tenant_product_group_id),
         );
-
-        setIsComposite(detail.is_composite === true);
-
-        if (detail.is_composite === true) {
-          const comps = await productCompositionApi.byParent(
-            tenantId,
-            productId,
-          );
-          if (cancelled) return;
-          setComposition(
-            comps.map((c) => ({
-              child_product_variant_id: c.child_product_variant_id,
-              child_display_name:
-                (c.child_variant_name ?? "—") +
-                (c.child_sku ? ` (${c.child_sku})` : ""),
-              quantity: Number(c.quantity),
-            })),
-          );
-        }
       } catch (err) {
         if (!cancelled) {
           setSaveError(
@@ -284,41 +254,8 @@ export function ProductUpsertModal({
         });
       }
 
-      // Composition save (if applicable). Editing path also re-syncs groups in
-      // case the backend update did not include them yet.
       if (variantId && isEditing) {
         await productVariantGroupApi.replace(tenantId, variantId, groupIds);
-      }
-
-      if (variantId && isComposite && composition.length > 0) {
-        const components = composition
-          .filter(
-            (c) =>
-              c.child_product_variant_id &&
-              c.child_product_variant_id !== variantId &&
-              c.quantity > 0,
-          )
-          .map((c) => ({
-            child_product_variant_id: c.child_product_variant_id,
-            quantity: c.quantity,
-          }));
-
-        if (components.length === 0) {
-          throw new Error(
-            "Un compuesto necesita al menos un componente válido (cantidad > 0).",
-          );
-        }
-
-        await productCompositionApi.replace({
-          tenant_id: tenantId,
-          parent_product_variant_id: variantId,
-          components,
-        });
-      } else if (variantId && !isComposite && isEditing) {
-        // Editing: user un-toggled composite → clear any composition.
-        await productCompositionApi
-          .clear(tenantId, variantId)
-          .catch(() => undefined);
       }
 
       onClose();
@@ -465,8 +402,8 @@ export function ProductUpsertModal({
           <header>
             <h3 className="text-sm font-semibold text-gray-900">Atributos</h3>
             <p className="text-xs text-gray-500">
-              Color, talla, material, etc. Los atributos se buscan/crean
-              inline contra el catálogo del tenant + globales.
+              Color, talla, material, etc. Los atributos se buscan/crean inline
+              contra el catálogo del tenant + globales.
             </p>
           </header>
           {targetTenantId ? (
@@ -480,64 +417,6 @@ export function ProductUpsertModal({
             <p className="text-xs text-gray-500">
               Seleccione una empresa primero.
             </p>
-          )}
-        </section>
-
-        {/* ─── Composition / Lote ───────────────────── */}
-        <section
-          className={[
-            "space-y-5 rounded-2xl border border-gray-200 bg-white p-5 transition-colors",
-            isComposite ? "border-accent-200 bg-accent-50/30" : "",
-          ].join(" ")}
-        >
-          <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div className="md:max-w-xl">
-              <h3 className="text-base font-semibold text-gray-900">
-                Es un lote / compuesto
-              </h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Activa esta opción para definir un producto que se desglosa en
-                otros (por ejemplo: six-pack → 6 botellas, lote → 12 camisas).
-                Cuando llega una compra del padre, el inventario se reparte
-                automáticamente entre los componentes.
-              </p>
-            </div>
-            <label className="inline-flex items-center gap-3 cursor-pointer self-start md:self-center">
-              <span className="text-sm font-medium text-gray-700">
-                {isComposite ? "Activado" : "Desactivado"}
-              </span>
-              <input
-                type="checkbox"
-                checked={isComposite}
-                disabled={isSaving}
-                onChange={(e) => setIsComposite(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-accent-500 transition-colors">
-                <div
-                  className={[
-                    "absolute top-0.5 left-0.5 bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform",
-                    isComposite ? "translate-x-5" : "",
-                  ].join(" ")}
-                />
-              </div>
-            </label>
-          </header>
-
-          {isComposite && (
-            <div className="pt-2 border-t border-gray-100">
-              <CompositionEditor
-                tenantId={targetTenantId}
-                parentVariantId={
-                  isEditing
-                    ? (product?.product_variant_id ?? product?.product_id)
-                    : undefined
-                }
-                rows={composition}
-                onChange={setComposition}
-                disabled={isSaving || !targetTenantId}
-              />
-            </div>
           )}
         </section>
 
@@ -555,12 +434,7 @@ export function ProductUpsertModal({
           >
             Cancelar
           </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            fullWidth
-            disabled={isSaving}
-          >
+          <Button type="submit" variant="primary" fullWidth disabled={isSaving}>
             {isSaving
               ? "Guardando..."
               : isEditing

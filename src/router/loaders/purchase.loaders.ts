@@ -98,6 +98,7 @@ export const getPurchasesPageData =
               payable_statuses: [],
               payment_methods: [],
               payment_conditions: [],
+              currencies: [],
             }) as PurchaseCatalogs,
         ),
         isSuperuser
@@ -134,6 +135,7 @@ export const getAccountsPayablePageData =
             payable_statuses: [],
             payment_methods: [],
             payment_conditions: [],
+            currencies: [],
           }) as PurchaseCatalogs,
       ),
       isSuperuser

@@ -182,10 +182,14 @@ export function PurchasesPage() {
       product.product_name
     }`;
 
-  const getProductPrice = (product: Product) =>
-    Number(
-      (product as Product & { unit_price?: number }).unit_price ?? product.price,
-    );
+  const getProductPrice = (product: Product) => {
+    const unitPrice = (product as Product & { unit_price?: number }).unit_price ?? product.price;
+    return Number(unitPrice);
+  };
+
+  const isCompositeProduct = (product: Product) => {
+    return (product as any).is_composite === true;
+  };
 
   const productOptions = products.map((product) => ({
     value: getProductVariantId(product),
@@ -314,7 +318,7 @@ export function PurchasesPage() {
     }
   };
 
-  const handleItemChange = (
+  const handleItemChange = async (
     index: number,
     field: keyof PurchaseItemFormRow,
     value: string,
@@ -731,17 +735,35 @@ export function PurchasesPage() {
                     required
                   />
 
-                  <Input
-                    label="Costo unitario"
-                    type="number"
-                    min="0.01"
-                    step="0.001"
-                    value={item.unit_price}
-                    onChange={(event) =>
-                      handleItemChange(index, "unit_price", event.target.value)
-                    }
-                    required
-                  />
+                  <div>
+                    {(() => {
+                      const selectedProduct = products.find(
+                        (p) => getProductVariantId(p) === item.product_variant_id,
+                      );
+                      const isComposite = selectedProduct && isCompositeProduct(selectedProduct);
+                      return (
+                        <>
+                          <Input
+                            label="Costo unitario"
+                            type="number"
+                            min="0.01"
+                            step="0.001"
+                            value={item.unit_price}
+                            onChange={(event) =>
+                              handleItemChange(index, "unit_price", event.target.value)
+                            }
+                            disabled={isComposite}
+                            required
+                          />
+                          {isComposite && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Precio calculado automáticamente (producto compuesto)
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
 
                   <div className="flex items-end">
                     <Button

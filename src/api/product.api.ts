@@ -40,7 +40,9 @@ export const productApi = {
     return created as Array<{ product_variant_id: string }>;
   },
 
-  async create(data: CreateProductRequest): Promise<{ product_variant_id: string }> {
+  async create(
+    data: CreateProductRequest,
+  ): Promise<{ product_variant_id: string }> {
     try {
       const response = await fetch(`${url}/product`, {
         method: "POST",
@@ -146,6 +148,24 @@ export const productApi = {
     }
   },
 
+  async getBySku(sku: string): Promise<Product | null> {
+    try {
+      const response = await fetch(
+        `${url}/product/sku/${encodeURIComponent(sku)}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        },
+      );
+      const json = await response.json();
+      if (!response.ok) return null;
+      return json.data ?? null;
+    } catch (error) {
+      return null;
+    }
+  },
+
   async getByIdWithAttributes(
     tenantId: string,
     productId: string,
@@ -184,7 +204,10 @@ export const productApi = {
     return json.data ?? json;
   },
 
-  async update(productId: string, data: UpdateProductRequest): Promise<Product> {
+  async update(
+    productId: string,
+    data: UpdateProductRequest,
+  ): Promise<Product> {
     try {
       const response = await fetch(`${url}/product/${productId}`, {
         method: "PATCH",
@@ -267,6 +290,40 @@ export const productApi = {
         error instanceof Error
           ? error.message
           : "Error al filtrar productos por categoría",
+      );
+    }
+  },
+
+  async getComposition(
+    tenantId: string,
+    productId: string,
+  ): Promise<
+    Array<{
+      parent_product_variant_id: string;
+      child_product_variant_id: string;
+      quantity: number;
+      child_sku?: string;
+      child_variant_name?: string;
+    }>
+  > {
+    try {
+      const response = await fetch(
+        `${url}/product-composition/${tenantId}/parent/${productId}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        },
+      );
+
+      const json: ApiResponse<any> = await response.json();
+      if (!response.ok) {
+        throw new Error("Error al obtener componentes del producto");
+      }
+      return json.data ?? [];
+    } catch (error) {
+      throw new Error(
+        error instanceof Error ? error.message : "Error al obtener composición",
       );
     }
   },

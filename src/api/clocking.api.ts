@@ -4,6 +4,8 @@ import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
 import type {
   CreateHrClockInPayload,
   HrClockingRecord,
+  ManualClockInPayload,
+  ManualClockOutPayload,
 } from "@/interfaces/entities/Hr.interface";
 
 const buildError = async (response: Response, fallback: string) => {
@@ -72,6 +74,44 @@ export const clockingApi = {
     }
 
     const json: ApiResponse<{ message: string }> = await response.json();
+    return json.data;
+  },
+
+  async manualClockIn(
+    data: ManualClockInPayload,
+  ): Promise<{ message: string; clockingId: number }> {
+    const response = await fetch(`${url}/clocking/manual-in`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      await buildError(response, "Error al registrar clock-in manual");
+    }
+
+    const json: ApiResponse<{ message: string; clockingId: number }> =
+      await response.json();
+    return json.data;
+  },
+
+  async manualClockOut(
+    data: ManualClockOutPayload,
+  ): Promise<{ message: string; clockingId: number }> {
+    const response = await fetch(`${url}/clocking/manual-out`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      await buildError(response, "Error al registrar clock-out manual");
+    }
+
+    const json: ApiResponse<{ message: string; clockingId: number }> =
+      await response.json();
     return json.data;
   },
 };

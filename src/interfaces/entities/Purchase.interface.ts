@@ -57,12 +57,38 @@ export interface PurchasePayment {
   purchase_account_payable_id: string;
   payment_method_id: number;
   payment_method_name?: string | null;
+  currency_id?: number | null;
+  currency_code?: string | null;
+  currency_name?: string | null;
+  currency_symbol?: string | null;
   amount_paid: NumericLike;
   payment_reference?: string | null;
   notes?: string | null;
   payment_date: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface CurrencyCatalog {
+  currency_id: number;
+  currency_code: string;
+  currency_name: string;
+  symbol: string;
+}
+
+export interface ExchangeRateResult {
+  exchange_rate_id: string;
+  from_currency_id: number;
+  from_currency_code: string;
+  from_currency_name: string;
+  from_currency_symbol: string;
+  to_currency_id: number;
+  to_currency_code: string;
+  to_currency_name: string;
+  to_currency_symbol: string;
+  rate: string;
+  effective_date: string;
+  updated_at: string;
 }
 
 export interface GoodsReceiptSummary {
@@ -181,6 +207,7 @@ export interface PurchaseCatalogs {
   order_statuses: PurchaseStatusCatalog[];
   payable_statuses: PurchaseStatusCatalog[];
   payment_methods: PaymentMethodCatalog[];
+  currencies: CurrencyCatalog[];
   payment_conditions: PaymentConditionOption[];
 }
 

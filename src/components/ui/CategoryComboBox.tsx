@@ -39,6 +39,29 @@ export function CategoryComboBox({
     if (displayValue) setSelectedName(displayValue);
   }, [displayValue]);
 
+  useEffect(() => {
+    if (!value || displayValue) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const rows = await categoryApi.searchByCabys(value, 20, 0);
+        if (cancelled) return;
+        const exactMatch = rows.find((row) => row.category_id === value);
+        if (exactMatch) {
+          setSelectedName(exactMatch.category_name);
+        }
+      } catch {
+        if (!cancelled) setSelectedName("");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [value, displayValue]);
+
   const fetchCategories = useCallback(async (searchTerm: string, mode: SearchMode) => {
     setIsLoading(true);
     try {

@@ -40,6 +40,9 @@ export const promotionFormSchema = z
     promotion_start_date: z.string().min(1, "Fecha de inicio requerida"),
     promotion_end_date: z.string().min(1, "Fecha de fin requerida"),
     is_active: z.boolean(),
+    is_default: z.boolean(),
+    is_stackable: z.boolean(),
+    target_group_ids: z.array(z.string().uuid()),
     rules: promotionRuleSchema,
   })
   .refine(

@@ -65,11 +65,14 @@ export function SidebarContent({
   const initials = userEmail.slice(0, 2).toUpperCase();
 
   const handleLogoClick = () => {
-    const generalModule = Object.values(MODULES).find(
-      (module) => module.id === "general",
+    const firstAllowedModule = Object.values(MODULES).find((module) =>
+      isAllowedForRole(module.rolesAllowed, roleId),
     );
-    if (generalModule) {
-      navigate(generalModule.path);
+    if (firstAllowedModule) {
+      const firstSubmodule = firstAllowedModule.submodules.find((s) =>
+        isAllowedForRole(s.rolesAllowed, roleId),
+      );
+      navigate(firstSubmodule?.path ?? firstAllowedModule.path);
       onNavClick?.();
     }
   };

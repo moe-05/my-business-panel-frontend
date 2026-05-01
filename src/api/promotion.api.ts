@@ -31,6 +31,25 @@ export const promotionApi = {
     }
   },
 
+  async getActiveDefaults(tenantId: string): Promise<Promotion[]> {
+    try {
+      const response = await fetch(`${url}/promos/defaults/${tenantId}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const json = await response.json();
+      const data = unwrap<Promotion[]>(json);
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Error al obtener promociones default activas",
+      );
+    }
+  },
+
   async getInfo(promotionId: string): Promise<Promotion | null> {
     try {
       const response = await fetch(`${url}/promos/info/${promotionId}`, {
