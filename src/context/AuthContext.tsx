@@ -17,7 +17,7 @@ interface AuthContextValue {
   user: CurrentUserResponse | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (data: LoginRequest) => Promise<void>;
+  login: (data: LoginRequest) => Promise<CurrentUserResponse>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -69,6 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void registerClockInForUser(session.user.user_id).catch((error) => {
       console.error("No se pudo registrar el clock in automático", error);
     });
+
+    return currentUser;
   };
 
   const logout = async () => {

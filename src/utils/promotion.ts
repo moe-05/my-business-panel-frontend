@@ -1,4 +1,5 @@
 import type {
+  Promotion,
   PromotionRule,
   PromotionTypeName,
 } from "@/interfaces/entities/Promotion.interface";
@@ -31,6 +32,29 @@ export interface PromotionDiscountResult {
   discount_percentage: number;
   description: string;
   success: boolean;
+}
+
+export function promotionAppliesToItem(
+  promotion: Promotion,
+  item: { product_variant_id: string; group_ids?: string[] },
+): boolean {
+  const targets = promotion.targets ?? [];
+  if (targets.length === 0) return true;
+
+  return targets.some((target) => {
+    if (
+      target.target_type === "VARIANT" &&
+      target.target_product_variant_id
+    ) {
+      return target.target_product_variant_id === item.product_variant_id;
+    }
+
+    if (target.target_type === "GROUP" && target.target_group_id) {
+      return (item.group_ids ?? []).includes(target.target_group_id);
+    }
+
+    return false;
+  });
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;

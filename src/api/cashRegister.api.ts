@@ -19,6 +19,7 @@ export const cashRegisterApi = {
     branchId: string,
     registerName: string,
     isActive = true,
+    cashRegisterKey?: string | null,
   ): Promise<CashRegister> {
     try {
       const response = await fetch(`${url}/cash-register`, {
@@ -29,6 +30,7 @@ export const cashRegisterApi = {
           branch_id: branchId,
           register_name: registerName,
           is_active: isActive,
+          cash_register_key: cashRegisterKey ?? null,
         }),
       });
 
@@ -125,6 +127,7 @@ export const cashRegisterApi = {
     cashRegisterId: string,
     openingAmount: number,
     openedAt?: string,
+    cashRegisterKey?: string,
   ): Promise<CashRegisterSession> {
     try {
       const response = await fetch(`${url}/cash-register/start`, {
@@ -135,6 +138,7 @@ export const cashRegisterApi = {
           cash_register_id: cashRegisterId,
           opening_amount: openingAmount,
           opened_at: openedAt ?? new Date().toISOString(),
+          ...(cashRegisterKey ? { cash_register_key: cashRegisterKey } : {}),
         }),
       });
       const json = await response.json();
@@ -157,6 +161,7 @@ export const cashRegisterApi = {
     sessionId: string,
     closingAmount: number,
     closedAt?: string,
+    cashRegisterKey?: string,
   ): Promise<CashRegisterSession> {
     try {
       const response = await fetch(`${url}/cash-register/close`, {
@@ -167,6 +172,7 @@ export const cashRegisterApi = {
           cash_register_session_id: sessionId,
           closing_amount: closingAmount,
           closed_at: closedAt ?? new Date().toISOString(),
+          ...(cashRegisterKey ? { cash_register_key: cashRegisterKey } : {}),
         }),
       });
       const json = await response.json();

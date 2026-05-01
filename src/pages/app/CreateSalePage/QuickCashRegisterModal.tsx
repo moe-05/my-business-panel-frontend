@@ -6,6 +6,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { Badge } from "@/components/ui/Badge";
 
+import { useAuth } from "@/context/AuthContext";
+
 import {
   closeCashRegisterSession,
   getCashRegistersByBranch,
@@ -42,12 +44,20 @@ export function QuickCashRegisterModal({
   onClose,
   onSessionsChanged,
 }: Props) {
+  const { user } = useAuth();
+  const roleName = user?.role.role_name ?? "";
+  // Admin and superuser bypass the key check both client-side and server-side.
+  const requiresKey = roleName !== "admin" && roleName !== "superuser";
+
   const [rows, setRows] = useState<RegisterRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [busyRegisterId, setBusyRegisterId] = useState<string | null>(null);
   const [amountByRegister, setAmountByRegister] = useState<
     Record<string, string>
   >({});
+  const [keyByRegister, setKeyByRegister] = useState<Record<string, string>>(
+    {},
+  );
   const [toast, setToast] = useState<{
     mode: ToastMode;
     message: string;
@@ -86,12 +96,16 @@ export function QuickCashRegisterModal({
   useEffect(() => {
     if (!isOpen) return;
     setAmountByRegister({});
+    setKeyByRegister({});
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, branchId]);
 
   const setAmount = (registerId: string, value: string) =>
     setAmountByRegister((prev) => ({ ...prev, [registerId]: value }));
+
+  const setKey = (registerId: string, value: string) =>
+    setKeyByRegister((prev) => ({ ...prev, [registerId]: value }));
 
   const parseAmount = (raw: string | undefined): number | null => {
     if (raw === undefined || raw === "") return null;
@@ -109,13 +123,27 @@ export function QuickCashRegisterModal({
       });
       return;
     }
+    const key = (keyByRegister[row.register.cash_register_id] ?? "").trim();
+    if (requiresKey && !key) {
+      setToast({
+        mode: "error",
+        message: "Ingrese la clave de la caja para abrir la sesión",
+      });
+      return;
+    }
     setBusyRegisterId(row.register.cash_register_id);
     try {
-      await startCashRegisterSession(row.register.cash_register_id, amount);
+      await startCashRegisterSession(
+        row.register.cash_register_id,
+        amount,
+        undefined,
+        requiresKey ? key : undefined,
+      );
       setToast({
         mode: "success",
         message: `Sesión abierta en ${row.register.register_name}`,
       });
+      setKey(row.register.cash_register_id, "");
       await refresh();
       await onSessionsChanged();
     } catch (error) {
@@ -139,6 +167,14 @@ export function QuickCashRegisterModal({
       });
       return;
     }
+    const key = (keyByRegister[row.register.cash_register_id] ?? "").trim();
+    if (requiresKey && !key) {
+      setToast({
+        mode: "error",
+        message: "Ingrese la clave de la caja para cerrar la sesión",
+      });
+      return;
+    }
     if (!confirm(`¿Cerrar la sesión activa de ${row.register.register_name}?`))
       return;
 
@@ -147,11 +183,14 @@ export function QuickCashRegisterModal({
       await closeCashRegisterSession(
         row.session.cash_register_session_id,
         amount,
+        undefined,
+        requiresKey ? key : undefined,
       );
       setToast({
         mode: "success",
         message: `Sesión cerrada en ${row.register.register_name}`,
       });
+      setKey(row.register.cash_register_id, "");
       await refresh();
       await onSessionsChanged();
     } catch (error) {
@@ -224,43 +263,60 @@ export function QuickCashRegisterModal({
                   )}
                 </div>
 
-                <div className="flex items-end gap-3">
-                  <div className="flex-1">
+                <div className="space-y-3">
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1">
+                      <Input
+                        label={
+                          isActive ? "Monto de cierre" : "Monto de apertura"
+                        }
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="0.00"
+                        value={amountValue}
+                        onChange={(e) =>
+                          setAmount(
+                            row.register.cash_register_id,
+                            e.target.value,
+                          )
+                        }
+                        disabled={isBusy}
+                        required
+                      />
+                    </div>
+                    {isActive ? (
+                      <Button
+                        type="button"
+                        variant="danger"
+                        onClick={() => handleClose(row)}
+                        loading={isBusy}
+                      >
+                        Cerrar
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="primary"
+                        onClick={() => handleOpen(row)}
+                        loading={isBusy}
+                      >
+                        Abrir
+                      </Button>
+                    )}
+                  </div>
+                  {requiresKey && (
                     <Input
-                      label={isActive ? "Monto de cierre" : "Monto de apertura"}
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      placeholder="0.00"
-                      value={amountValue}
+                      label="Clave de la caja"
+                      type="password"
+                      placeholder="Solicítala al administrador"
+                      value={keyByRegister[row.register.cash_register_id] ?? ""}
                       onChange={(e) =>
-                        setAmount(
-                          row.register.cash_register_id,
-                          e.target.value,
-                        )
+                        setKey(row.register.cash_register_id, e.target.value)
                       }
                       disabled={isBusy}
                       required
                     />
-                  </div>
-                  {isActive ? (
-                    <Button
-                      type="button"
-                      variant="danger"
-                      onClick={() => handleClose(row)}
-                      loading={isBusy}
-                    >
-                      Cerrar
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="primary"
-                      onClick={() => handleOpen(row)}
-                      loading={isBusy}
-                    >
-                      Abrir
-                    </Button>
                   )}
                 </div>
               </div>

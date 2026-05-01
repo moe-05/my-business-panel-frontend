@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
+
+import { productGroupApi, productGroupTypeApi } from "@/api/productGroup.api";
 
 import type { CreatePromotionRequest } from "@/interfaces/api/requests/CreatePromotionRequest.interface";
 import type {
@@ -13,6 +15,10 @@ import type {
   PromotionTypeName,
 } from "@/interfaces/entities/Promotion.interface";
 import type { Segment } from "@/interfaces/entities/Segment.interface";
+import type {
+  TenantProductGroup,
+  TenantProductGroupType,
+} from "@/interfaces/entities/ProductGroup.interface";
 
 import { promotionTypeLabel } from "@/utils/promotion";
 import { promotionFormSchema } from "./promotion.schema";
@@ -29,6 +35,32 @@ interface Props {
   onSubmit: (data: CreatePromotionRequest) => Promise<void> | void;
 }
 
+type Scope = "ALL" | "FAMILY";
+
+const toNumberOrUndefined = (value: unknown): number | undefined => {
+  if (value === null || value === undefined || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const normalizeRule = (rule?: PromotionRule | null): PromotionRule => ({
+  promotion_rule_id: rule?.promotion_rule_id,
+  promotion_id: rule?.promotion_id,
+  discount_percentage: toNumberOrUndefined(rule?.discount_percentage),
+  discount_amount: toNumberOrUndefined(rule?.discount_amount),
+  buy_quantity: toNumberOrUndefined(rule?.buy_quantity),
+  get_quantity: toNumberOrUndefined(rule?.get_quantity),
+  get_discount_percentage: toNumberOrUndefined(rule?.get_discount_percentage),
+  min_quantity: toNumberOrUndefined(rule?.min_quantity),
+  max_quantity: toNumberOrUndefined(rule?.max_quantity),
+  tier_level: toNumberOrUndefined(rule?.tier_level),
+  tier_min_quantity: toNumberOrUndefined(rule?.tier_min_quantity),
+  tier_max_quantity: toNumberOrUndefined(rule?.tier_max_quantity),
+  tier_price: toNumberOrUndefined(rule?.tier_price),
+  tier_discount_percentage: toNumberOrUndefined(rule?.tier_discount_percentage),
+  min_purchase_amount: toNumberOrUndefined(rule?.min_purchase_amount),
+});
+
 const initialFormState = () => ({
   promotion_name: "",
   promotion_code: "",
@@ -38,6 +70,9 @@ const initialFormState = () => ({
   promotion_start_date: new Date().toISOString().split("T")[0],
   promotion_end_date: "",
   is_active: true,
+  is_default: false,
+  is_stackable: true,
+  target_group_ids: [] as string[],
   rules: {} as PromotionRule,
 });
 
@@ -59,12 +94,42 @@ export function PromotionUpsertModal({
   onSubmit,
 }: Props) {
   const [form, setForm] = useState(initialFormState());
+  const [scope, setScope] = useState<Scope>("ALL");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [groupTypes, setGroupTypes] = useState<TenantProductGroupType[]>([]);
+  const [groups, setGroups] = useState<TenantProductGroup[]>([]);
+
+  // Load tenant-specific groups when the modal opens.
+  useEffect(() => {
+    if (!isOpen || !tenantId) return;
+    let cancelled = false;
+    Promise.all([
+      productGroupTypeApi.listByTenant(tenantId),
+      productGroupApi.listByTenant(tenantId),
+    ])
+      .then(([types, all]) => {
+        if (cancelled) return;
+        setGroupTypes(types ?? []);
+        setGroups(all ?? []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setGroupTypes([]);
+        setGroups([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, tenantId]);
 
   useEffect(() => {
     if (!isOpen) return;
     if (isEditing && promotion) {
+      const existingGroupIds = (promotion.targets ?? [])
+        .filter((t) => t.target_type === "GROUP" && t.target_group_id)
+        .map((t) => t.target_group_id as string);
+
       setForm({
         promotion_name: promotion.promotion_name ?? "",
         promotion_code: promotion.promotion_code ?? "",
@@ -75,10 +140,15 @@ export function PromotionUpsertModal({
           promotion.promotion_start_date?.slice(0, 10) ?? "",
         promotion_end_date: promotion.promotion_end_date?.slice(0, 10) ?? "",
         is_active: !!promotion.is_active,
-        rules: promotion.rule ?? {},
+        is_default: !!promotion.is_default,
+        is_stackable: promotion.is_stackable !== false,
+        target_group_ids: existingGroupIds,
+        rules: normalizeRule(promotion.rule),
       });
+      setScope(existingGroupIds.length > 0 ? "FAMILY" : "ALL");
     } else {
       setForm(initialFormState());
+      setScope("ALL");
     }
     setErrors({});
   }, [isOpen, isEditing, promotion]);
@@ -90,19 +160,47 @@ export function PromotionUpsertModal({
     | PromotionTypeName
     | "";
 
+  const groupOptions = useMemo(() => {
+    const typeNameById = new Map(
+      groupTypes.map((t) => [t.tenant_product_group_type_id, t.type_name]),
+    );
+    return groups.map((g) => ({
+      value: g.tenant_product_group_id,
+      label: `${typeNameById.get(g.tenant_product_group_type_id) ?? "—"} · ${g.group_name}`,
+    }));
+  }, [groups, groupTypes]);
+
   const validate = (): boolean => {
-    const result = promotionFormSchema.safeParse(form);
-    if (result.success) {
-      setErrors({});
-      return true;
-    }
+    const candidate = {
+      ...form,
+      target_group_ids: scope === "FAMILY" ? form.target_group_ids : [],
+    };
+    const result = promotionFormSchema.safeParse(candidate);
     const next: Record<string, string> = {};
-    for (const issue of result.error.issues) {
-      const key = issue.path.join(".");
-      if (!next[key]) next[key] = issue.message;
+
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        const key = issue.path.join(".");
+        if (!next[key]) next[key] = issue.message;
+      }
     }
+
+    if (scope === "FAMILY" && form.target_group_ids.length === 0) {
+      next.target_group_ids =
+        "Selecciona al menos una familia o cambia a 'Todos los productos'.";
+    }
+
     setErrors(next);
-    return false;
+    return Object.keys(next).length === 0;
+  };
+
+  const toggleGroup = (groupId: string) => {
+    setForm((p) => ({
+      ...p,
+      target_group_ids: p.target_group_ids.includes(groupId)
+        ? p.target_group_ids.filter((id) => id !== groupId)
+        : [...p.target_group_ids, groupId],
+    }));
   };
 
   const handleSubmit = async () => {
@@ -122,7 +220,16 @@ export function PromotionUpsertModal({
       promotion_start_date: form.promotion_start_date,
       promotion_end_date: form.promotion_end_date,
       is_active: form.is_active,
-      rules: form.rules,
+      is_default: form.is_default,
+      is_stackable: form.is_stackable,
+      rules: normalizeRule(form.rules),
+      targets:
+        scope === "FAMILY"
+          ? form.target_group_ids.map((id) => ({
+              target_type: "GROUP" as const,
+              target_id: id,
+            }))
+          : [],
     };
 
     try {
@@ -246,19 +353,138 @@ export function PromotionUpsertModal({
           />
         </div>
 
-        <label className="flex items-center gap-3 cursor-pointer w-fit">
-          <input
-            type="checkbox"
-            checked={form.is_active}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, is_active: e.target.checked }))
-            }
-            className="w-5 h-5 rounded border-gray-300 text-accent-600 focus:ring-accent-400"
-          />
-          <span className="text-sm font-medium text-gray-700">
-            Promoción activa
-          </span>
-        </label>
+        {/* Toggles */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-gray-200 p-4 bg-gray-50/40">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, is_active: e.target.checked }))
+              }
+              className="mt-0.5 w-5 h-5 rounded border-gray-300 text-accent-600 focus:ring-accent-400"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-700">
+                Activa
+              </span>
+              <span className="block text-xs text-gray-500">
+                Disponible para aplicarse a ventas en curso.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.is_default}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, is_default: e.target.checked }))
+              }
+              className="mt-0.5 w-5 h-5 rounded border-gray-300 text-accent-600 focus:ring-accent-400"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-700">
+                Default
+              </span>
+              <span className="block text-xs text-gray-500">
+                Se aplica automáticamente en cada venta nueva mientras esté
+                activa.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.is_stackable}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, is_stackable: e.target.checked }))
+              }
+              className="mt-0.5 w-5 h-5 rounded border-gray-300 text-accent-600 focus:ring-accent-400"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-700">
+                Acumulable
+              </span>
+              <span className="block text-xs text-gray-500">
+                Si está desactivado, no permite aplicar otras promociones
+                encima.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        {/* Scope */}
+        <div className="rounded-xl border border-gray-200 p-4 space-y-3">
+          <p className="text-sm font-semibold text-gray-700">
+            Aplicable a
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="scope"
+                value="ALL"
+                checked={scope === "ALL"}
+                onChange={() => setScope("ALL")}
+                className="text-accent-600 focus:ring-accent-400"
+              />
+              <span className="text-sm text-gray-700">
+                Todos los productos
+              </span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="scope"
+                value="FAMILY"
+                checked={scope === "FAMILY"}
+                onChange={() => setScope("FAMILY")}
+                className="text-accent-600 focus:ring-accent-400"
+              />
+              <span className="text-sm text-gray-700">
+                Familias específicas
+              </span>
+            </label>
+          </div>
+
+          {scope === "FAMILY" && (
+            <div className="space-y-2">
+              {groupOptions.length === 0 ? (
+                <p className="text-xs text-gray-500">
+                  No hay familias / dimensiones registradas para este tenant.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {groupOptions.map((opt) => {
+                    const selected = form.target_group_ids.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => toggleGroup(opt.value)}
+                        className={[
+                          "px-3 py-1.5 text-xs rounded-full border transition-colors",
+                          selected
+                            ? "bg-accent-100 border-accent-500 text-accent-700 font-medium"
+                            : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50",
+                        ].join(" ")}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {errors.target_group_ids && (
+                <p className="text-xs text-red-500">
+                  {errors.target_group_ids}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="border-t border-gray-100 pt-4">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">

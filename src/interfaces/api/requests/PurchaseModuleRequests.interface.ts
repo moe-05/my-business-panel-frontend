@@ -31,6 +31,7 @@ export interface CreatePurchasePaymentRequest {
   purchase_account_payable_id: string;
   amount_paid: number;
   payment_method_id: number;
+  currency_id?: number;
   payment_reference?: string;
 }
 

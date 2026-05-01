@@ -3,6 +3,8 @@ export interface CashRegister {
   branch_id: string;
   register_name: string;
   is_active: boolean;
+  /** Plain-text key required for non-admin open/close. Null = no key. */
+  cash_register_key?: string | null;
   created_at: string;
   updated_at: string;
 }

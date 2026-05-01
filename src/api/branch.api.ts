@@ -60,6 +60,13 @@ export const branchApi = {
         },
       );
 
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        const message =
+          errorJson?.message ?? "Error al listar sucursales del tenant";
+        throw new Error(Array.isArray(message) ? message.join(", ") : message);
+      }
+
       const json: ApiResponse<BranchListResponse> = await response.json();
       return json.data;
     } catch (error) {

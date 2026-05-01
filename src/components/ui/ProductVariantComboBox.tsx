@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { productApi } from "@/api/product.api";
+import { warehouseApi } from "@/api/warehouse.api";
 import type { Product } from "@/interfaces/entities/Product.interface";
 
 type ProductVariantRow = Product & {
@@ -13,11 +14,14 @@ export interface ProductVariantSelection {
   variant_name: string;
   sku?: string;
   unit_price: number;
+  group_ids?: string[];
 }
 
 interface ProductVariantComboBoxProps {
   tenantId: string;
   value: string;
+  warehouseId?: string;
+  manualSkuEnabled?: boolean;
   displayValue?: string;
   onChange: (selection: ProductVariantSelection) => void;
   onClear?: () => void;
@@ -39,6 +43,8 @@ const getVariantPrice = (p: ProductVariantRow) =>
 export function ProductVariantComboBox({
   tenantId,
   value,
+  warehouseId,
+  manualSkuEnabled = false,
   displayValue,
   onChange,
   onClear,
@@ -70,15 +76,120 @@ export function ProductVariantComboBox({
       }
       setIsLoading(true);
       try {
-        const data = await productApi.search(tenantId, term, 1, 50);
-        setVariants((data?.products ?? []) as ProductVariantRow[]);
+        if (warehouseId) {
+          const inventory = await warehouseApi.listInventory(warehouseId, term);
+          // Aggregate available simple units: expand composite inventory into child units
+          const map = new Map<
+            string,
+            { stock: number; sku?: string; variant_name?: string; unit_price?: number }
+          >();
+
+          for (const it of inventory ?? []) {
+            // 1. Add the product itself (composite or simple)
+            const id = it.product_variant_id;
+            const entry = map.get(id) ?? {
+              stock: 0,
+              sku: it.sku ?? undefined,
+              variant_name: it.variant_name ?? it.product_name,
+              unit_price: it.unit_price,
+            };
+            entry.stock += Number(it.stock ?? 0);
+            if (it.unit_price !== undefined) entry.unit_price = it.unit_price;
+            map.set(id, entry);
+
+            // 2. If composite, also expand into children for virtual stock
+            if (it.is_composite) {
+              try {
+                const comps = await productApi.getComposition(
+                  tenantId,
+                  it.product_variant_id,
+                );
+                for (const c of comps) {
+                  const childId = c.child_product_variant_id;
+                  const qtyPerParent = Number(c.quantity ?? 0);
+                  const add = Number(it.stock ?? 0) * qtyPerParent;
+                  const existing = map.get(childId) ?? {
+                    stock: 0,
+                    sku: c.child_sku ?? undefined,
+                    variant_name: c.child_variant_name ?? undefined,
+                    unit_price: 0, // Will be enriched
+                  };
+                  existing.stock += add;
+                  if (!existing.sku && c.child_sku) existing.sku = c.child_sku;
+                  if (!existing.variant_name && c.child_variant_name)
+                    existing.variant_name = c.child_variant_name;
+                  map.set(childId, existing);
+                }
+              } catch (err) {
+                // ignore composition lookup errors
+              }
+            }
+          }
+
+          // Enrich with unit_price for those missing it (mostly expanded children not explicitly in inventory)
+          const result: ProductVariantRow[] = [];
+          const enrichPromises: Array<Promise<void>> = [];
+          
+          for (const [id, val] of map.entries()) {
+            const r: ProductVariantRow = {
+              product_id: id,
+              product_name: val.variant_name ?? "",
+              category_id: "",
+              tenant_id: tenantId,
+              created_at: "",
+              updated_at: "",
+              product_variant_id: id,
+              variant_name: val.variant_name,
+              sku: val.sku ?? "",
+              unit_price: val.unit_price ?? 0,
+              price: val.unit_price ?? 0,
+            };
+            result.push(r);
+
+            if (!r.unit_price || r.unit_price === 0) {
+              enrichPromises.push(
+                (async () => {
+                  try {
+                    const pd = await productApi.getByIdWithAttributes(tenantId, id);
+                    if (pd) {
+                      r.variant_name = r.variant_name ?? pd.variant_name ?? pd.product_name;
+                      r.sku = r.sku ?? pd.sku ?? undefined;
+                      r.unit_price = Number(pd.unit_price ?? pd.price ?? 0);
+                    }
+                  } catch (e) {
+                    // ignore
+                  }
+                })(),
+              );
+            }
+          }
+
+          await Promise.all(enrichPromises);
+
+          // attach aggregated stock into unit_price carrying objects by mapping again
+          const final = result.map((r) => ({
+            product_variant_id: r.product_variant_id,
+            variant_name: r.variant_name,
+            sku: r.sku,
+            unit_price: r.unit_price,
+            // expose stock via unit_price placeholder (selection uses nothing else), but we attach stock in variant_name hint via hint prop is not available; instead we attach stock in product_name by suffixing label when selected
+          })) as ProductVariantRow[];
+
+          // store stocks in an internal map for label building on select
+          (fetchVariants as any)._inventoryStock = map; // attach for use in handleSelect
+
+          setVariants(final);
+        } else {
+          const data = await productApi.search(tenantId, term, 1, 50);
+          setVariants((data?.products ?? []) as ProductVariantRow[]);
+        }
       } catch {
         setVariants([]);
       } finally {
         setIsLoading(false);
       }
     },
-    [tenantId],
+    [tenantId, warehouseId],
   );
 
   useEffect(() => {
@@ -117,7 +228,14 @@ export function ProductVariantComboBox({
     const id = getVariantId(variant);
     if (!id) return;
     const name = getVariantName(variant);
-    const label = variant.sku ? `${name} (${variant.sku})` : name;
+    // If inventory stock map is available, show available quantity in label
+    let label = variant.sku ? `${name} (${variant.sku})` : name;
+    const stockMap: Map<string, any> | undefined = (fetchVariants as any)
+      ._inventoryStock;
+    const stock = stockMap ? (stockMap.get(id)?.stock ?? 0) : undefined;
+    if (stock !== undefined) {
+      label = `${label} — disponible ${stock}`;
+    }
     onChange({
       product_variant_id: id,
       variant_name: name,
@@ -222,6 +340,23 @@ export function ProductVariantComboBox({
                 placeholder="Ingrese SKU o nombre..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === "Enter" && manualSkuEnabled && search.trim()) {
+                    e.preventDefault();
+                    const sku = search.trim();
+                    const found = await productApi.getBySku(sku);
+                    if (found && found.product_variant_id) {
+                      // convert to ProductVariantRow shape
+                      const v: ProductVariantRow = {
+                        ...found,
+                        product_variant_id: found.product_variant_id,
+                        variant_name: found.variant_name ?? found.product_name,
+                        unit_price: found.unit_price ?? found.price ?? 0,
+                      };
+                      handleSelect(v);
+                    }
+                  }
+                }}
                 className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-accent-500"
               />
             </div>
@@ -285,7 +420,9 @@ export function ProductVariantComboBox({
       )}
 
       {hint && !error && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
-      {error && <p className="mt-1 text-xs text-red-600 font-medium">{error}</p>}
+      {error && (
+        <p className="mt-1 text-xs text-red-600 font-medium">{error}</p>
+      )}
     </div>
   );
 }

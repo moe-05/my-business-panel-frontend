@@ -33,6 +33,7 @@ type ProductWithVariant = Product & {
   unit_price?: number;
   product_variant_id?: string;
   tenant_name?: string;
+  is_composite?: boolean;
 };
 
 interface UpsertModalState {
@@ -136,6 +137,15 @@ export function ProductsPage() {
     productId: string,
     data: UpdateProductRequest,
   ): Promise<void> => {
+    // Optimistic update: apply UI changes immediately and rollback on error
+    let previousSnapshot: ProductWithVariant[] | undefined;
+    setProducts((prev) => {
+      previousSnapshot = prev;
+      return prev.map((p) =>
+        getProductId(p) === productId ? { ...p, ...data } : p,
+      );
+    });
+
     try {
       const updated = await updateProduct(productId, data);
       setProducts((prev) =>
@@ -148,6 +158,7 @@ export function ProductsPage() {
         message: "Producto actualizado exitosamente",
       });
     } catch (error) {
+      if (previousSnapshot) setProducts(previousSnapshot);
       const message =
         error instanceof Error ? error.message : "Error al actualizar producto";
       setToast({ mode: "error", message });
@@ -383,12 +394,50 @@ export function ProductsPage() {
         isOpen={isBulkPackageOpen}
         tenantId={currentUser?.tenant.tenant_id ?? ""}
         onClose={() => setIsBulkPackageOpen(false)}
-        onCreated={() => {
+        onOptimisticCreate={(product) => {
+          setProducts((prev) => [
+            {
+              product_id: product.tempId,
+              product_variant_id: product.tempId,
+              sku: product.sku,
+              product_name: product.product_name,
+              variant_name: product.product_name,
+              category_id: product.cabys_code,
+              cabys_code: product.cabys_code,
+              tenant_id: product.tenant_id,
+              price: product.price,
+              unit_price: product.price,
+              is_composite: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            ...prev,
+          ]);
+          setTotal((prev) => prev + 1);
+        }}
+        onConfirmCreate={(tempId, createdParentId) => {
+          setProducts((prev) =>
+            prev.map((product) =>
+              getProductId(product) === tempId
+                ? {
+                    ...product,
+                    product_id: createdParentId,
+                    product_variant_id: createdParentId,
+                  }
+                : product,
+            ),
+          );
           setIsBulkPackageOpen(false);
           setToast({
             mode: "success",
             message: "Lote creado. Recarga la página para verlo en la lista.",
           });
+        }}
+        onRollbackCreate={(tempId) => {
+          setProducts((prev) =>
+            prev.filter((product) => getProductId(product) !== tempId),
+          );
+          setTotal((prev) => Math.max(prev - 1, 0));
         }}
       />
     </div>

@@ -5,6 +5,8 @@ import { clockingApi } from "@/api/clocking.api";
 import { incapacityApi } from "@/api/incapacity.api";
 import { turnsApi } from "@/api/turns.api";
 
+import { Modal } from "@/components/ui/Modal";
+
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -61,6 +63,16 @@ export function HRAttendancePage() {
   const [incapacityDays, setIncapacityDays] = useState("3");
   const [incapacityPercent, setIncapacityPercent] = useState("60");
   const [isSubmittingIncapacity, setIsSubmittingIncapacity] = useState(false);
+
+  // Manual clocking state
+  const [manualClockInEmployeeId, setManualClockInEmployeeId] = useState("");
+  const [manualClockInDatetime, setManualClockInDatetime] = useState("");
+  const [isSubmittingManualIn, setIsSubmittingManualIn] = useState(false);
+
+  const [manualClockOutModalOpen, setManualClockOutModalOpen] = useState(false);
+  const [manualClockOutId, setManualClockOutId] = useState<number | null>(null);
+  const [manualClockOutDatetime, setManualClockOutDatetime] = useState("");
+  const [isSubmittingManualOut, setIsSubmittingManualOut] = useState(false);
 
   const branchName = branches.find(
     (branch) => branch.branch_id === selectedBranchId,
@@ -240,6 +252,61 @@ export function HRAttendancePage() {
     }
   };
 
+  const handleManualClockIn = async () => {
+    if (!manualClockInEmployeeId || !manualClockInDatetime || !selectedBranchId) {
+      setToast({ mode: "error", message: "Seleccione empleado y fecha/hora de entrada" });
+      return;
+    }
+
+    setIsSubmittingManualIn(true);
+    try {
+      await clockingApi.manualClockIn({
+        employeeId: manualClockInEmployeeId,
+        branchId: selectedBranchId,
+        clockIn: manualClockInDatetime,
+      });
+      await loadBranchRecords(selectedBranchId);
+      setManualClockInDatetime("");
+      setToast({ mode: "success", message: "Clock-in manual registrado correctamente" });
+    } catch (error) {
+      setToast({
+        mode: "error",
+        message: error instanceof Error ? error.message : "No se pudo registrar el clock-in",
+      });
+    } finally {
+      setIsSubmittingManualIn(false);
+    }
+  };
+
+  const openManualClockOut = (clockingId: number) => {
+    setManualClockOutId(clockingId);
+    setManualClockOutDatetime(new Date().toISOString().slice(0, 16));
+    setManualClockOutModalOpen(true);
+  };
+
+  const handleManualClockOut = async () => {
+    if (!manualClockOutId || !manualClockOutDatetime) return;
+
+    setIsSubmittingManualOut(true);
+    try {
+      await clockingApi.manualClockOut({
+        clockingId: manualClockOutId,
+        clockOut: manualClockOutDatetime,
+      });
+      await loadBranchRecords(selectedBranchId);
+      setManualClockOutModalOpen(false);
+      setManualClockOutId(null);
+      setToast({ mode: "success", message: "Clock-out manual registrado correctamente" });
+    } catch (error) {
+      setToast({
+        mode: "error",
+        message: error instanceof Error ? error.message : "No se pudo registrar el clock-out",
+      });
+    } finally {
+      setIsSubmittingManualOut(false);
+    }
+  };
+
   const handleCloseIncapacity = async (incapacityId: number) => {
     try {
       await incapacityApi.close(incapacityId);
@@ -303,7 +370,7 @@ export function HRAttendancePage() {
     {
       key: "employee_id",
       label: "Empleado",
-      width: "24%",
+      width: "22%",
       render: (_value: unknown, row: HrClockingRecord) => (
         <div>
           <p className="font-medium text-gray-900">
@@ -313,28 +380,44 @@ export function HRAttendancePage() {
         </div>
       ),
     },
-    { key: "clock_in", label: "Entrada", width: "24%" },
+    { key: "clock_in", label: "Entrada", width: "22%" },
     {
       key: "clock_out",
       label: "Salida",
-      width: "24%",
-      render: (value: string | null) => value ?? "Turno abierto",
+      width: "22%",
+      render: (value: string | null) => value ?? "—",
     },
     {
       key: "turn_hours",
       label: "Horas",
-      width: "14%",
+      width: "12%",
       render: (value: number) => Number(value).toFixed(2),
     },
     {
       key: "clock_out_status",
       label: "Estado",
-      width: "14%",
+      width: "12%",
       render: (_value: unknown, row: HrClockingRecord) => (
         <Badge variant={row.clock_out ? "secondary" : "green"}>
           {row.clock_out ? "Cerrado" : "Abierto"}
         </Badge>
       ),
+    },
+    {
+      key: "actions",
+      label: "",
+      width: "10%",
+      render: (_value: unknown, row: HrClockingRecord) =>
+        !row.clock_out ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={(e) => { e.stopPropagation(); openManualClockOut(row.clocking_id); }}
+          >
+            Cerrar
+          </Button>
+        ) : null,
     },
   ];
 
@@ -475,6 +558,40 @@ export function HRAttendancePage() {
         </div>
       </div>
 
+      {/* Manual clock-in section */}
+      <div className="mb-6 rounded-2xl border border-gray-300 bg-white p-6">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Registro manual de asistencia</h2>
+          <p className="text-sm text-gray-500">
+            Ingrese entradas y salidas con fecha y hora específica.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Select
+            label="Empleado"
+            value={manualClockInEmployeeId}
+            onChange={(e) => setManualClockInEmployeeId(e.target.value)}
+            options={employeeOptions}
+          />
+          <Input
+            label="Fecha y hora de entrada"
+            type="datetime-local"
+            value={manualClockInDatetime}
+            onChange={(e) => setManualClockInDatetime(e.target.value)}
+          />
+          <div className="flex items-end">
+            <Button
+              className="w-full"
+              loading={isSubmittingManualIn}
+              onClick={handleManualClockIn}
+            >
+              Registrar entrada
+            </Button>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-2xl border border-gray-300 bg-white p-6">
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-gray-900">
@@ -555,6 +672,49 @@ export function HRAttendancePage() {
         }}
         onSubmit={handleTurnSubmit}
       />
+
+      <Modal
+        isOpen={manualClockOutModalOpen}
+        onClose={() => {
+          setManualClockOutModalOpen(false);
+          setManualClockOutId(null);
+        }}
+        title="Registrar salida manual"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Clocking ID:{" "}
+            <span className="font-mono font-semibold text-gray-900">
+              {manualClockOutId}
+            </span>
+          </p>
+          <Input
+            label="Fecha y hora de salida"
+            type="datetime-local"
+            value={manualClockOutDatetime}
+            onChange={(e) => setManualClockOutDatetime(e.target.value)}
+          />
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={isSubmittingManualOut}
+              onClick={() => {
+                setManualClockOutModalOpen(false);
+                setManualClockOutId(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              loading={isSubmittingManualOut}
+              onClick={handleManualClockOut}
+            >
+              Confirmar salida
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

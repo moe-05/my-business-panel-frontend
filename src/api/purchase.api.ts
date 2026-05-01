@@ -9,6 +9,7 @@ import type {
   UpsertPaymentAlertConfigRequest,
 } from "@/interfaces/api/requests/PurchaseModuleRequests.interface";
 import type {
+  ExchangeRateResult,
   PaymentAlert,
   PaymentAlertConfigResponse,
   PaymentAlertStats,
@@ -186,6 +187,16 @@ export const purchaseApi = {
       purchase_account_payable: PurchaseAccountPayable;
       order: PurchaseOrderDetail;
     }>(res, "Error al registrar el pago");
+  },
+
+  async getExchangeRate(fromCurrencyId: number): Promise<ExchangeRateResult | null> {
+    const res = await fetch(`${url}/purchase/exchange-rate/${fromCurrencyId}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+
+    return json<ExchangeRateResult | null>(res, "Error al consultar la tasa de cambio");
   },
 
   async getCatalogs(): Promise<PurchaseCatalogs> {

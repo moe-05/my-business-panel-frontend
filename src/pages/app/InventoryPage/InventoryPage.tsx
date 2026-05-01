@@ -21,12 +21,10 @@ import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface"
 import type { InventoryItem } from "@/interfaces/entities/InventoryItem.interface";
 import type { InventoryPageLoaderData } from "@/router/loaders/inventory.loaders";
 
-import {
-  AddInventoryModal,
-  type AddInventoryItem,
-} from "./AddInventoryModal";
+import { AddInventoryModal, type AddInventoryItem } from "./AddInventoryModal";
 import { DiscrepancyReportModal } from "./DiscrepancyReportModal";
 import { EditInventoryModal } from "./EditInventoryModal";
+import { DisaggregateModal } from "./DisaggregateModal";
 
 type StockFilter = "all" | "zero" | "low" | "ok";
 
@@ -45,6 +43,10 @@ export function InventoryPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isDiscrepancyOpen, setIsDiscrepancyOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [disaggregatingItem, setDisaggregatingItem] =
+    useState<InventoryItem | null>(null);
+  const [isSubmittingDisaggregate, setIsSubmittingDisaggregate] =
+    useState(false);
   const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
   const [isSubmittingDiscrepancy, setIsSubmittingDiscrepancy] = useState(false);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
@@ -73,9 +75,7 @@ export function InventoryPage() {
       .catch((error) => {
         if (cancelled) return;
         const message =
-          error instanceof Error
-            ? error.message
-            : "Error al cargar inventario";
+          error instanceof Error ? error.message : "Error al cargar inventario";
         setToast({ mode: "error", message });
         setInventory([]);
       })
@@ -128,6 +128,31 @@ export function InventoryPage() {
       setToast({ mode: "error", message });
     } finally {
       setIsSubmittingAdd(false);
+    }
+  };
+
+  const handleDisaggregate = async (quantity: number) => {
+    if (!disaggregatingItem) return;
+    setIsSubmittingDisaggregate(true);
+    try {
+      await warehouseApi.disaggregateLote(
+        disaggregatingItem.warehouse_id,
+        disaggregatingItem.product_variant_id,
+        quantity,
+      );
+      setToast({
+        mode: "success",
+        message: "Lote desagrupado correctamente",
+      });
+      window.location.reload();
+    } catch (error) {
+      setToast({
+        mode: "error",
+        message: error instanceof Error ? error.message : "Error al desagrupar",
+      });
+    } finally {
+      setIsSubmittingDisaggregate(false);
+      setDisaggregatingItem(null);
     }
   };
 
@@ -187,7 +212,7 @@ export function InventoryPage() {
   const handleDelete = async (item: InventoryItem) => {
     if (
       !window.confirm(
-        `¿Eliminar "${item.variant_name}" del inventario? Esta acción no se puede deshacer.`,
+        `Â¿Eliminar "${item.variant_name}" del inventario? Esta acción no se puede deshacer.`,
       )
     )
       return;
@@ -254,7 +279,7 @@ export function InventoryPage() {
               options={[
                 { value: "all", label: "Todos" },
                 { value: "zero", label: "Sin stock (0)" },
-                { value: "low", label: "Stock bajo (1–10)" },
+                { value: "low", label: "Stock bajo (1â€“10)" },
                 { value: "ok", label: "En stock (>10)" },
               ]}
             />
@@ -285,13 +310,27 @@ export function InventoryPage() {
         <Table
           isLoading={isLoadingInventory}
           columns={[
-            { key: "product_name", label: "Producto", width: "22%" },
+            { 
+              key: "product_name", 
+              label: "Producto", 
+              width: "22%",
+              render: (value: unknown, row: InventoryItem) => (
+                <div className="flex items-center gap-2">
+                  <span className="truncate">{value as string}</span>
+                  {row.is_composite && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                      Lote
+                    </span>
+                  )}
+                </div>
+              )
+            },
             { key: "variant_name", label: "Variante", width: "18%" },
             {
               key: "sku",
               label: "SKU",
               width: "13%",
-              render: (value: unknown) => (value as string | null) ?? "—",
+              render: (value: unknown) => (value as string | null) ?? "-",
             },
             {
               key: "stock",
@@ -315,7 +354,7 @@ export function InventoryPage() {
               render: (value: unknown) =>
                 value
                   ? new Date(value as string).toLocaleDateString("es-CR")
-                  : "—",
+                  : "-",
             },
             {
               key: "warehouse_id",
@@ -341,6 +380,17 @@ export function InventoryPage() {
                   >
                     <IconEdit />
                   </Button>
+                  {row.is_composite && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setDisaggregatingItem(row)}
+                      title="Desagrupar Lote"
+                      className="ml-2"
+                    >
+                      Desagrupar
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
@@ -389,6 +439,15 @@ export function InventoryPage() {
           isSubmitting={isSubmittingEdit}
           onClose={() => setEditingItem(null)}
           onSubmit={handleEditSubmit}
+        />
+      )}
+      {disaggregatingItem && (
+        <DisaggregateModal
+          isOpen={true}
+          item={disaggregatingItem}
+          isSubmitting={isSubmittingDisaggregate}
+          onClose={() => setDisaggregatingItem(null)}
+          onSubmit={handleDisaggregate}
         />
       )}
     </div>

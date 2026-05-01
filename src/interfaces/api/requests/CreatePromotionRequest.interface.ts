@@ -1,4 +1,7 @@
-import type { PromotionRule } from "@/interfaces/entities/Promotion.interface";
+import type {
+  PromotionRule,
+  PromotionTargetInput,
+} from "@/interfaces/entities/Promotion.interface";
 
 export interface CreatePromotionRequest {
   tenant_id: string;
@@ -10,5 +13,8 @@ export interface CreatePromotionRequest {
   promotion_start_date: string;
   promotion_end_date: string;
   is_active: boolean;
+  is_default?: boolean;
+  is_stackable?: boolean;
   rules: PromotionRule;
+  targets?: PromotionTargetInput[];
 }
