@@ -15,6 +15,7 @@ export interface BulkProductInput {
   cost_price?: number;
   attribute_value_ids?: string[];
   group_ids?: string[];
+  supplier_id?: string;
 }
 
 export const productApi = {
@@ -57,6 +58,7 @@ export const productApi = {
               cabys_code: data.cabys_code ?? null,
               unit_price: data.price,
               cost_price: data.cost_price ?? 0,
+              supplier_id: data.supplier_id ?? null,
               attribute_value_ids: data.attribute_value_ids ?? [],
               group_ids: data.group_ids ?? [],
             },

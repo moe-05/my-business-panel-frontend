@@ -5,6 +5,7 @@ import type {
   CreateSaleResult,
   DigitalInvoiceInfo,
   ElectronicInvoiceInfo,
+  SaleItemDetail,
 } from "@/interfaces/entities/Sale.interface";
 
 export const createFullSale = async (
@@ -24,3 +25,7 @@ export const generateElectronicInvoiceForSale = async (
   saleId: string,
 ): Promise<ElectronicInvoiceInfo> =>
   saleApi.createElectronicInvoiceForSale(saleId);
+
+export const getSaleItemsForSale = async (
+  saleId: string,
+): Promise<SaleItemDetail[]> => saleApi.getSaleItems(saleId);

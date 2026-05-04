@@ -24,7 +24,6 @@ export interface RefundCustomer {
 
 export interface RefundDigitalInvoice {
   digital_sale_invoice_id: string;
-  invoice_number: string | null;
   invoiced_at: string | null;
   subtotal_amount: number;
   tax_amount: number;

@@ -5,8 +5,6 @@ import { warehouseApi } from "@/api/warehouse.api";
 import {
   bulkInsertInventory,
   createDiscrepancyReport,
-  deleteInventoryItem,
-  updateInventoryItem,
 } from "@/router/actions/inventory.actions";
 import { useDebounce } from "@/hooks/useDebounce";
 
@@ -15,15 +13,15 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table } from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
-import { IconEdit, IconPlus, IconTrash } from "@/assets/icons";
+import { IconPlus } from "@/assets/icons";
 
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
-import type { InventoryItem } from "@/interfaces/entities/InventoryItem.interface";
+import type { AggregatedInventoryItem } from "@/interfaces/entities/InventoryItem.interface";
 import type { InventoryPageLoaderData } from "@/router/loaders/inventory.loaders";
 
 import { AddInventoryModal, type AddInventoryItem } from "./AddInventoryModal";
 import { DiscrepancyReportModal } from "./DiscrepancyReportModal";
-import { EditInventoryModal } from "./EditInventoryModal";
+
 import { DisaggregateModal } from "./DisaggregateModal";
 
 type StockFilter = "all" | "zero" | "low" | "ok";
@@ -34,7 +32,7 @@ export function InventoryPage() {
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(
     warehouses[0]?.warehouse_id ?? "",
   );
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [inventory, setInventory] = useState<AggregatedInventoryItem[]>([]);
   const [isLoadingInventory, setIsLoadingInventory] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
@@ -42,14 +40,12 @@ export function InventoryPage() {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isDiscrepancyOpen, setIsDiscrepancyOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [disaggregatingItem, setDisaggregatingItem] =
-    useState<InventoryItem | null>(null);
+    useState<AggregatedInventoryItem | null>(null);
   const [isSubmittingDisaggregate, setIsSubmittingDisaggregate] =
     useState(false);
   const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
   const [isSubmittingDiscrepancy, setIsSubmittingDiscrepancy] = useState(false);
-  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
   const [toast, setToast] = useState<{
     mode: ToastMode;
@@ -68,7 +64,7 @@ export function InventoryPage() {
     let cancelled = false;
     setIsLoadingInventory(true);
     warehouseApi
-      .listInventory(selectedWarehouseId, debouncedSearch || undefined)
+      .listInventoryAggregated(selectedWarehouseId, debouncedSearch || undefined)
       .then((data) => {
         if (!cancelled) setInventory(data);
       })
@@ -97,7 +93,7 @@ export function InventoryPage() {
 
   const reloadInventory = async () => {
     if (!selectedWarehouseId) return;
-    const fresh = await warehouseApi.listInventory(
+    const fresh = await warehouseApi.listInventoryAggregated(
       selectedWarehouseId,
       debouncedSearch || undefined,
     );
@@ -189,45 +185,6 @@ export function InventoryPage() {
     }
   };
 
-  const handleEditSubmit = async (data: {
-    stock: number;
-    expiration_date: string | null;
-  }) => {
-    if (!editingItem) return;
-    setIsSubmittingEdit(true);
-    try {
-      await updateInventoryItem(editingItem.inventory_id, data);
-      await reloadInventory();
-      setToast({ mode: "success", message: "Registro actualizado" });
-      setEditingItem(null);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Error al actualizar registro";
-      setToast({ mode: "error", message });
-    } finally {
-      setIsSubmittingEdit(false);
-    }
-  };
-
-  const handleDelete = async (item: InventoryItem) => {
-    if (
-      !window.confirm(
-        `Â¿Eliminar "${item.variant_name}" del inventario? Esta acción no se puede deshacer.`,
-      )
-    )
-      return;
-    try {
-      await deleteInventoryItem(item.inventory_id);
-      setInventory((prev) =>
-        prev.filter((i) => i.inventory_id !== item.inventory_id),
-      );
-      setToast({ mode: "success", message: "Registro eliminado" });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Error al eliminar registro";
-      setToast({ mode: "error", message });
-    }
-  };
 
   return (
     <div className="p-6 lg:p-8">
@@ -310,11 +267,11 @@ export function InventoryPage() {
         <Table
           isLoading={isLoadingInventory}
           columns={[
-            { 
-              key: "product_name", 
-              label: "Producto", 
-              width: "22%",
-              render: (value: unknown, row: InventoryItem) => (
+            {
+              key: "product_name",
+              label: "Producto",
+              width: "25%",
+              render: (value: unknown, row: AggregatedInventoryItem) => (
                 <div className="flex items-center gap-2">
                   <span className="truncate">{value as string}</span>
                   {row.is_composite && (
@@ -323,9 +280,9 @@ export function InventoryPage() {
                     </span>
                   )}
                 </div>
-              )
+              ),
             },
-            { key: "variant_name", label: "Variante", width: "18%" },
+            { key: "variant_name", label: "Variante", width: "20%" },
             {
               key: "sku",
               label: "SKU",
@@ -334,73 +291,46 @@ export function InventoryPage() {
             },
             {
               key: "stock",
-              label: "Stock",
-              width: "9%",
+              label: "Stock total",
+              width: "12%",
               render: (value: unknown) => {
                 const n = value as number;
                 const color =
-                  n === 0
-                    ? "text-red-600"
-                    : n <= 10
-                      ? "text-amber-600"
-                      : "text-gray-900";
-                return <span className={`font-mono ${color}`}>{n}</span>;
+                  n === 0 ? "text-red-600" : n <= 10 ? "text-amber-600" : "text-gray-900";
+                return <span className={`font-mono font-semibold ${color}`}>{n}</span>;
               },
             },
             {
-              key: "expiration_date",
-              label: "Vence",
-              width: "13%",
-              render: (value: unknown) =>
-                value
-                  ? new Date(value as string).toLocaleDateString("es-CR")
-                  : "-",
+              key: "lot_count",
+              label: "Lotes",
+              width: "8%",
+              render: (value: unknown) => (
+                <span className="font-mono text-gray-500">{value as number}</span>
+              ),
             },
             {
-              key: "warehouse_id",
-              label: "Almacén",
+              key: "expiration_date",
+              label: "Próx. vence",
               width: "13%",
-              render: (value: unknown) => (
-                <span className="font-mono text-[11px]">
-                  {(value as string).slice(0, 8)}
-                </span>
-              ),
+              render: (value: unknown) =>
+                value ? new Date(value as string).toLocaleDateString("es-CR") : "-",
             },
             {
               key: "actions",
               label: "",
-              width: "12%",
-              render: (_: unknown, row: InventoryItem) => (
-                <div className="flex items-center gap-1">
+              width: "9%",
+              render: (_: unknown, row: AggregatedInventoryItem) =>
+                row.is_composite ? (
                   <Button
                     type="button"
-                    variant="ghost"
-                    onClick={() => setEditingItem(row)}
-                    title="Editar"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setDisaggregatingItem(row)}
+                    title="Desagrupar Lote"
                   >
-                    <IconEdit />
+                    Desagrupar
                   </Button>
-                  {row.is_composite && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setDisaggregatingItem(row)}
-                      title="Desagrupar Lote"
-                      className="ml-2"
-                    >
-                      Desagrupar
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => handleDelete(row)}
-                    title="Eliminar"
-                  >
-                    <IconTrash />
-                  </Button>
-                </div>
-              ),
+                ) : null,
             },
           ]}
           data={filtered}
@@ -432,15 +362,7 @@ export function InventoryPage() {
         onSubmit={handleDiscrepancySubmit}
       />
 
-      {editingItem && (
-        <EditInventoryModal
-          isOpen={true}
-          item={editingItem}
-          isSubmitting={isSubmittingEdit}
-          onClose={() => setEditingItem(null)}
-          onSubmit={handleEditSubmit}
-        />
-      )}
+
       {disaggregatingItem && (
         <DisaggregateModal
           isOpen={true}

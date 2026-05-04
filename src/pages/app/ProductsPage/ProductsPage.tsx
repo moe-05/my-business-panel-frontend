@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useLoaderData } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 
@@ -71,6 +72,11 @@ export function ProductsPage() {
   });
   const [isBulkPackageOpen, setIsBulkPackageOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "simple" | "composite">(
+    "all",
+  );
+  const [filterSupplierQuery, setFilterSupplierQuery] = useState<string>("");
+  const debouncedSupplierQuery = useDebounce(filterSupplierQuery, 300);
 
   const [toast, setToast] = useState<{
     mode: ToastMode;
@@ -85,6 +91,42 @@ export function ProductsPage() {
 
   const getProductPrice = (p: ProductWithVariant) =>
     Number(p.unit_price ?? p.price ?? 0);
+
+  const getFilteredProducts = (): ProductWithVariant[] => {
+    let filtered = [...products];
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          getProductName(p).toLowerCase().includes(query) ||
+          p.sku?.toLowerCase().includes(query),
+      );
+    }
+
+    if (filterType !== "all") {
+      filtered = filtered.filter((p) =>
+        filterType === "composite" ? p.is_composite : !p.is_composite,
+      );
+    }
+
+    if (debouncedSupplierQuery.trim()) {
+      const q = debouncedSupplierQuery.toLowerCase();
+      filtered = filtered.filter((p) =>
+        p.supplier_name?.toLowerCase().includes(q),
+      );
+    }
+
+    filtered.sort(
+      (a, b) =>
+        new Date(b.created_at ?? 0).getTime() -
+        new Date(a.created_at ?? 0).getTime(),
+    );
+
+    return filtered;
+  };
+
+  const filteredProducts = getFilteredProducts();
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
@@ -136,13 +178,28 @@ export function ProductsPage() {
   const handleUpdateProduct = async (
     productId: string,
     data: UpdateProductRequest,
+    meta?: { supplier_name?: string },
   ): Promise<void> => {
     // Optimistic update: apply UI changes immediately and rollback on error
     let previousSnapshot: ProductWithVariant[] | undefined;
     setProducts((prev) => {
       previousSnapshot = prev;
       return prev.map((p) =>
-        getProductId(p) === productId ? { ...p, ...data } : p,
+        getProductId(p) === productId
+          ? {
+              ...p,
+              ...data,
+              // supplier_name is not in UpdateProductRequest, propagate from meta
+              supplier_name:
+                meta?.supplier_name !== undefined
+                  ? meta.supplier_name
+                  : data.supplier_id === undefined
+                    ? p.supplier_name
+                    : data.supplier_id === null || data.supplier_id === ""
+                      ? undefined
+                      : p.supplier_name,
+            }
+          : p,
       );
     });
 
@@ -216,21 +273,49 @@ export function ProductsPage() {
         </p>
       </div>
 
-      {/* Search & Actions */}
-      <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      {/* Search & Filters */}
+      <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6 space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:gap-4">
           <div className="flex-1 min-w-0">
             <Input
               label="Buscar producto"
               placeholder="Buscar por nombre o SKU"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full lg:max-w-sm"
+              className="w-full"
             />
           </div>
+
+          <div className="w-full lg:w-48">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Tipo de producto
+            </label>
+            <select
+              value={filterType}
+              onChange={(e) =>
+                setFilterType(e.target.value as "all" | "simple" | "composite")
+              }
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Todos</option>
+              <option value="simple">Productos simples</option>
+              <option value="composite">Lotes</option>
+            </select>
+          </div>
+
+          <div className="w-full lg:w-48">
+            <Input
+              label="Proveedor"
+              placeholder="Buscar proveedor..."
+              value={filterSupplierQuery}
+              onChange={(e) => setFilterSupplierQuery(e.target.value)}
+              className="w-full"
+            />
+          </div>
+
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500">
-              {total} producto{total !== 1 ? "s" : ""}
+            <span className="text-sm text-gray-500 whitespace-nowrap">
+              {filteredProducts.length} de {total}
             </span>
             {canManageProducts && (
               <>
@@ -263,31 +348,54 @@ export function ProductsPage() {
       <div className="bg-white rounded-2xl border border-gray-300 p-6">
         <Table
           columns={[
-            { key: "sku", label: "SKU", width: "12%" },
+            { key: "sku", label: "SKU", width: "14%" },
             {
               key: "product_name" as keyof Product,
               label: "Nombre",
-              width: "28%",
+              width: "14%",
               render: (_: unknown, row: Product) =>
                 getProductName(row as ProductWithVariant),
             },
             {
-              key: "cabys_code" as keyof Product,
-              label: "CABYS",
+              key: "supplier_name" as keyof Product,
+              label: "Proveedor",
               width: "14%",
-              render: (code: unknown) =>
-                code ? (
-                  <Badge variant="secondary" className="text-xs font-mono">
-                    {String(code).substring(0, 12)}
-                    {String(code).length > 12 ? "…" : ""}
-                  </Badge>
-                ) : (
+              render: (_: unknown, row: Product) =>
+                (row as ProductWithVariant).supplier_name ?? (
                   <span className="text-gray-400 text-xs">—</span>
                 ),
             },
             {
+              key: "is_composite" as keyof Product,
+              label: "Tipo",
+              width: "14%",
+              render: (_: unknown, row: Product) =>
+                (row as ProductWithVariant).is_composite ? (
+                  <Badge variant="secondary" className="text-xs">
+                    Lote
+                  </Badge>
+                ) : (
+                  <Badge variant="gray" className="text-xs">
+                    Simple
+                  </Badge>
+                ),
+            },
+            {
+              key: "cost_price" as keyof Product,
+              label: "Costo",
+              width: "14%",
+              render: (_: unknown, row: Product) => {
+                const cost = (row as ProductWithVariant).cost_price;
+                return cost != null ? (
+                  `₡${Number(cost).toLocaleString("es-CR")}`
+                ) : (
+                  <span className="text-gray-400 text-xs">—</span>
+                );
+              },
+            },
+            {
               key: "price" as keyof Product,
-              label: "Precio",
+              label: "Precio venta",
               width: "14%",
               render: (_: unknown, row: Product) =>
                 `₡${getProductPrice(row as ProductWithVariant).toLocaleString("es-CR")}`,
@@ -297,68 +405,66 @@ export function ProductsPage() {
                   {
                     key: "tenant_id" as keyof Product,
                     label: "Tenant",
-                    width: "14%",
+                    width: "10%",
                     render: (_: unknown, row: Product) =>
                       (row as ProductWithVariant).tenant_name ?? "—",
                   },
                 ]
               : []),
             {
-              key: "created_at" as keyof Product,
-              label: "Creado",
-              width: "10%",
-              render: (date: unknown) =>
-                date ? new Date(String(date)).toLocaleDateString("es-CR") : "—",
-            },
-            ...(canManageProducts
-              ? [
-                  {
-                    key: "actions" as keyof Product,
-                    label: "Acciones",
-                    width: "8%",
-                    render: (_: unknown, row: Product) => (
-                      <div
-                        className="flex gap-2"
-                        onClick={(e) => e.stopPropagation()}
+              key: "actions" as keyof Product,
+              label: "Acciones",
+              width: "14%",
+              render: (_: unknown, row: Product) => (
+                <div
+                  className="flex gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Button
+                    onClick={() =>
+                      setSelectedProduct(row as ProductWithVariant)
+                    }
+                    title="Ver detalles"
+                    variant="ghost"
+                    className="hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    <IconEye />
+                  </Button>
+                  {canManageProducts && (
+                    <>
+                      <Button
+                        onClick={() => openEdit(row as ProductWithVariant)}
+                        title="Editar producto"
+                        variant="ghost"
+                        className="hover:bg-gray-50 rounded-lg transition-colors"
                       >
-                        <Button
-                          onClick={() =>
-                            setSelectedProduct(row as ProductWithVariant)
-                          }
-                          title="Ver detalles"
-                          variant="ghost"
-                          className="hover:bg-gray-50 rounded-lg transition-colors"
-                        >
-                          <IconEye />
-                        </Button>
-                        <Button
-                          onClick={() => openEdit(row as ProductWithVariant)}
-                          title="Editar producto"
-                          variant="ghost"
-                          className="hover:bg-gray-50 rounded-lg transition-colors"
-                        >
-                          <IconEdit />
-                        </Button>
-                        <Button
-                          onClick={() =>
-                            handleDeleteProduct(
-                              getProductId(row as ProductWithVariant),
-                            )
-                          }
-                          title="Eliminar producto"
-                          variant="danger"
-                          className="hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <IconTrash />
-                        </Button>
-                      </div>
-                    ),
-                  },
-                ]
-              : []),
+                        <IconEdit />
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          handleDeleteProduct(
+                            getProductId(row as ProductWithVariant),
+                          )
+                        }
+                        title="Eliminar producto"
+                        variant="danger"
+                        className="hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <IconTrash />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ),
+            },
           ]}
-          data={products}
-          emptyMessage="No hay productos para mostrar"
+          data={filteredProducts}
+          emptyMessage={
+            filteredProducts.length === 0 &&
+            (searchQuery || filterType !== "all" || filterSupplierQuery)
+              ? "No hay productos que coincidan con los filtros"
+              : "No hay productos para mostrar"
+          }
           onRowClick={(row) => setSelectedProduct(row as ProductWithVariant)}
         />
         {totalPages > 1 && (
@@ -407,6 +513,8 @@ export function ProductsPage() {
               tenant_id: product.tenant_id,
               price: product.price,
               unit_price: product.price,
+              cost_price: product.cost_price,
+              supplier_id: product.supplier_id,
               is_composite: true,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),

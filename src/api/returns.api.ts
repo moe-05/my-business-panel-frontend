@@ -2,7 +2,10 @@ import { url } from ".";
 
 import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
 import type { CreateReturnTransactionRequest } from "@/interfaces/api/requests/CreateReturnTransactionRequest.interface";
-import type { ReturnTransaction } from "@/interfaces/entities/ReturnTransaction.interface";
+import type {
+  ReturnTransaction,
+  ReturnTransactionDetail,
+} from "@/interfaces/entities/ReturnTransaction.interface";
 import type { SaleRefundContext } from "@/interfaces/entities/SaleRefundContext.interface";
 
 interface ReturnsListWrapper {
@@ -84,6 +87,19 @@ export const returnsApi = {
         error instanceof Error ? error.message : "Error al crear el reembolso",
       );
     }
+  },
+
+  async getDetail(returnId: string): Promise<ReturnTransactionDetail> {
+    const response = await fetch(`${url}/returns/${returnId}/detail`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    const json = await response.json();
+    if (!response.ok) {
+      throw new Error(json?.message ?? "Error al obtener detalle del reembolso");
+    }
+    return (json as ApiResponse<ReturnTransactionDetail>).data ?? json;
   },
 
   async list(filters: ReturnsFilters = {}): Promise<ReturnTransaction[]> {

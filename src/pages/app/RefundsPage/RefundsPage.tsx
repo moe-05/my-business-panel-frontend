@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useLoaderData } from "react-router-dom";
 
 import { Toast } from "@/components/ui/Toast";
@@ -6,6 +7,7 @@ import type { RefundsPageLoaderData } from "@/router/loaders/returns.loaders";
 
 import { RefundModeTabs } from "./RefundModeTabs";
 import { RefundsHistoryTable } from "./RefundsHistoryTable";
+import { ReturnDetailModal } from "./ReturnDetailModal";
 import { SaleContextPanel } from "./SaleContextPanel";
 import { SaleLookupForm } from "./SaleLookupForm";
 import { useRefundFlow } from "@/hooks/useRefundFlow";
@@ -14,6 +16,7 @@ export function RefundsPage() {
   const { initialReturns } = useLoaderData() as RefundsPageLoaderData;
 
   const flow = useRefundFlow({ initialReturns });
+  const [selectedReturnId, setSelectedReturnId] = useState<string | null>(null);
 
   return (
     <div className="p-6 lg:p-8">
@@ -57,6 +60,8 @@ export function RefundsPage() {
           returnStatusId={flow.returnStatusId}
           onReturnStatusChange={flow.setReturnStatusId}
           refundTotal={flow.refundTotal}
+          description={flow.description}
+          onDescriptionChange={flow.setDescription}
           isSubmitting={flow.isSubmitting}
           canSubmitPartial={flow.productsToRefund.length > 0}
           onSubmitPartial={flow.submitPartial}
@@ -64,7 +69,17 @@ export function RefundsPage() {
         />
       )}
 
-      <RefundsHistoryTable returns={flow.returns} />
+      <RefundsHistoryTable
+        returns={flow.returns}
+        onViewDetail={(id) => setSelectedReturnId(id)}
+      />
+
+      {selectedReturnId && (
+        <ReturnDetailModal
+          returnId={selectedReturnId}
+          onClose={() => setSelectedReturnId(null)}
+        />
+      )}
     </div>
   );
 }

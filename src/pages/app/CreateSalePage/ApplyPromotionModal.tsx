@@ -15,6 +15,7 @@ import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface"
 
 import {
   calculatePromotionDiscount,
+  findMatchingTier,
   isPromotionWithinDate,
   promotionTypeLabel,
 } from "@/utils/promotion";
@@ -67,6 +68,7 @@ export function ApplyPromotionModal({
   const [selectedPromotionId, setSelectedPromotionId] = useState<string>("");
   const [selectedTypeId, setSelectedTypeId] = useState<number>(0);
   const [rule, setRule] = useState<PromotionRule>({});
+  const [tiers, setTiers] = useState<PromotionRule[]>([{}]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingRule, setIsLoadingRule] = useState(false);
   const [isExistingPromo, setIsExistingPromo] = useState(false);
@@ -82,9 +84,9 @@ export function ApplyPromotionModal({
     setIsLoading(true);
 
     Promise.all([
-      promotionApi.getTypes().catch(() => []),
+      promotionApi.getTypes().catch(() => [] as PromotionType[]),
       tenantId
-        ? promotionApi.getByTenant(tenantId).catch(() => [])
+        ? promotionApi.getByTenant(tenantId).catch(() => [] as Promotion[])
         : Promise.resolve<Promotion[]>([]),
     ])
       .then(([typesRes, promosRes]) => {
@@ -115,6 +117,7 @@ export function ApplyPromotionModal({
       setSelectedPromotionId("");
       setSelectedTypeId(0);
       setRule({});
+      setTiers([{}]);
       setIsExistingPromo(false);
     }
   }, [isOpen]);
@@ -125,6 +128,7 @@ export function ApplyPromotionModal({
   const selectedTypeName = (selectedType?.type_name ?? "") as
     | PromotionTypeName
     | "";
+  const isTieredPricing = selectedTypeName === "tiered_pricing";
 
   const handleSelectExisting = async (promotionId: string) => {
     setSelectedPromotionId(promotionId);
@@ -132,6 +136,7 @@ export function ApplyPromotionModal({
     if (!promotionId) {
       setIsExistingPromo(false);
       setRule({});
+      setTiers([{}]);
       return;
     }
 
@@ -143,20 +148,25 @@ export function ApplyPromotionModal({
 
     setIsExistingPromo(true);
 
-    if (promo.rule) {
-      setRule(promo.rule);
-      return;
-    }
-
     try {
       setIsLoadingRule(true);
       const detail = await promotionApi.getInfo(promotionId);
-      setRule(detail?.rule ?? {});
-      if (!detail?.rule) {
-        setToast({
-          mode: "error",
-          message: "La promoción no tiene una regla configurada",
-        });
+
+      if (promo.type_name === "tiered_pricing") {
+        const loadedTiers = (detail?.rules ?? [])
+          .filter((r) => r.tier_level != null)
+          .sort((a, b) => (a.tier_level ?? 0) - (b.tier_level ?? 0));
+        setTiers(loadedTiers.length > 0 ? loadedTiers : detail?.rule ? [detail.rule] : [{}]);
+        setRule({});
+      } else {
+        setRule(detail?.rule ?? {});
+        setTiers([{}]);
+        if (!detail?.rule) {
+          setToast({
+            mode: "error",
+            message: "La promoción no tiene una regla configurada",
+          });
+        }
       }
     } catch (error) {
       setToast({
@@ -177,13 +187,28 @@ export function ApplyPromotionModal({
     const perItem: Record<string, number> = {};
 
     for (const item of cartItems) {
-      const result = calculatePromotionDiscount({
-        type: selectedTypeName,
-        rule,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total_purchase_amount: cartSubtotal,
-      });
+      let result;
+
+      if (isTieredPricing) {
+        const matchingTier = findMatchingTier(tiers, item.quantity);
+        if (!matchingTier) continue;
+        result = calculatePromotionDiscount({
+          type: selectedTypeName,
+          rule: matchingTier,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total_purchase_amount: cartSubtotal,
+        });
+      } else {
+        result = calculatePromotionDiscount({
+          type: selectedTypeName,
+          rule,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total_purchase_amount: cartSubtotal,
+        });
+      }
+
       if (result.success && result.discount_amount > 0) {
         const capped = Math.min(result.discount_amount, item.total_price);
         perItem[item.id] = Number(capped.toFixed(2));
@@ -195,7 +220,7 @@ export function ApplyPromotionModal({
       total: Number(total.toFixed(2)),
       perItem,
     };
-  }, [cartItems, cartSubtotal, rule, selectedTypeName]);
+  }, [cartItems, cartSubtotal, rule, tiers, selectedTypeName, isTieredPricing]);
 
   const handleApply = () => {
     if (!selectedTypeName) {
@@ -215,11 +240,13 @@ export function ApplyPromotionModal({
       (p) => p.promotion_id === selectedPromotionId,
     );
 
+    const effectiveRule = isTieredPricing ? (tiers[0] ?? {}) : rule;
+
     onApply({
       promotionId: selectedPromotionId || undefined,
       promotionName: promo?.promotion_name,
       promotionType: selectedTypeName,
-      rule,
+      rule: effectiveRule,
       totalDiscount: preview.total,
       perItemDiscount: preview.perItem,
       description: promo?.promotion_name
@@ -280,6 +307,7 @@ export function ApplyPromotionModal({
               const id = Number(e.target.value);
               setSelectedTypeId(id);
               setRule({});
+              setTiers([{}]);
               setSelectedPromotionId("");
               setIsExistingPromo(false);
             }}
@@ -306,7 +334,9 @@ export function ApplyPromotionModal({
             <PromotionRuleFields
               type={selectedTypeName}
               rule={rule}
+              tiers={isTieredPricing ? tiers : undefined}
               onChange={setRule}
+              onTiersChange={isTieredPricing ? setTiers : undefined}
               disabled={isExistingPromo}
             />
           </div>

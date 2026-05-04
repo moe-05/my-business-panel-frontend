@@ -15,3 +15,18 @@ export interface InventoryItem {
   updated_at?: string;
 }
 
+export interface AggregatedInventoryItem {
+  product_variant_id: string;
+  tenant_id: string;
+  warehouse_id: string;
+  stock: number;
+  expiration_date: string | null;
+  variant_name: string;
+  sku: string | null;
+  product_id: string;
+  product_name: string;
+  is_composite?: boolean;
+  unit_price?: number;
+  lot_count: number;
+}
+

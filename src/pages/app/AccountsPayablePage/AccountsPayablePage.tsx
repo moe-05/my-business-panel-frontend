@@ -36,6 +36,7 @@ import type { AccountsPayablePageLoaderData } from "@/router/loaders/purchase.lo
 import {
   formatCurrency,
   formatDate,
+  formatPaymentMethodName,
   getOrderStatusTone,
   getPayableStatusTone,
 } from "@/utils/purchase";
@@ -72,9 +73,8 @@ export function AccountsPayablePage() {
 
   const canManage = user?.role.role_id === 1 || user?.role.role_id === 2;
 
-  const [payables, setPayables] = useState<PurchaseAccountPayable[]>(
-    initialPayables,
-  );
+  const [payables, setPayables] =
+    useState<PurchaseAccountPayable[]>(initialPayables);
   const [search, setSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -84,14 +84,14 @@ export function AccountsPayablePage() {
     useState<PaymentFormState>(emptyPaymentForm);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
-  const [exchangeRate, setExchangeRate] = useState<ExchangeRateResult | null>(null);
+  const [exchangeRate, setExchangeRate] = useState<ExchangeRateResult | null>(
+    null,
+  );
   const [isLoadingRate, setIsLoadingRate] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<PurchaseOrderDetail | null>(
-    null,
-  );
-  const [selectedMatching, setSelectedMatching] = useState<PurchaseMatching | null>(
-    null,
-  );
+  const [selectedOrder, setSelectedOrder] =
+    useState<PurchaseOrderDetail | null>(null);
+  const [selectedMatching, setSelectedMatching] =
+    useState<PurchaseMatching | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [toast, setToast] = useState<{
@@ -197,12 +197,13 @@ export function AccountsPayablePage() {
 
   const openPaymentModal = (payable: PurchaseAccountPayable) => {
     setSelectedPayable(payable);
+    const filteredMethods = catalogs.payment_methods.filter(
+      (method) => Number(method.payment_method_id) !== 5,
+    );
     setPaymentForm({
       purchase_account_payable_id: payable.purchase_account_payable_id,
       amount_paid: String(Number(payable.balance_due ?? 0)),
-      payment_method_id: String(
-        catalogs.payment_methods[0]?.payment_method_id ?? "",
-      ),
+      payment_method_id: String(filteredMethods[0]?.payment_method_id ?? ""),
       currency_id: String(CRC_CURRENCY_ID),
       payment_reference: "",
       exchange_rate_override: "",
@@ -252,7 +253,8 @@ export function AccountsPayablePage() {
 
     try {
       const payload: CreatePurchasePaymentRequest = {
-        purchase_account_payable_id: selectedPayable.purchase_account_payable_id,
+        purchase_account_payable_id:
+          selectedPayable.purchase_account_payable_id,
         amount_paid: amount,
         payment_method_id: paymentMethodId,
         currency_id: currencyId !== CRC_CURRENCY_ID ? currencyId : undefined,
@@ -277,7 +279,9 @@ export function AccountsPayablePage() {
         ),
       );
 
-      if (selectedOrder?.purchase_order_id === response.order.purchase_order_id) {
+      if (
+        selectedOrder?.purchase_order_id === response.order.purchase_order_id
+      ) {
         setSelectedOrder(response.order);
         const matching = await purchaseApi.getMatching(
           response.order.purchase_order_id,
@@ -291,7 +295,9 @@ export function AccountsPayablePage() {
       setToast({
         mode: "error",
         message:
-          error instanceof Error ? error.message : "No se pudo registrar el abono",
+          error instanceof Error
+            ? error.message
+            : "No se pudo registrar el abono",
       });
     } finally {
       setIsSubmittingPayment(false);
@@ -493,7 +499,10 @@ export function AccountsPayablePage() {
               label: "Acciones",
               width: isSuperuser ? "16%" : "18%",
               render: (_value, payable: PurchaseAccountPayable) => (
-                <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                <div
+                  className="flex flex-wrap gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <Button
                     variant="ghost"
                     title="Ver detalle"
@@ -628,16 +637,20 @@ export function AccountsPayablePage() {
                   <p className="text-blue-700 mt-1">
                     1 {exchangeRate?.from_currency_code} ={" "}
                     <span className="font-semibold">
-                      {exchangeRate ? Number(exchangeRate.rate).toLocaleString("es-CR", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 6,
-                      }) : "—"}
+                      {exchangeRate
+                        ? Number(exchangeRate.rate).toLocaleString("es-CR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 6,
+                          })
+                        : "—"}
                     </span>{" "}
                     {exchangeRate?.to_currency_code}
                   </p>
                   <p className="text-xs text-blue-500 mt-1">
                     Vigente al{" "}
-                    {new Date(exchangeRate.effective_date).toLocaleDateString("es-CR")}
+                    {new Date(exchangeRate.effective_date).toLocaleDateString(
+                      "es-CR",
+                    )}
                   </p>
                 </div>
               ) : (
@@ -666,31 +679,37 @@ export function AccountsPayablePage() {
                 </div>
               )}
 
-              {amount > 0 && effectiveExchangeRate > 0 && paymentForm.exchange_rate_override && (
-                <div className="rounded-xl border border-purple-200 bg-purple-50 p-3">
-                  <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
-                    Usando tasa personalizada
-                  </p>
-                  <Input
-                    label="Tasa"
-                    type="number"
-                    min="0"
-                    step="0.000001"
-                    value={paymentForm.exchange_rate_override}
-                    onChange={(event) =>
-                      setPaymentForm((prev) => ({
-                        ...prev,
-                        exchange_rate_override: event.target.value,
-                      }))
-                    }
-                    className="mt-2"
-                    hint={`Tasa del sistema: ${exchangeRate ? Number(exchangeRate.rate).toLocaleString("es-CR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 6,
-                    }) : "—"}`}
-                  />
-                </div>
-              )}
+              {amount > 0 &&
+                effectiveExchangeRate > 0 &&
+                paymentForm.exchange_rate_override && (
+                  <div className="rounded-xl border border-purple-200 bg-purple-50 p-3">
+                    <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
+                      Usando tasa personalizada
+                    </p>
+                    <Input
+                      label="Tasa"
+                      type="number"
+                      min="0"
+                      step="0.000001"
+                      value={paymentForm.exchange_rate_override}
+                      onChange={(event) =>
+                        setPaymentForm((prev) => ({
+                          ...prev,
+                          exchange_rate_override: event.target.value,
+                        }))
+                      }
+                      className="mt-2"
+                      hint={`Tasa del sistema: ${
+                        exchangeRate
+                          ? Number(exchangeRate.rate).toLocaleString("es-CR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 6,
+                            })
+                          : "—"
+                      }`}
+                    />
+                  </div>
+                )}
             </>
           )}
 
@@ -703,13 +722,12 @@ export function AccountsPayablePage() {
                 payment_method_id: event.target.value,
               }))
             }
-            options={catalogs.payment_methods.map((method) => ({
-              value: method.payment_method_id,
-              label: method.name
-                .split("_")
-                .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                .join(" "),
-            }))}
+            options={catalogs.payment_methods
+              .filter((method) => Number(method.payment_method_id) !== 5)
+              .map((method) => ({
+                value: method.payment_method_id,
+                label: formatPaymentMethodName(method.name),
+              }))}
             placeholder="Seleccionar método"
             required
           />
@@ -726,7 +744,9 @@ export function AccountsPayablePage() {
             hint="Número de transferencia, voucher o comentario breve."
           />
 
-          {paymentError && <p className="text-xs text-red-500">{paymentError}</p>}
+          {paymentError && (
+            <p className="text-xs text-red-500">{paymentError}</p>
+          )}
 
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button

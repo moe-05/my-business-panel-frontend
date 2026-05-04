@@ -25,7 +25,10 @@ import {
 } from "@/assets/icons";
 
 import { createCustomer } from "@/router/actions/customer.actions";
-import { createFullSale } from "@/router/actions/sale.actions";
+import {
+  createFullSale,
+  getDigitalInvoiceForSale,
+} from "@/router/actions/sale.actions";
 import {
   getCashRegistersByBranch,
   getOpenCashSessionsByBranch,
@@ -37,6 +40,7 @@ import { exchangeRateApi } from "@/api/exchangeRate.api";
 import { productApi } from "@/api/product.api";
 import { warehouseApi } from "@/api/warehouse.api";
 import { promotionApi } from "@/api/promotion.api";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
 import {
   calculatePromotionDiscount,
@@ -49,6 +53,7 @@ import { paymentMethods, currencies } from "@/constants/payment-methods";
 
 import type { Promotion } from "@/interfaces/entities/Promotion.interface";
 import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
+import type { CustomerDetail } from "@/interfaces/entities/CustomerDetail.interface";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Seeded IDs from general/006-insert-currencies.sql.
@@ -56,11 +61,15 @@ const CRC_CURRENCY_ID = 1;
 
 import type { CreateSalePageLoaderData } from "@/router/loaders/sale.loaders";
 import type { Customer } from "@/interfaces/entities/Customer.interface";
-import type { CashRegister } from "@/interfaces/entities/CashRegister.interface";
+import type {
+  CashRegister,
+  CashRegisterSession,
+} from "@/interfaces/entities/CashRegister.interface";
 import type { CreateSaleRequest } from "@/interfaces/api/requests/CreateSaleRequest.interface";
 import type {
   SaleItemPayload,
   CreateSaleResult,
+  DigitalInvoiceInfo,
 } from "@/interfaces/entities/Sale.interface";
 import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
@@ -75,7 +84,7 @@ import {
   type SaleItemForm,
 } from "./create-sale.schema";
 
-import { SaleResultModal } from "./SaleResultModal";
+import { SaleResultModal, type SaleReceiptItem } from "./SaleResultModal";
 import { getCustomerByDocNumber } from "@/router/loaders/customer.loaders";
 import {
   ApplyPromotionModal,
@@ -92,6 +101,13 @@ interface CartItem {
   quantity: number;
   unit_price: number;
   total_price: number;
+}
+
+interface PaymentSplit {
+  id: string;
+  methodId: number;
+  amount: string;
+  currencyId: number;
 }
 
 const TAX_RATE = 0.13;
@@ -130,13 +146,22 @@ export function CreateSalePage() {
   const [branchId, setBranchId] = useState(defaultBranchId);
   const [saleCondition, setSaleCondition] = useState(defaultCondition);
   const [currencyId, setCurrencyId] = useState<number>(defaultCurrency.value);
-  const [paymentMethodId, setPaymentMethodId] = useState<number>(
-    defaultPaymentMethod.value,
-  );
+  const [isPartialPayment, setIsPartialPayment] = useState(false);
+  const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([
+    {
+      id: "split-1",
+      methodId: defaultPaymentMethod.value,
+      amount: "",
+      currencyId: defaultCurrency.value,
+    },
+  ]);
   const [hasElectronicInvoice, setHasElectronicInvoice] = useState(false);
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
   const [cashRegisterId, setCashRegisterId] = useState("");
+  const [openSessions, setOpenSessions] = useState<CashRegisterSession[]>([]);
   const [isLoadingCashRegisters, setIsLoadingCashRegisters] = useState(false);
+  const [adMessage, setAdMessage] = useState("");
+  const [dueDate, setDueDate] = useState("");
 
   const [step, setStep] = useState<"lookup" | "items">("lookup");
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -145,6 +170,12 @@ export function CreateSalePage() {
   // (sale.tenant_customer_id and customer_payment.tenant_customer_id) are
   // nullable, so we send null for those rows.
   const [isWalkInSale, setIsWalkInSale] = useState(false);
+  const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(
+    null,
+  );
+  const [usePoints, setUsePoints] = useState(false);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  const [apartadoPayment, setApartadoPayment] = useState<string>("");
 
   const [items, setItems] = useState<CartItem[]>([]);
   const [lastItemAmount, setLastItemAmount] = useState(0);
@@ -169,9 +200,15 @@ export function CreateSalePage() {
     useState<ExchangeRate | null>(null);
   const [exchangeRateOverride, setExchangeRateOverride] = useState<string>("");
 
+  // Exchange rates for each payment split: keyed by split.id
+  const [exchangeRatesForSplits, setExchangeRatesForSplits] = useState<
+    Record<string, ExchangeRate | null>
+  >({});
+
   // Seller display: full name from the employee record falls back to email.
   const [sellerDisplayName, setSellerDisplayName] = useState<string>("");
 
+  const [isLookingUp, setIsLookingUp] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<{
     mode: ToastMode;
@@ -184,17 +221,32 @@ export function CreateSalePage() {
     total: number;
     eInvoiceWarning?: string;
     hadElectronicInvoice: boolean;
+    items: SaleReceiptItem[];
+    digitalInvoice: DigitalInvoiceInfo | null;
+    paymentSplits: PaymentSplit[];
+    currencySymbol: string;
+    pointsRedeemed: number;
+    pointsRate: number;
   }>({
     open: false,
     saleId: null,
     total: 0,
     hadElectronicInvoice: false,
+    items: [],
+    digitalInvoice: null,
+    paymentSplits: [],
+    currencySymbol: "₡",
+    pointsRedeemed: 0,
+    pointsRate: 0,
   });
 
   const lookupForm = useForm<CustomerLookupForm>({
     resolver: zodResolver(customerLookupSchema),
     defaultValues: { document_number: "" },
   });
+
+  const docNumberValue = lookupForm.watch("document_number") ?? "";
+  const debouncedDocNumber = useDebounce(docNumberValue, 400);
 
   const inlineCustomerForm = useForm<InlineCustomerForm>({
     resolver: zodResolver(inlineCustomerSchema),
@@ -451,6 +503,7 @@ export function CreateSalePage() {
         openRegisterIds.has(register.cash_register_id),
       );
 
+      setOpenSessions(openSessions);
       setCashRegisters(openRegisters);
       setCashRegisterId((prev) =>
         openRegisters.some((register) => register.cash_register_id === prev)
@@ -458,6 +511,7 @@ export function CreateSalePage() {
           : (openRegisters[0]?.cash_register_id ?? ""),
       );
     } catch (err) {
+      setOpenSessions([]);
       setCashRegisters([]);
       setCashRegisterId("");
       setToast({
@@ -549,6 +603,151 @@ export function CreateSalePage() {
     setExchangeRateOverride("");
   }, [currencyId]);
 
+  // Load exchange rates for each payment split when their currency changes
+  // We load rates to convert each split's currency to CRC (as a pivot)
+  useEffect(() => {
+    let cancelled = false;
+    const loadRatesForSplits = async () => {
+      const rates: Record<string, ExchangeRate | null> = {};
+      for (const split of paymentSplits) {
+        if (split.currencyId === CRC_CURRENCY_ID) {
+          rates[split.id] = null; // CRC doesn't need conversion to itself
+        } else {
+          try {
+            const rate = await exchangeRateApi.getLatest(
+              split.currencyId,
+              CRC_CURRENCY_ID,
+            );
+            rates[split.id] = rate ?? null;
+          } catch {
+            rates[split.id] = null;
+          }
+        }
+      }
+      if (!cancelled) setExchangeRatesForSplits(rates);
+    };
+    loadRatesForSplits();
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentSplits.map((s) => `${s.id}:${s.currencyId}`).join("|")]);
+
+  // Fetch customer loyalty detail when a customer is selected
+  useEffect(() => {
+    if (!customer?.customer_id) {
+      setCustomerDetail(null);
+      setUsePoints(false);
+      setPointsToRedeem(0);
+      return;
+    }
+    let cancelled = false;
+    customerApi
+      .getDetail(customer.customer_id)
+      .then((detail) => {
+        if (!cancelled) setCustomerDetail(detail);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomerDetail(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customer?.customer_id]);
+
+  // Derived loyalty values
+  const availablePoints = customerDetail?.loyalty_score ?? 0;
+  const pointsRate = customerDetail?.points_redeemed_per_currency_unit ?? 0;
+  const loyaltyActive = !!(
+    customerDetail?.loyalty_program_active &&
+    pointsRate > 0 &&
+    availablePoints > 0
+  );
+  // Max monetary value coverable by available points (in CRC)
+  const maxPointsCrcValue = loyaltyActive
+    ? Math.floor(availablePoints / pointsRate)
+    : 0;
+  // Points actually redeemed = monetary coverage * pointsRate (in CRC)
+  const actualPointsRedeemed =
+    usePoints && loyaltyActive && pointsRate > 0
+      ? Math.min(pointsToRedeem, availablePoints)
+      : 0;
+  const pointsCoveredCrc =
+    actualPointsRedeemed > 0
+      ? Math.floor(actualPointsRedeemed / pointsRate)
+      : 0;
+  const pointsCoveredDisplay = convertCrcToSaleCurrency(
+    Math.min(pointsCoveredCrc, totalAmount),
+  );
+  const remainderDisplay = Math.max(
+    round2(totalAmountDisplay - pointsCoveredDisplay),
+    0,
+  );
+
+  // Payment splits derived values
+  // Convert each split to sale currency, then sum
+  const splitTotalInSaleCurrency = useMemo(() => {
+    return paymentSplits.reduce((sum, s) => {
+      const amount = Number(parseFloat(s.amount) || 0);
+      if (amount === 0) return sum;
+
+      // If split currency matches sale currency, add directly
+      if (s.currencyId === currencyId) {
+        return round2(sum + amount);
+      }
+
+      // Convert split to CRC first
+      let amountInCrc = amount;
+      if (s.currencyId !== CRC_CURRENCY_ID) {
+        const rateToCrc = exchangeRatesForSplits[s.id];
+        if (!rateToCrc) return sum; // No rate available, skip this split
+        amountInCrc = round2(amount * Number(rateToCrc.rate));
+      }
+
+      // Now convert from CRC to sale currency if needed
+      if (currencyId === CRC_CURRENCY_ID) {
+        return round2(sum + amountInCrc);
+      }
+
+      // Sale currency is not CRC, so convert CRC to sale currency
+      if (!serverExchangeRate || !effectiveExchangeRate) return sum;
+      const amountInSaleCurrency = round2(amountInCrc / effectiveExchangeRate);
+      return round2(sum + amountInSaleCurrency);
+    }, 0);
+  }, [
+    paymentSplits,
+    currencyId,
+    exchangeRatesForSplits,
+    serverExchangeRate,
+    effectiveExchangeRate,
+  ]);
+
+  const isApartado = saleCondition === "04";
+
+  const cashRegisterSessionId = useMemo(
+    () =>
+      openSessions.find((s) => s.cash_register_id === cashRegisterId)
+        ?.cash_register_session_id ?? "",
+    [openSessions, cashRegisterId],
+  );
+  const apartadoAmount = isApartado ? parseFloat(apartadoPayment) || 0 : 0;
+  const apartadoAmountDisplay = convertCrcToSaleCurrency(apartadoAmount);
+  const apartadoBalance = isApartado
+    ? round2(totalAmountDisplay - apartadoAmountDisplay)
+    : 0;
+
+  const targetPayment = isApartado
+    ? apartadoAmountDisplay
+    : usePoints && actualPointsRedeemed > 0
+      ? remainderDisplay
+      : totalAmountDisplay;
+  const paymentBalance = round2(targetPayment - splitTotalInSaleCurrency);
+
+  // Calculate which payment currencies are being used
+  const paymentCurrenciesUsed = useMemo(() => {
+    if (!isPartialPayment) return [];
+    return Array.from(new Set(paymentSplits.map((s) => s.currencyId)));
+  }, [isPartialPayment, paymentSplits]);
+
   // Resolve seller name. Try the employee record first; fall back to email.
   useEffect(() => {
     const userId = user?.user_id;
@@ -576,32 +775,71 @@ export function CreateSalePage() {
     };
   }, [user?.user_id, user?.email]);
 
-  const handleLookup = async (data: CustomerLookupForm) => {
-    try {
-      const found = await getCustomerByDocNumber(data.document_number.trim());
-      if (found && (found as Customer).document_number) {
-        setCustomer(found);
-        setShowInlineCreate(false);
-        setStep("items");
-        setToast({
-          mode: "success",
-          message: `Cliente encontrado: ${found.first_name} ${found.last_name}`,
-        });
-        return;
-      }
-      throw new Error("not found");
-    } catch {
-      inlineCustomerForm.reset({
-        ...blankCustomer(),
-        document_number: data.document_number.trim(),
-      });
-      setShowInlineCreate(true);
-      setToast({
-        mode: "info",
-        message: "Cliente no encontrado. Complete los datos para crearlo.",
-      });
+  // When partial payment is disabled, keep only the first split and auto-fill the amount
+  useEffect(() => {
+    if (!isPartialPayment) {
+      setPaymentSplits((p) => [
+        {
+          ...(p.length > 1 ? p[0] : p[0]),
+          amount: String(totalAmountDisplay),
+        },
+      ]);
     }
-  };
+  }, [isPartialPayment, totalAmountDisplay]);
+
+  useEffect(() => {
+    const trimmed = debouncedDocNumber.trim();
+    if (trimmed.length < 3) {
+      setShowInlineCreate(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLookingUp(true);
+
+    getCustomerByDocNumber(trimmed)
+      .then((found) => {
+        if (cancelled) return;
+        if (found && (found as Customer).document_number) {
+          setCustomer(found);
+          setShowInlineCreate(false);
+          setStep("items");
+          setToast({
+            mode: "success",
+            message: `Cliente encontrado: ${found.first_name} ${found.last_name}`,
+          });
+        } else {
+          inlineCustomerForm.reset({
+            ...blankCustomer(),
+            document_number: trimmed,
+          });
+          setShowInlineCreate(true);
+          setToast({
+            mode: "info",
+            message: "Cliente no encontrado. Complete los datos para crearlo.",
+          });
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        inlineCustomerForm.reset({
+          ...blankCustomer(),
+          document_number: trimmed,
+        });
+        setShowInlineCreate(true);
+        setToast({
+          mode: "info",
+          message: "Cliente no encontrado. Complete los datos para crearlo.",
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setIsLookingUp(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedDocNumber]);
 
   const handleInlineCreate = async (data: InlineCustomerForm) => {
     if (!tenantId) {
@@ -649,21 +887,41 @@ export function CreateSalePage() {
       setToast({ mode: "error", message: "Producto inválido" });
       return;
     }
-    const total = Number((data.quantity * data.unit_price).toFixed(2));
-    const newItem: CartItem = {
-      id: `${selectedVariant.product_variant_id}-${Date.now()}`,
-      product_variant_id: selectedVariant.product_variant_id,
-      variant_name: selectedVariant.variant_name,
-      sku: selectedVariant.sku,
-      group_ids: selectedVariant.group_ids ?? [],
-      quantity: data.quantity,
-      unit_price: data.unit_price,
-      total_price: total,
-    };
-    setItems((prev) => [...prev, newItem]);
-    setLastItemAmount(total);
-    setAppliedPromotion(null);
 
+    const existingIndex = items.findIndex(
+      (i) => i.product_variant_id === selectedVariant.product_variant_id,
+    );
+
+    if (existingIndex >= 0) {
+      setItems((prev) =>
+        prev.map((item, idx) => {
+          if (idx !== existingIndex) return item;
+          const newQty = item.quantity + data.quantity;
+          return {
+            ...item,
+            quantity: newQty,
+            total_price: Number((newQty * item.unit_price).toFixed(2)),
+          };
+        }),
+      );
+      setLastItemAmount(Number((data.quantity * data.unit_price).toFixed(2)));
+    } else {
+      const total = Number((data.quantity * data.unit_price).toFixed(2));
+      const newItem: CartItem = {
+        id: `${selectedVariant.product_variant_id}-${Date.now()}`,
+        product_variant_id: selectedVariant.product_variant_id,
+        variant_name: selectedVariant.variant_name,
+        sku: selectedVariant.sku,
+        group_ids: selectedVariant.group_ids ?? [],
+        quantity: data.quantity,
+        unit_price: data.unit_price,
+        total_price: total,
+      };
+      setItems((prev) => [...prev, newItem]);
+      setLastItemAmount(total);
+    }
+
+    setAppliedPromotion(null);
     setSelectedVariant(null);
     itemForm.reset({
       product_variant_id: "",
@@ -737,6 +995,40 @@ export function CreateSalePage() {
       return;
     }
 
+    if (usePoints && !customer) {
+      setToast({
+        mode: "error",
+        message: "Debe asociar un cliente para usar puntos de fidelidad.",
+      });
+      return;
+    }
+
+    if (isApartado) {
+      const abono = parseFloat(apartadoPayment) || 0;
+      if (abono <= 0) {
+        setToast({
+          mode: "error",
+          message: "Ingrese el monto inicial de abono (debe ser mayor a 0).",
+        });
+        return;
+      }
+      if (abono >= totalAmount) {
+        setToast({
+          mode: "error",
+          message: "El abono inicial debe ser menor al total de la venta.",
+        });
+        return;
+      }
+    }
+
+    if (Math.abs(paymentBalance) > 0.01) {
+      setToast({
+        mode: "error",
+        message: `El total de pagos no coincide con el monto de la venta (diferencia: ${formatAmount(Math.abs(paymentBalance), currencySymbol)})`,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     const customerId = customer?.customer_id ?? null;
@@ -778,10 +1070,14 @@ export function CreateSalePage() {
       };
     });
 
+    const amountPaid = splitTotalInSaleCurrency;
+    const changeAmount = paymentBalance < -0.01 ? round2(Math.abs(paymentBalance)) : 0;
+
     const payload: CreateSaleRequest = {
       tenant_id: tenantId,
       branch_id: branchId,
       cash_register_id: cashRegisterId,
+      cash_register_session_id: cashRegisterSessionId || undefined,
       currency_id: currencyId,
       tenant_customer_id: customerId,
       sale_condition: saleCondition,
@@ -789,34 +1085,73 @@ export function CreateSalePage() {
       subtotal_amount: subtotalDisplay,
       tax_amount: taxAmountDisplay,
       total_amount: totalAmountDisplay,
-      is_completed: true,
+      is_completed: !isApartado,
       has_electronic_invoice: hasElectronicInvoice,
       seller_user_id: user?.user_id,
+      due_date: isApartado && dueDate ? dueDate : new Date().toISOString().slice(0, 10),
+      ad_message: adMessage.trim() || undefined,
+      amount_paid: amountPaid,
+      change_amount: changeAmount,
       items: itemsPayload,
-      payments: [
-        {
-          tenant_customer_id: customerId ?? null,
-          payment_method_id: paymentMethodId,
-          is_points_redemption: false,
-          points_redeemed: 0,
-          points_to_currency_rate: 0,
-          payment_amount: totalAmountDisplay,
-          payment_date: now,
-          currency_id: currencyId,
-          verified: true,
-        },
-      ],
+      payments: (() => {
+        const rows = [];
+        if (usePoints && actualPointsRedeemed > 0 && pointsCoveredDisplay > 0) {
+          rows.push({
+            tenant_customer_id: customerId ?? null,
+            payment_method_id:
+              paymentSplits[0]?.methodId ?? defaultPaymentMethod.value,
+            is_points_redemption: true,
+            points_redeemed: actualPointsRedeemed,
+            points_to_currency_rate: pointsRate,
+            payment_amount: pointsCoveredDisplay,
+            payment_date: now,
+            currency_id: currencyId,
+            verified: true,
+          });
+        }
+        for (const split of paymentSplits) {
+          const amount = parseFloat(split.amount) || 0;
+          if (amount > 0) {
+            rows.push({
+              tenant_customer_id: customerId ?? null,
+              payment_method_id: split.methodId,
+              is_points_redemption: false,
+              points_redeemed: 0,
+              points_to_currency_rate: 0,
+              payment_amount: amount,
+              payment_date: now,
+              currency_id: split.currencyId,
+              verified: true,
+            });
+          }
+        }
+        return rows;
+      })(),
     };
 
     try {
-      console.log("Payload: ", payload);
       const result: CreateSaleResult = await createFullSale(payload);
+      const [digitalInvoice] = await Promise.all([
+        getDigitalInvoiceForSale(result.saleId),
+      ]);
       setResultModal({
         open: true,
         saleId: result.saleId ?? null,
         total: totalAmountDisplay,
         eInvoiceWarning: result.eInvoiceWarning,
         hadElectronicInvoice: hasElectronicInvoice,
+        digitalInvoice: digitalInvoice ?? null,
+        items: items.map((item) => ({
+          variant_name: item.variant_name,
+          sku: item.sku,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total_price: item.total_price,
+        })),
+        paymentSplits: paymentSplits,
+        currencySymbol: currencySymbol,
+        pointsRedeemed: actualPointsRedeemed,
+        pointsRate: pointsRate,
       });
     } catch (err) {
       setToast({
@@ -838,6 +1173,17 @@ export function CreateSalePage() {
     setLastItemAmount(0);
     setHasElectronicInvoice(false);
     setAppliedPromotion(null);
+    setApartadoPayment("");
+    setAdMessage("");
+    setDueDate("");
+    setPaymentSplits([
+      {
+        id: "split-1",
+        methodId: defaultPaymentMethod.value,
+        amount: "",
+        currencyId: defaultCurrency.value,
+      },
+    ]);
     lookupForm.reset({ document_number: "" });
     inlineCustomerForm.reset(blankCustomer());
     setSelectedVariant(null);
@@ -859,6 +1205,51 @@ export function CreateSalePage() {
     });
   };
 
+  const addPaymentSplit = () => {
+    setPaymentSplits((prev) => [
+      ...prev,
+      {
+        id: `split-${Date.now()}`,
+        methodId: defaultPaymentMethod.value,
+        amount: "",
+        currencyId: currencyId,
+      },
+    ]);
+  };
+
+  const removePaymentSplit = (id: string) => {
+    setPaymentSplits((prev) =>
+      prev.length > 1 ? prev.filter((s) => s.id !== id) : prev,
+    );
+  };
+
+  const updatePaymentSplit = (
+    id: string,
+    field: keyof PaymentSplit,
+    value: string | number,
+  ) => {
+    setPaymentSplits((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
+    );
+  };
+
+  const fillRemainder = (id: string) => {
+    const others = paymentSplits
+      .filter((s) => s.id !== id)
+      .reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+    const fill = round2(Math.max(targetPayment - others, 0));
+    updatePaymentSplit(id, "amount", String(fill));
+  };
+
+  const convertSplitCurrencyToCrc = (splitId: string, amount: number) => {
+    const split = paymentSplits.find((s) => s.id === splitId);
+    if (!split) return null;
+    if (split.currencyId === CRC_CURRENCY_ID) return round2(amount);
+    const rate = exchangeRatesForSplits[splitId];
+    if (!rate) return null;
+    return round2(amount * Number(rate.rate));
+  };
+
   const branchOptions = branches.map((b) => ({
     value: b.branch_id,
     label: b.branch_name,
@@ -867,10 +1258,18 @@ export function CreateSalePage() {
     value: c.condition_code,
     label: `${c.condition_code} — ${c.condition_desc}`,
   }));
-  const paymentOptions = paymentMethods.map((m) => ({
-    value: String(m.value),
-    label: m.label,
-  }));
+  const paymentOptions = paymentMethods
+    .filter((m) => {
+      // Loyalty points require a customer association
+      if (m.code === "loyalty_points" && isWalkInSale) {
+        return false;
+      }
+      return true;
+    })
+    .map((m) => ({
+      value: String(m.value),
+      label: m.label,
+    }));
   const currencyOptions = currencies.map((c) => ({
     value: String(c.value),
     label: c.label,
@@ -960,7 +1359,7 @@ export function CreateSalePage() {
 
       {/* ── Sale config row ───────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <Select
             label="Sucursal"
             value={branchId}
@@ -978,7 +1377,7 @@ export function CreateSalePage() {
                 type="button"
                 onClick={() => setIsCashRegisterModalOpen(true)}
                 disabled={!branchId}
-                className="text-xs font-medium text-accent-700 hover:text-accent-800 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
+                className="text-xs cursor-pointer font-medium text-accent-700 hover:text-accent-800 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
               >
                 Abrir / cerrar cajas
               </button>
@@ -1004,27 +1403,6 @@ export function CreateSalePage() {
               required
             />
           </div>
-          <Select
-            label="Condición de venta"
-            value={saleCondition}
-            onChange={(e) => setSaleCondition(e.target.value)}
-            options={conditionOptions}
-            required
-          />
-          <Select
-            label="Moneda"
-            value={String(currencyId)}
-            onChange={(e) => setCurrencyId(Number(e.target.value))}
-            options={currencyOptions}
-            required
-          />
-          <Select
-            label="Método de pago"
-            value={String(paymentMethodId)}
-            onChange={(e) => setPaymentMethodId(Number(e.target.value))}
-            options={paymentOptions}
-            required
-          />
         </div>
       </div>
 
@@ -1050,34 +1428,23 @@ export function CreateSalePage() {
         </div>
 
         {!customer && !isWalkInSale && (
-          <>
-            <form
-              onSubmit={lookupForm.handleSubmit(handleLookup)}
-              className="flex flex-col md:flex-row md:items-end gap-3"
-            >
-              <div className="flex-1">
-                <Input
-                  label="Número de documento"
-                  placeholder="Ej: 105550987"
-                  {...lookupForm.register("document_number")}
-                  error={lookupForm.formState.errors.document_number?.message}
-                  required
-                />
-              </div>
-              <Button type="submit" variant="primary">
-                Buscar cliente
-              </Button>
-            </form>
-            <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between text-sm">
-              <p className="text-gray-500">
-                ¿Cliente ocasional o no identificado? Puedes registrar la venta
-                sin asociarla a un cliente.
-              </p>
+          <div className="flex flex-col md:flex-row md:items-end gap-3">
+            <div className="flex-1">
+              <Input
+                label="Número de documento"
+                placeholder="Ej: 105550987"
+                {...lookupForm.register("document_number")}
+                error={lookupForm.formState.errors.document_number?.message}
+                hint={isLookingUp ? "Buscando cliente…" : undefined}
+                required
+              />
+            </div>
+            {!isApartado && (
               <Button type="button" variant="ghost" onClick={startWalkInSale}>
                 Continuar sin cliente
               </Button>
-            </div>
-          </>
+            )}
+          </div>
         )}
 
         {isWalkInSale && !customer && (
@@ -1273,7 +1640,6 @@ export function CreateSalePage() {
               onChange={handleVariantSelect}
               onClear={handleVariantClear}
               error={itemForm.formState.errors.product_variant_id?.message}
-              required
             />
           </div>
           <div className="md:col-span-2">
@@ -1307,20 +1673,6 @@ export function CreateSalePage() {
               </span>
             )}
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => setIsPromotionModalOpen(true)}
-            disabled={items.length === 0 || hasNonStackableDefault}
-            title={
-              hasNonStackableDefault
-                ? "Hay una promoción default activa que no permite acumular más promociones"
-                : undefined
-            }
-          >
-            <IconTrendingUp />
-            Agregar promoción
-          </Button>
         </div>
 
         {hasNonStackableDefault && (
@@ -1372,39 +1724,6 @@ export function CreateSalePage() {
             </Button>
           </div>
         )}
-
-        {/* Exchange rate panel — local override only, lost on session close. */}
-        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-4 flex flex-col md:flex-row md:items-center gap-4">
-          <div className="flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Tasa de cambio USD → CRC
-            </p>
-            <p className="text-sm text-gray-600 mt-1">
-              {serverExchangeRate
-                ? `Tasa actual del sistema: ₡${Number(serverExchangeRate.rate).toLocaleString("es-CR", { minimumFractionDigits: 2, maximumFractionDigits: 6 })} (efectiva ${String(serverExchangeRate.effective_date).slice(0, 10)})`
-                : "No hay tasa registrada en el sistema."}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              El cajero puede sobrescribirla solo durante esta sesión de caja —
-              no se guarda en la base de datos.
-            </p>
-          </div>
-          <div className="w-full md:w-56">
-            <Input
-              label="Tasa local (override)"
-              type="number"
-              min="0"
-              step="0.000001"
-              placeholder={
-                serverExchangeRate
-                  ? String(serverExchangeRate.rate)
-                  : "Ej: 510.00"
-              }
-              value={exchangeRateOverride}
-              onChange={(e) => setExchangeRateOverride(e.target.value)}
-            />
-          </div>
-        </div>
 
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
@@ -1508,11 +1827,566 @@ export function CreateSalePage() {
             data={items}
             emptyMessage="Aún no hay productos en la venta"
           />
+          {/* Exchange rate panel — local override only, lost on session close. */}
+          {currencyId !== CRC_CURRENCY_ID && (
+            <div className="mt-6 rounded-xl border border-gray-200 bg-white p-4 flex flex-col md:flex-row md:items-center gap-4">
+              <div className="flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Tasa de cambio USD → CRC
+                </p>
+                <p className="text-sm text-gray-600 mt-1">
+                  {serverExchangeRate
+                    ? `Tasa actual del sistema: ₡${Number(serverExchangeRate.rate).toLocaleString("es-CR", { minimumFractionDigits: 2, maximumFractionDigits: 6 })} (efectiva ${String(serverExchangeRate.effective_date).slice(0, 10)})`
+                    : "No hay tasa registrada en el sistema."}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  El cajero puede sobrescribirla solo durante esta sesión de
+                  caja — no se guarda en la base de datos.
+                </p>
+              </div>
+              <div className="w-full md:w-56">
+                <Input
+                  label="Tasa local (override)"
+                  type="number"
+                  min="0"
+                  step="0.000001"
+                  placeholder={
+                    serverExchangeRate
+                      ? String(serverExchangeRate.rate)
+                      : "Ej: 510.00"
+                  }
+                  value={exchangeRateOverride}
+                  onChange={(e) => setExchangeRateOverride(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* ── Loyalty points panel ─────────────────────────────────────────── */}
+      {(() => {
+        if (!loyaltyActive || step !== "items") return null;
+        const pointsNeededForTotal =
+          loyaltyActive && pointsRate > 0
+            ? round2(totalAmount * pointsRate)
+            : 0;
+        const hasEnoughPointsForTotal =
+          pointsNeededForTotal > 0 && pointsNeededForTotal <= availablePoints;
+        return (
+          <div className="bg-white rounded-2xl border border-purple-200 p-6 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Puntos de fidelidad
+              </h2>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center gap-6">
+              <div className="flex-1 grid grid-cols-2 gap-4">
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
+                  <p className="text-xs uppercase tracking-wider text-purple-600">
+                    Puntos disponibles
+                  </p>
+                  <p className="text-2xl font-bold text-purple-900 mt-0.5">
+                    {availablePoints.toLocaleString("es-CR")}
+                  </p>
+                  <p className="text-xs text-purple-700 mt-0.5">
+                    Equivalen a{" "}
+                    {formatAmount(
+                      convertCrcToSaleCurrency(maxPointsCrcValue),
+                      currencySymbol,
+                    )}
+                  </p>
+                </div>
+                {usePoints && pointsCoveredDisplay > 0 && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                    <p className="text-xs uppercase tracking-wider text-emerald-600">
+                      Cubierto por puntos
+                    </p>
+                    <p className="text-2xl font-bold text-emerald-900 mt-0.5">
+                      {formatAmount(pointsCoveredDisplay, currencySymbol)}
+                    </p>
+                    <p className="text-xs text-emerald-700 mt-0.5">
+                      Restante: {formatAmount(remainderDisplay, currencySymbol)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3 min-w-55">
+                {hasEnoughPointsForTotal ? (
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={usePoints}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setUsePoints(checked);
+
+                        if (checked) {
+                          // Points needed for the total amount
+                          const pointsNeeded = round2(totalAmount * pointsRate);
+                          // Convert points to currency for the payment split
+                          const amountInCurrency =
+                            pointsRate > 0
+                              ? round2(pointsNeeded / pointsRate)
+                              : 0;
+
+                          // Reset payment splits to a single split with loyalty points
+                          setPaymentSplits([
+                            {
+                              id: "split-1",
+                              methodId: 5, // Loyalty points method
+                              amount: String(amountInCurrency),
+                              currencyId: CRC_CURRENCY_ID,
+                            },
+                          ]);
+
+                          // Disable partial payment
+                          setIsPartialPayment(false);
+                          setPointsToRedeem(pointsNeeded);
+                        } else {
+                          // Reset to default payment method
+                          setPaymentSplits([
+                            {
+                              id: "split-1",
+                              methodId: defaultPaymentMethod.value,
+                              amount: "",
+                              currencyId: currencyId,
+                            },
+                          ]);
+                          setPointsToRedeem(0);
+                        }
+                      }}
+                      className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-400"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      Usar puntos para pagar
+                    </span>
+                  </label>
+                ) : (
+                  <div className="rounded-lg bg-gray-100 border border-gray-200 p-3">
+                    <p className="text-xs text-gray-600">
+                      Puntos insuficientes para pagar la compra completa. Puedes
+                      usar puntos en pago por partes.
+                    </p>
+                  </div>
+                )}
+                {usePoints && hasEnoughPointsForTotal && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Puntos a canjear (máx.{" "}
+                        {availablePoints.toLocaleString("es-CR")})
+                      </label>
+                      {pointsToRedeem > 0 && pointsRate > 0 ? (
+                        <span className="text-xs text-gray-600">
+                          ≈{" "}
+                          {formatAmount(
+                            round2(pointsToRedeem / pointsRate),
+                            "₡",
+                          )}
+                        </span>
+                      ) : null}
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={availablePoints}
+                      value={pointsToRedeem}
+                      onChange={(e) => {
+                        const val = Math.min(
+                          Math.max(0, Number(e.target.value)),
+                          availablePoints,
+                        );
+                        setPointsToRedeem(val);
+                        // Convert points to currency for the payment split
+                        const amountInCurrency =
+                          pointsRate > 0 ? round2(val / pointsRate) : 0;
+                        // Update payment split with converted amount
+                        updatePaymentSplit(
+                          paymentSplits[0].id,
+                          "amount",
+                          String(amountInCurrency),
+                        );
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Apartado (layaway) abono panel ──────────────────────────────── */}
+      {isApartado && step === "items" && (
+        <div className="bg-amber-50 rounded-2xl border border-amber-200 p-6 mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-8 h-8 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center font-semibold text-sm">
+              A
+            </span>
+            <h2 className="text-lg font-semibold text-amber-900">
+              Apartado — Abono inicial
+            </h2>
+          </div>
+          <p className="text-sm text-amber-800 mb-4">
+            El cliente paga un abono hoy. La mercancía queda reservada y el
+            saldo restante se liquida en un pago futuro.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label={`Monto de abono (${currencySymbol})`}
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="0.00"
+              value={apartadoPayment}
+              onChange={(e) => setApartadoPayment(e.target.value)}
+              hint="Debe ser mayor a 0 y menor al total de la venta"
+              required
+            />
+            <Input
+              label="Fecha límite de pago"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              min={new Date().toISOString().slice(0, 10)}
+              hint="Fecha en que el cliente debe liquidar el saldo"
+              required
+            />
+            <div className="bg-white rounded-xl border border-amber-200 p-4 md:col-span-2">
+              <p className="text-xs uppercase tracking-wider text-amber-700">
+                Saldo pendiente
+              </p>
+              <p className="text-2xl font-bold text-amber-900 mt-1">
+                {formatAmount(Math.max(apartadoBalance, 0), currencySymbol)}
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Total: {formatAmount(totalAmountDisplay, currencySymbol)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Payment splits panel ─────────────────────────────────────────── */}
+      {step === "items" && (
+        <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-full bg-accent-100 text-accent-700 flex items-center justify-center font-semibold">
+                3
+              </span>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Métodos de pago
+              </h2>
+            </div>
+          </div>
+
+          {/* Condition and currency selectors */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <Select
+              label="Condición de venta"
+              value={saleCondition}
+              onChange={(e) => setSaleCondition(e.target.value)}
+              options={conditionOptions}
+              required
+            />
+            <Select
+              label="Moneda"
+              value={String(currencyId)}
+              onChange={(e) => setCurrencyId(Number(e.target.value))}
+              options={currencyOptions}
+              required
+            />
+          </div>
+
+          {/* Partial payment checkbox */}
+          <label className="flex items-center gap-3 cursor-pointer mb-6 p-3 rounded-lg bg-gray-50 border border-gray-200">
+            <input
+              type="checkbox"
+              checked={isPartialPayment}
+              onChange={(e) => setIsPartialPayment(e.target.checked)}
+              disabled={usePoints}
+              className="w-4 h-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            <span
+              className={`text-sm font-medium ${usePoints ? "text-gray-500" : "text-gray-700"}`}
+            >
+              Pago por partes
+            </span>
+          </label>
+
+          {usePoints ? (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-purple-700 mt-1">
+                    Se pagará todo el total con puntos de fidelidad
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-purple-600">Puntos a usar</p>
+                  <p className="text-2xl font-bold text-purple-900">
+                    {pointsToRedeem.toLocaleString("es-CR")}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {isPartialPayment && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={addPaymentSplit}
+                  className="ml-auto"
+                >
+                  <IconPlus /> Agregar método
+                </Button>
+              )}
+              {paymentSplits.map((split, idx) => (
+                <div
+                  key={split.id}
+                  className="flex flex-col md:flex-row md:items-end gap-3"
+                >
+                  <div className="flex-1">
+                    <Select
+                      label={idx === 0 ? "Método de pago" : undefined}
+                      value={String(split.methodId)}
+                      onChange={(e) =>
+                        updatePaymentSplit(
+                          split.id,
+                          "methodId",
+                          Number(e.target.value),
+                        )
+                      }
+                      options={paymentOptions}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    {Number(split.methodId) === 5 ? (
+                      <Input
+                        label={idx === 0 ? "Puntos disponibles" : undefined}
+                        type="number"
+                        min={0}
+                        step="1"
+                        placeholder="0"
+                        value={String(availablePoints)}
+                        disabled
+                      />
+                    ) : (
+                      <Select
+                        label={idx === 0 ? "Moneda" : undefined}
+                        value={String(split.currencyId)}
+                        onChange={(e) =>
+                          updatePaymentSplit(
+                            split.id,
+                            "currencyId",
+                            Number(e.target.value),
+                          )
+                        }
+                        options={currencyOptions}
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    {idx === 0 && (
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700">
+                          {Number(split.methodId) === 5
+                            ? "Puntos a canjear"
+                            : "Monto"}
+                        </label>
+                        {Number(split.methodId) === 5 &&
+                        split.amount &&
+                        pointsRate > 0 ? (
+                          <span className="text-xs text-gray-600">
+                            {(() => {
+                              const pointsValue = parseFloat(split.amount);
+                              const crcEquiv = round2(pointsValue / pointsRate);
+                              return `≈ ${formatAmount(crcEquiv, "₡")}`;
+                            })()}
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+                    <Input
+                      required
+                      label={
+                        idx !== 0
+                          ? Number(split.methodId) === 5
+                            ? "Puntos a canjear"
+                            : "Monto"
+                          : undefined
+                      }
+                      type="number"
+                      min={0}
+                      max={
+                        Number(split.methodId) === 5
+                          ? availablePoints
+                          : undefined
+                      }
+                      step={Number(split.methodId) === 5 ? "1" : "0.01"}
+                      placeholder={Number(split.methodId) === 5 ? "0" : "0.00"}
+                      value={
+                        !isPartialPayment &&
+                        idx === 0 &&
+                        Number(split.methodId) !== 5
+                          ? String(totalAmountDisplay)
+                          : Number(split.methodId) === 5 &&
+                              split.amount &&
+                              pointsRate > 0
+                            ? String(
+                                Math.round(
+                                  parseFloat(split.amount) * pointsRate,
+                                ),
+                              )
+                            : split.amount
+                      }
+                      onChange={(e) => {
+                        const newValue = e.target.value;
+                        if (isPartialPayment) {
+                          // If using points, convert to currency before saving
+                          if (Number(split.methodId) === 5 && pointsRate > 0) {
+                            const pointsValue = parseFloat(newValue) || 0;
+                            const amountInCurrency = round2(
+                              pointsValue / pointsRate,
+                            );
+                            updatePaymentSplit(
+                              split.id,
+                              "amount",
+                              String(amountInCurrency),
+                            );
+                          } else {
+                            updatePaymentSplit(split.id, "amount", newValue);
+                          }
+                        } else if (Number(split.methodId) === 5) {
+                          // Convert points to currency before saving
+                          if (pointsRate > 0) {
+                            const pointsValue = parseFloat(newValue) || 0;
+                            const amountInCurrency = round2(
+                              pointsValue / pointsRate,
+                            );
+                            updatePaymentSplit(
+                              split.id,
+                              "amount",
+                              String(amountInCurrency),
+                            );
+                          }
+                        }
+                      }}
+                      disabled={
+                        !isPartialPayment && Number(split.methodId) !== 5
+                      }
+                    />
+                    {Number(split.methodId) === 5 &&
+                    split.amount &&
+                    pointsRate > 0 &&
+                    idx !== 0 ? (
+                      <div className="mt-1.5 text-xs text-gray-600">
+                        {(() => {
+                          const pointsValue = Math.round(
+                            parseFloat(split.amount) * pointsRate,
+                          );
+                          return `${pointsValue.toLocaleString("es-CR")} puntos`;
+                        })()}
+                      </div>
+                    ) : split.currencyId !== CRC_CURRENCY_ID &&
+                      split.amount &&
+                      Number(split.methodId) !== 5 ? (
+                      <div className="mt-1.5 text-xs text-gray-500">
+                        {(() => {
+                          const equiv = convertSplitCurrencyToCrc(
+                            split.id,
+                            parseFloat(split.amount),
+                          );
+                          if (equiv !== null) {
+                            return `≈ ₡${equiv.toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
+                          }
+                          return "Tasa no disponible";
+                        })()}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className={`flex gap-2 ${idx === 0 ? "mb-0" : ""}`}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => fillRemainder(split.id)}
+                      title="Completar con el monto pendiente"
+                    >
+                      ↓
+                    </Button>
+                    {paymentSplits.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        onClick={() => removePaymentSplit(split.id)}
+                      >
+                        <IconTrash />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div
+            className={`mt-4 flex flex-col gap-2 rounded-xl p-3 text-sm font-medium ${
+              paymentBalance > 0.01
+                ? "bg-amber-50 border border-amber-200 text-amber-800"
+                : paymentBalance < -0.01
+                  ? "bg-blue-50 border border-blue-200 text-blue-800"
+                  : "bg-emerald-50 border border-emerald-200 text-emerald-800"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span>
+                Total ingresado:{" "}
+                {formatAmount(splitTotalInSaleCurrency, currencySymbol)} /{" "}
+                {formatAmount(targetPayment, currencySymbol)}
+              </span>
+              {paymentBalance > 0.01 && (
+                <span>
+                  Pendiente:{" "}
+                  {formatAmount(Math.abs(paymentBalance), currencySymbol)}
+                </span>
+              )}
+              {paymentBalance < -0.01 && (
+                <span>
+                  Vuelto:{" "}
+                  {formatAmount(Math.abs(paymentBalance), currencySymbol)}
+                </span>
+              )}
+              {Math.abs(paymentBalance) < 0.01 && <span>Pagos cuadrados</span>}
+            </div>
+
+            {isPartialPayment && paymentCurrenciesUsed.length > 1 && (
+              <div className="text-xs border-t border-current opacity-60 pt-1">
+                Pago con múltiples monedas - el saldo pendiente se muestra en la
+                moneda de la compra ({currencySymbol})
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Submit row ────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-300 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl border border-gray-300 p-6 flex flex-col gap-4">
+        <Input
+          label="Mensaje en factura (opcional)"
+          placeholder="Ej: Gracias por su compra. Válida hasta el 30/05/2026."
+          value={adMessage}
+          onChange={(e) => setAdMessage(e.target.value)}
+          hint="El cajero puede incluir un mensaje que aparecerá en la factura digital."
+        />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
@@ -1531,8 +2405,21 @@ export function CreateSalePage() {
             {formatAmount(totalAmountDisplay, currencySymbol)}
           </span>
           <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setIsPromotionModalOpen(true)}
+            disabled={items.length === 0 || hasNonStackableDefault}
+            title={
+              hasNonStackableDefault
+                ? "Hay una promoción default activa que no permite acumular más promociones"
+                : undefined
+            }
+          >
+            <IconTrendingUp />
+            Agregar promoción
+          </Button>
+          <Button
             variant="primary"
-            size="lg"
             onClick={handleSubmitSale}
             loading={isSubmitting}
             disabled={
@@ -1547,15 +2434,21 @@ export function CreateSalePage() {
             Procesar venta
           </Button>
         </div>
+        </div>
       </div>
 
       <SaleResultModal
         isOpen={resultModal.open}
         saleId={resultModal.saleId}
         totalAmount={resultModal.total}
-        currencySymbol={currencySymbol}
+        currencySymbol={resultModal.currencySymbol}
         hasElectronicInvoice={resultModal.hadElectronicInvoice}
         eInvoiceWarning={resultModal.eInvoiceWarning}
+        items={resultModal.items}
+        digitalInvoice={resultModal.digitalInvoice}
+        paymentSplits={resultModal.paymentSplits}
+        pointsRedeemed={resultModal.pointsRedeemed}
+        pointsRate={resultModal.pointsRate}
         onClose={() => setResultModal((prev) => ({ ...prev, open: false }))}
         onNewSale={resetForNewSale}
       />

@@ -105,7 +105,6 @@ export function MarginUpsertModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log(form);
     const result = marginSchema.safeParse(form);
     if (!result.success) {
       setErrors(mapZodErrors(result.error.issues));
@@ -116,6 +115,7 @@ export function MarginUpsertModal({
     try {
       if (mode === "edit" && editingMargin) {
         const updateData: Record<string, number> = {};
+        updateData.customer_segment_id = Number(form.customer_segment_id);
 
         if (selectedTypeId === 1 || selectedTypeId === 4) {
           updateData.spending_threshold = Number(form.spending_threshold);
@@ -200,7 +200,6 @@ export function MarginUpsertModal({
           }
           error={errors.customer_segment_id}
           disabled={
-            mode === "edit" ||
             defaultCustomerSegments.map((segment) => ({
               value: segment.value.toString(),
               label: segment.label,

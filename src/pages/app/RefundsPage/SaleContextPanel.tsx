@@ -24,6 +24,8 @@ interface SaleContextPanelProps {
   returnStatusId: number;
   onReturnStatusChange: (value: number) => void;
   refundTotal: number;
+  description: string;
+  onDescriptionChange: (value: string) => void;
   isSubmitting: boolean;
   canSubmitPartial: boolean;
   onSubmitPartial: () => void;
@@ -42,6 +44,8 @@ export function SaleContextPanel({
   returnStatusId,
   onReturnStatusChange,
   refundTotal,
+  description,
+  onDescriptionChange,
   isSubmitting,
   canSubmitPartial,
   onSubmitPartial,
@@ -93,10 +97,6 @@ export function SaleContextPanel({
               label: "ID",
               mono: true,
               value: context.digital_invoice.digital_sale_invoice_id,
-            },
-            {
-              label: "Número",
-              value: context.digital_invoice.invoice_number ?? "—",
             },
             {
               label: "Emitida",
@@ -173,6 +173,8 @@ export function SaleContextPanel({
           onReturnStatusChange={onReturnStatusChange}
           refundTotal={refundTotal}
           currencySymbol={currencySymbol}
+          description={description}
+          onDescriptionChange={onDescriptionChange}
           isSubmitting={isSubmitting}
           canSubmit={canSubmitPartial}
           onSubmit={onSubmitPartial}
@@ -225,6 +227,8 @@ interface PartialRefundActionsProps {
   onReturnStatusChange: (value: number) => void;
   refundTotal: number;
   currencySymbol: string;
+  description: string;
+  onDescriptionChange: (value: string) => void;
   isSubmitting: boolean;
   canSubmit: boolean;
   onSubmit: () => void;
@@ -237,6 +241,8 @@ function PartialRefundActions({
   onReturnStatusChange,
   refundTotal,
   currencySymbol,
+  description,
+  onDescriptionChange,
   isSubmitting,
   canSubmit,
   onSubmit,
@@ -271,13 +277,26 @@ function PartialRefundActions({
           </p>
         </div>
       </div>
+      {/* Description — required */}
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Descripción del reembolso <span className="text-red-500">*</span>
+        </label>
+        <textarea
+          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+          rows={3}
+          placeholder="Indique el motivo del reembolso..."
+          value={description}
+          onChange={(e) => onDescriptionChange(e.target.value)}
+        />
+      </div>
       <div className="flex justify-end">
         <Button
           type="button"
           variant="primary"
           size="lg"
           loading={isSubmitting}
-          disabled={isSubmitting || !canSubmit}
+          disabled={isSubmitting || !canSubmit || !description.trim()}
           onClick={onSubmit}
         >
           Registrar reembolso parcial

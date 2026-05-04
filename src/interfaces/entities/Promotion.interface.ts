@@ -52,8 +52,9 @@ export interface Promotion {
   promotion_description?: string | null;
   promotion_type_id?: number;
   type_name: PromotionTypeName;
-  customer_segment_id?: number | null;
-  segment_name?: string | null;
+  is_universal?: boolean;
+  customer_segment_ids?: number[];
+  segment_names?: string[];
   promotion_start_date: string;
   promotion_end_date: string;
   is_active: boolean;

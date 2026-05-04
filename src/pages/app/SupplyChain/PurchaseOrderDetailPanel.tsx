@@ -45,7 +45,8 @@ interface PurchaseOrderDetailPanelProps {
 }
 
 const cell = "px-3 py-2 text-sm text-gray-700 align-top";
-const headerCell = "px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-500";
+const headerCell =
+  "px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-500";
 
 export function PurchaseOrderDetailPanel({
   order,
@@ -76,7 +77,13 @@ export function PurchaseOrderDetailPanel({
     );
   }, [onRegisterPayment, paymentMethods, accountPayableId, isPaid]);
 
-  const defaultMethodId = paymentMethods?.[0]?.payment_method_id ?? 0;
+  const filteredPaymentMethods = useMemo(() => {
+    return (paymentMethods ?? []).filter(
+      (method) => Number(method.payment_method_id) !== 5,
+    );
+  }, [paymentMethods]);
+
+  const defaultMethodId = filteredPaymentMethods?.[0]?.payment_method_id ?? 0;
 
   const [quickPaymentForm, setQuickPaymentForm] = useState<{
     amount_paid: string;
@@ -212,84 +219,107 @@ export function PurchaseOrderDetailPanel({
       </div>
 
       {!productsOnly && (
-      <div className="grid gap-4 md:grid-cols-[1.5fr_1fr]">
-        <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
-                Orden de compra
-              </p>
-              <h3 className="text-xl font-semibold text-gray-900">
-                {order.supplier_name}
-              </h3>
-              <p className="text-sm text-gray-600">
-                {order.purchase_order_id}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant={getOrderStatusTone(order.purchase_order_status_name)}>
-                {order.purchase_order_status_name}
-              </Badge>
-              {order.account_payable_status_name && (
+        <div className="grid gap-4 md:grid-cols-[1.5fr_1fr]">
+          <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
+                  Orden de compra
+                </p>
+                <h3 className="text-xl font-semibold text-gray-900">
+                  {order.supplier_name}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {order.purchase_order_id}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 <Badge
-                  variant={getPayableStatusTone(order.account_payable_status_name)}
+                  variant={getOrderStatusTone(order.purchase_order_status_name)}
                 >
-                  {order.account_payable_status_name}
+                  {order.purchase_order_status_name}
                 </Badge>
-              )}
+                {order.account_payable_status_name && (
+                  <Badge
+                    variant={getPayableStatusTone(
+                      order.account_payable_status_name,
+                    )}
+                  >
+                    {order.account_payable_status_name}
+                  </Badge>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <SummaryField label="Bodega" value={order.warehouse_name ?? "—"} />
-            <SummaryField label="Sucursal" value={order.branch_name ?? "—"} />
-            <SummaryField
-              label="Fecha de orden"
-              value={formatDate(order.purchase_order_date)}
-            />
-            <SummaryField
-              label="Entrega esperada"
-              value={formatDate(order.expected_delivery_date)}
-            />
-            <SummaryField label="Vencimiento" value={formatDate(order.due_date)} />
-            <SummaryField
-              label="Condición"
-              value={order.payment_condition === "IN_FULL" ? "Pago completo" : "Crédito"}
-            />
-            {showTenant && (
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <SummaryField
-                label="Tenant"
-                value={order.tenant_name ?? order.tenant_id ?? "—"}
+                label="Bodega"
+                value={order.warehouse_name ?? "—"}
               />
-            )}
-            <SummaryField
-              label="Factura"
-              value={order.invoice_number ?? "Sin factura asociada"}
-            />
-          </div>
-        </section>
+              <SummaryField label="Sucursal" value={order.branch_name ?? "—"} />
+              <SummaryField
+                label="Fecha de orden"
+                value={formatDate(order.purchase_order_date)}
+              />
+              <SummaryField
+                label="Entrega esperada"
+                value={formatDate(order.expected_delivery_date)}
+              />
+              <SummaryField
+                label="Vencimiento"
+                value={formatDate(order.due_date)}
+              />
+              <SummaryField
+                label="Condición"
+                value={
+                  order.payment_condition === "IN_FULL"
+                    ? "Pago completo"
+                    : "Crédito"
+                }
+              />
+              {showTenant && (
+                <SummaryField
+                  label="Tenant"
+                  value={order.tenant_name ?? order.tenant_id ?? "—"}
+                />
+              )}
+              <SummaryField
+                label="Factura"
+                value={order.invoice_number ?? "Sin factura asociada"}
+              />
+            </div>
+          </section>
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
-            Totales
-          </p>
-          <div className="mt-4 space-y-3">
-            <AmountRow label="Subtotal" value={formatCurrency(order.subtotal)} />
-            <AmountRow label="Impuesto" value={formatCurrency(order.tax_amount)} />
-            <AmountRow
-              label="Total"
-              value={formatCurrency(order.total_amount)}
-              emphasized
-            />
-            <AmountRow label="Abonado" value={formatCurrency(order.amount_paid)} />
-            <AmountRow
-              label="Pendiente"
-              value={formatCurrency(order.balance_due)}
-              emphasized
-            />
-          </div>
-        </section>
-      </div>
+          <section className="rounded-2xl border border-gray-200 bg-white p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+              Totales
+            </p>
+            <div className="mt-4 space-y-3">
+              <AmountRow
+                label="Subtotal"
+                value={formatCurrency(order.subtotal)}
+              />
+              <AmountRow
+                label="Impuesto"
+                value={formatCurrency(order.tax_amount)}
+              />
+              <AmountRow
+                label="Total"
+                value={formatCurrency(order.total_amount)}
+                emphasized
+              />
+              <AmountRow
+                label="Abonado"
+                value={formatCurrency(order.amount_paid)}
+              />
+              <AmountRow
+                label="Pendiente"
+                value={formatCurrency(order.balance_due)}
+                emphasized
+              />
+            </div>
+          </section>
+        </div>
       )}
 
       <Section
@@ -398,285 +428,303 @@ export function PurchaseOrderDetailPanel({
       </Section>
 
       {!productsOnly && (
-      <>
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Section title="Facturas">
-          <StackList
-            items={order.invoices.map((invoice) => ({
-              id: invoice.supplier_invoice_id,
-              title: invoice.invoice_number,
-              meta: `${formatDate(invoice.invoice_date)} · ${invoice.payment_condition}`,
-              badge: invoice.paid ? "Pagada" : "Pendiente",
-              badgeVariant: invoice.paid ? "green" : "yellow",
-              amount: formatCurrency(invoice.total_amount),
-            }))}
-            emptyMessage="No hay facturas registradas para esta orden."
-          />
-        </Section>
+        <>
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Section title="Facturas">
+              <StackList
+                items={order.invoices.map((invoice) => ({
+                  id: invoice.supplier_invoice_id,
+                  title: invoice.invoice_number,
+                  meta: `${formatDate(invoice.invoice_date)} · ${invoice.payment_condition}`,
+                  badge: invoice.paid ? "Pagada" : "Pendiente",
+                  badgeVariant: invoice.paid ? "green" : "yellow",
+                  amount: formatCurrency(invoice.total_amount),
+                }))}
+                emptyMessage="No hay facturas registradas para esta orden."
+              />
+            </Section>
 
-        <Section
-          title="Pagos registrados"
-          action={
-            canQuickPay && !showQuickPayment ? (
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                onClick={openQuickPayment}
-              >
-                Registrar abono
-              </Button>
-            ) : null
-          }
-        >
-          {showQuickPayment && canQuickPay && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 mb-3 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-amber-900">
-                    Nuevo abono
-                  </p>
-                  <p className="text-xs text-amber-700">
-                    Saldo pendiente:{" "}
-                    <span className="font-mono">
-                      {formatCurrency(balanceDue)}
-                    </span>
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowQuickPayment(false)}
-                  disabled={quickPaymentSubmitting}
-                >
-                  Cancelar
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <Input
-                  label="Monto"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={quickPaymentForm.amount_paid}
-                  onChange={(e) =>
-                    setQuickPaymentForm((p) => ({
-                      ...p,
-                      amount_paid: e.target.value,
-                    }))
-                  }
-                  required
-                />
-                <Select
-                  label="Moneda"
-                  value={String(quickPaymentForm.currency_id)}
-                  onChange={(e) =>
-                    setQuickPaymentForm((p) => ({
-                      ...p,
-                      currency_id: Number(e.target.value),
-                      exchange_rate_override: "",
-                    }))
-                  }
-                  options={currencies.map((c) => ({
-                    value: String(c.value),
-                    label: c.code,
-                  }))}
-                  required
-                />
-                <Select
-                  label="Método de pago"
-                  value={String(quickPaymentForm.payment_method_id)}
-                  onChange={(e) =>
-                    setQuickPaymentForm((p) => ({
-                      ...p,
-                      payment_method_id: Number(e.target.value),
-                    }))
-                  }
-                  options={(paymentMethods ?? []).map((m) => ({
-                    value: String(m.payment_method_id),
-                    label: m.name,
-                  }))}
-                  required
-                />
-                <Input
-                  label="Referencia"
-                  placeholder="Opcional"
-                  value={quickPaymentForm.payment_reference}
-                  onChange={(e) =>
-                    setQuickPaymentForm((p) => ({
-                      ...p,
-                      payment_reference: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              {amount > 0 && convertedAmount !== null && (
-                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
-                  <div className="flex items-center justify-between gap-2">
+            <Section
+              title="Pagos registrados"
+              action={
+                canQuickPay && !showQuickPayment ? (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={openQuickPayment}
+                  >
+                    Registrar abono
+                  </Button>
+                ) : null
+              }
+            >
+              {showQuickPayment && canQuickPay && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 mb-3 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
-                        Conversión en vivo
+                      <p className="text-sm font-semibold text-amber-900">
+                        Nuevo abono
                       </p>
-                      <p className="text-sm font-medium text-blue-900 mt-1">
-                        {amount.toLocaleString("es-CR", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}{" "}
-                        {currencies.find((c) => c.value === quickPaymentForm.currency_id)?.symbol} ={" "}
-                        <span className="font-semibold">
-                          {convertedAmount.toLocaleString("es-CR", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}{" "}
-                          {quickPaymentForm.currency_id === CRC_CURRENCY_ID ? "$" : "₡"}
+                      <p className="text-xs text-amber-700">
+                        Saldo pendiente:{" "}
+                        <span className="font-mono">
+                          {formatCurrency(balanceDue)}
                         </span>
                       </p>
                     </div>
-                    {effectiveExchangeRate > 0 && (
-                      <div className="text-right text-xs text-blue-700">
-                        <p className="font-medium">
-                          Tasa:{" "}
-                          {effectiveExchangeRate.toLocaleString("es-CR", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 6,
-                          })}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowQuickPayment(false)}
+                      disabled={quickPaymentSubmitting}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <Input
+                      label="Monto"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={quickPaymentForm.amount_paid}
+                      onChange={(e) =>
+                        setQuickPaymentForm((p) => ({
+                          ...p,
+                          amount_paid: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                    <Select
+                      label="Moneda"
+                      value={String(quickPaymentForm.currency_id)}
+                      onChange={(e) =>
+                        setQuickPaymentForm((p) => ({
+                          ...p,
+                          currency_id: Number(e.target.value),
+                          exchange_rate_override: "",
+                        }))
+                      }
+                      options={currencies.map((c) => ({
+                        value: String(c.value),
+                        label: c.code,
+                      }))}
+                      required
+                    />
+                    <Select
+                      label="Método de pago"
+                      value={String(quickPaymentForm.payment_method_id)}
+                      onChange={(e) =>
+                        setQuickPaymentForm((p) => ({
+                          ...p,
+                          payment_method_id: Number(e.target.value),
+                        }))
+                      }
+                      options={filteredPaymentMethods.map((m) => ({
+                        value: String(m.payment_method_id),
+                        label: formatPaymentMethodName(m.name),
+                      }))}
+                      required
+                    />
+                    <Input
+                      label="Referencia"
+                      placeholder="Opcional"
+                      value={quickPaymentForm.payment_reference}
+                      onChange={(e) =>
+                        setQuickPaymentForm((p) => ({
+                          ...p,
+                          payment_reference: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  {amount > 0 && convertedAmount !== null && (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                            Conversión en vivo
+                          </p>
+                          <p className="text-sm font-medium text-blue-900 mt-1">
+                            {amount.toLocaleString("es-CR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}{" "}
+                            {
+                              currencies.find(
+                                (c) => c.value === quickPaymentForm.currency_id,
+                              )?.symbol
+                            }{" "}
+                            ={" "}
+                            <span className="font-semibold">
+                              {convertedAmount.toLocaleString("es-CR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              {quickPaymentForm.currency_id === CRC_CURRENCY_ID
+                                ? "$"
+                                : "₡"}
+                            </span>
+                          </p>
+                        </div>
+                        {effectiveExchangeRate > 0 && (
+                          <div className="text-right text-xs text-blue-700">
+                            <p className="font-medium">
+                              Tasa:{" "}
+                              {effectiveExchangeRate.toLocaleString("es-CR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 6,
+                              })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {amount > 0 && effectiveExchangeRate <= 0 && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-xs font-medium text-amber-800">
+                        No hay tasa de cambio disponible. Ingresa una
+                        manualmente:
+                      </p>
+                      <Input
+                        label="Tasa de cambio (override)"
+                        type="number"
+                        min="0"
+                        step="0.000001"
+                        placeholder="Ej: 510.00"
+                        value={quickPaymentForm.exchange_rate_override}
+                        onChange={(e) =>
+                          setQuickPaymentForm((p) => ({
+                            ...p,
+                            exchange_rate_override: e.target.value,
+                          }))
+                        }
+                        className="mt-2"
+                      />
+                    </div>
+                  )}
+
+                  {amount > 0 &&
+                    effectiveExchangeRate > 0 &&
+                    quickPaymentForm.exchange_rate_override && (
+                      <div className="rounded-xl border border-purple-200 bg-purple-50 p-3">
+                        <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
+                          Usando tasa personalizada
                         </p>
+                        <Input
+                          label="Tasa de cambio personalizada"
+                          type="number"
+                          min="0"
+                          step="0.000001"
+                          value={quickPaymentForm.exchange_rate_override}
+                          onChange={(e) =>
+                            setQuickPaymentForm((p) => ({
+                              ...p,
+                              exchange_rate_override: e.target.value,
+                            }))
+                          }
+                          className="mt-2"
+                          hint={`Tasa del sistema: ${exchangeRate?.toLocaleString(
+                            "es-CR",
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 6,
+                            },
+                          )}`}
+                        />
                       </div>
                     )}
+
+                  {quickPaymentError && (
+                    <p className="text-xs text-red-600 font-medium">
+                      {quickPaymentError}
+                    </p>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-1 border-t border-amber-200">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={submitQuickPayment}
+                      loading={quickPaymentSubmitting}
+                    >
+                      Confirmar abono
+                    </Button>
                   </div>
                 </div>
               )}
+              <StackList
+                items={order.payments.map((payment) => ({
+                  id: payment.purchase_order_payment_id,
+                  title:
+                    `${formatCurrency(payment.amount_paid)} ${payment.currency_code && payment.currency_code !== "CRC" ? `(${payment.currency_code})` : ""}`.trim(),
+                  meta: `${formatPaymentMethodName(payment.payment_method_name)} · ${formatDateTime(payment.payment_date)}`,
+                  description: payment.payment_reference ?? "Sin referencia",
+                }))}
+                emptyMessage="Todavía no se han registrado abonos."
+              />
+            </Section>
+          </div>
 
-              {amount > 0 && effectiveExchangeRate <= 0 && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-xs font-medium text-amber-800">
-                    No hay tasa de cambio disponible. Ingresa una manualmente:
-                  </p>
-                  <Input
-                    label="Tasa de cambio (override)"
-                    type="number"
-                    min="0"
-                    step="0.000001"
-                    placeholder="Ej: 510.00"
-                    value={quickPaymentForm.exchange_rate_override}
-                    onChange={(e) =>
-                      setQuickPaymentForm((p) => ({
-                        ...p,
-                        exchange_rate_override: e.target.value,
-                      }))
-                    }
-                    className="mt-2"
-                  />
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Section title="Recepciones">
+              <StackList
+                items={order.goods_receipts.map((receipt) => ({
+                  id: receipt.goods_receipt_id,
+                  title: formatDateTime(receipt.received_date),
+                  meta: `${receipt.items_received} item(s) recibidos`,
+                  amount: formatCurrency(receipt.total_amount),
+                }))}
+                emptyMessage="La orden todavía no ha generado recepción de mercadería."
+              />
+            </Section>
+
+            <Section title="Three-way matching">
+              {matching?.matching_found ? (
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        Conciliación{" "}
+                        {matching.is_matched ? "exitosa" : "con diferencias"}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Ejecutada el {formatDateTime(matching.matched_at)}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Badge
+                        variant={matching.amounts_matched ? "green" : "red"}
+                      >
+                        Montos{" "}
+                        {matching.amounts_matched ? "OK" : "con diferencia"}
+                      </Badge>
+                      <Badge
+                        variant={matching.quantities_matched ? "green" : "red"}
+                      >
+                        Cantidades{" "}
+                        {matching.quantities_matched ? "OK" : "con diferencia"}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
+                  {matching?.message ??
+                    "La conciliación todavía no está disponible para esta orden."}
                 </div>
               )}
-
-              {amount > 0 && effectiveExchangeRate > 0 && quickPaymentForm.exchange_rate_override && (
-                <div className="rounded-xl border border-purple-200 bg-purple-50 p-3">
-                  <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
-                    Usando tasa personalizada
-                  </p>
-                  <Input
-                    label="Tasa de cambio personalizada"
-                    type="number"
-                    min="0"
-                    step="0.000001"
-                    value={quickPaymentForm.exchange_rate_override}
-                    onChange={(e) =>
-                      setQuickPaymentForm((p) => ({
-                        ...p,
-                        exchange_rate_override: e.target.value,
-                      }))
-                    }
-                    className="mt-2"
-                    hint={`Tasa del sistema: ${exchangeRate?.toLocaleString("es-CR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 6,
-                    })}`}
-                  />
-                </div>
-              )}
-
-              {quickPaymentError && (
-                <p className="text-xs text-red-600 font-medium">
-                  {quickPaymentError}
-                </p>
-              )}
-
-              <div className="flex justify-end gap-2 pt-1 border-t border-amber-200">
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={submitQuickPayment}
-                  loading={quickPaymentSubmitting}
-                >
-                  Confirmar abono
-                </Button>
-              </div>
-            </div>
-          )}
-          <StackList
-            items={order.payments.map((payment) => ({
-              id: payment.purchase_order_payment_id,
-              title: `${formatCurrency(payment.amount_paid)} ${payment.currency_code && payment.currency_code !== "CRC" ? `(${payment.currency_code})` : ""}`.trim(),
-              meta: `${formatPaymentMethodName(payment.payment_method_name)} · ${formatDateTime(payment.payment_date)}`,
-              description: payment.payment_reference ?? "Sin referencia",
-            }))}
-            emptyMessage="Todavía no se han registrado abonos."
-          />
-        </Section>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Section title="Recepciones">
-          <StackList
-            items={order.goods_receipts.map((receipt) => ({
-              id: receipt.goods_receipt_id,
-              title: formatDateTime(receipt.received_date),
-              meta: `${receipt.items_received} item(s) recibidos`,
-              amount: formatCurrency(receipt.total_amount),
-            }))}
-            emptyMessage="La orden todavía no ha generado recepción de mercadería."
-          />
-        </Section>
-
-        <Section title="Three-way matching">
-          {matching?.matching_found ? (
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">
-                    Conciliación {matching.is_matched ? "exitosa" : "con diferencias"}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Ejecutada el {formatDateTime(matching.matched_at)}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Badge variant={matching.amounts_matched ? "green" : "red"}>
-                    Montos {matching.amounts_matched ? "OK" : "con diferencia"}
-                  </Badge>
-                  <Badge
-                    variant={matching.quantities_matched ? "green" : "red"}
-                  >
-                    Cantidades{" "}
-                    {matching.quantities_matched ? "OK" : "con diferencia"}
-                  </Badge>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
-              {matching?.message ??
-                "La conciliación todavía no está disponible para esta orden."}
-            </div>
-          )}
-        </Section>
-      </div>
-      </>
+            </Section>
+          </div>
+        </>
       )}
     </div>
   );

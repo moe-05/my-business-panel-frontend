@@ -14,6 +14,7 @@ import {
   getOpenCashSessionsByBranch,
   startCashRegisterSession,
 } from "@/router/actions/cashRegister.actions";
+import { cashRegisterApi } from "@/api/cashRegister.api";
 
 import type {
   CashRegister,
@@ -48,6 +49,7 @@ export function QuickCashRegisterModal({
   const roleName = user?.role.role_name ?? "";
   // Admin and superuser bypass the key check both client-side and server-side.
   const requiresKey = roleName !== "admin" && roleName !== "superuser";
+  const canDelete = roleName === "admin" || roleName === "superuser";
 
   const [rows, setRows] = useState<RegisterRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -204,6 +206,32 @@ export function QuickCashRegisterModal({
     }
   };
 
+  const handleDelete = async (row: RegisterRow) => {
+    if (row.session) {
+      setToast({
+        mode: "error",
+        message: "No se puede eliminar una caja con sesión activa.",
+      });
+      return;
+    }
+    if (!confirm(`¿Eliminar la caja "${row.register.register_name}"? Esta acción no se puede deshacer.`))
+      return;
+    setBusyRegisterId(row.register.cash_register_id);
+    try {
+      await cashRegisterApi.remove(row.register.cash_register_id);
+      setToast({ mode: "success", message: "Caja eliminada" });
+      await refresh();
+      await onSessionsChanged();
+    } catch (error) {
+      setToast({
+        mode: "error",
+        message: error instanceof Error ? error.message : "Error al eliminar la caja",
+      });
+    } finally {
+      setBusyRegisterId(null);
+    }
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -256,11 +284,24 @@ export function QuickCashRegisterModal({
                       </p>
                     )}
                   </div>
-                  {isActive ? (
-                    <Badge variant="green">Abierta</Badge>
-                  ) : (
-                    <Badge variant="gray">Cerrada</Badge>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isActive ? (
+                      <Badge variant="green">Abierta</Badge>
+                    ) : (
+                      <Badge variant="gray">Cerrada</Badge>
+                    )}
+                    {canDelete && !isActive && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(row)}
+                        disabled={isBusy}
+                        className="text-xs font-medium text-red-500 hover:text-red-700 disabled:opacity-40"
+                        title="Eliminar caja"
+                      >
+                        Eliminar
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-3">

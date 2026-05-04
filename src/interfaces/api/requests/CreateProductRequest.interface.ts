@@ -7,6 +7,9 @@ export interface CreateProductRequest {
   price: number;
   cost_price?: number;
   cabys_code?: string;
+  supplier_id?: string;
+  giftable?: boolean;
+  giftable_from?: number;
   attribute_value_ids?: string[];
   group_ids?: string[];
 }

@@ -204,6 +204,18 @@ export function calculatePromotionDiscount({
   }
 }
 
+export function findMatchingTier(
+  tiers: PromotionRule[],
+  quantity: number,
+): PromotionRule | null {
+  for (const tier of tiers) {
+    const min = Number(tier.tier_min_quantity ?? 0);
+    const max = tier.tier_max_quantity != null ? Number(tier.tier_max_quantity) : null;
+    if (quantity >= min && (max == null || quantity <= max)) return tier;
+  }
+  return null;
+}
+
 export function isPromotionWithinDate(
   startDate: string,
   endDate: string,

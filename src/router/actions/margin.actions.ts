@@ -5,7 +5,7 @@ import type { CreateMarginRequest } from "@/interfaces/api/requests/CreateMargin
 type UpdateMarginRequest = Partial<
   Pick<
     CreateMarginRequest,
-    "spending_threshold" | "seniority_months" | "frequency_per_month"
+    "customer_segment_id" | "spending_threshold" | "seniority_months" | "frequency_per_month"
   >
 >;
 

@@ -2,7 +2,7 @@
 
 import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
 import type { Warehouse } from "@/interfaces/entities/Warehouse.interface";
-import type { InventoryItem } from "@/interfaces/entities/InventoryItem.interface";
+import type { AggregatedInventoryItem, InventoryItem } from "@/interfaces/entities/InventoryItem.interface";
 import type { InventoryTransfer } from "@/interfaces/entities/InventoryTransfer.interface";
 import type { DiscrepancyReport } from "@/interfaces/entities/DiscrepancyReport.interface";
 import type { CreateWarehouseRequest } from "@/interfaces/api/requests/CreateWarehouseRequest.interface";
@@ -79,6 +79,22 @@ export const warehouseApi = {
       },
     );
     return json<InventoryItem[]>(res, "Error al listar inventario");
+  },
+
+  async listInventoryAggregated(
+    warehouseId: string,
+    search?: string,
+  ): Promise<AggregatedInventoryItem[]> {
+    const params = search ? `?search=${encodeURIComponent(search)}` : "";
+    const res = await fetch(
+      `${url}/warehouse/inventory/${warehouseId}/aggregated${params}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+    return json<AggregatedInventoryItem[]>(res, "Error al listar inventario agregado");
   },
 
   async updateInventoryItem(

@@ -5,5 +5,6 @@ export interface CreateReturnTransactionRequest {
   tenant_customer_id?: string;
   refund_method?: number;
   return_status_id?: number;
+  description: string;
   return_products: ReturnProductPayload[];
 }
