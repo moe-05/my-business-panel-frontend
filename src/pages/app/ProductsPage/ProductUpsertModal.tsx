@@ -15,8 +15,10 @@ import { GroupAssignmentEditor } from "@/components/ui/GroupAssignmentEditor";
 
 import { productApi } from "@/api/product.api";
 import { productVariantGroupApi } from "@/api/productGroup.api";
+import { purchaseApi } from "@/api/purchase.api";
 
 import type { Product } from "@/interfaces/entities/Product.interface";
+import type { Supplier } from "@/interfaces/entities/Purchase.interface";
 import type { Tenant } from "@/interfaces/entities/Tenant.interface";
 import type { CreateProductRequest } from "@/interfaces/api/requests/CreateProductRequest.interface";
 import type { UpdateProductRequest } from "@/interfaces/api/requests/UpdateProductRequest.interface";
@@ -43,7 +45,11 @@ interface ProductUpsertModalProps {
   isSuperAdmin: boolean;
   onClose: () => void;
   onCreate: (data: CreateProductRequest) => Promise<string | null>;
-  onUpdate: (productId: string, data: UpdateProductRequest) => Promise<void>;
+  onUpdate: (
+    productId: string,
+    data: UpdateProductRequest,
+    meta?: { supplier_name?: string },
+  ) => Promise<void>;
 }
 
 export function ProductUpsertModal({
@@ -66,6 +72,7 @@ export function ProductUpsertModal({
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   const {
     register,
@@ -91,6 +98,12 @@ export function ProductUpsertModal({
               product.cost_price !== undefined && product.cost_price !== null
                 ? String(product.cost_price)
                 : "",
+            supplier_id: product.supplier_id ?? "",
+            giftable: product.giftable ?? false,
+            giftable_from:
+              product.giftable_from != null
+                ? String(product.giftable_from)
+                : "",
             tenant_id: "",
           }
         : {
@@ -101,11 +114,15 @@ export function ProductUpsertModal({
             category_name: "",
             price: "",
             cost_price: "",
+            supplier_id: "",
+            giftable: false,
+            giftable_from: "",
             tenant_id: "",
           },
   });
 
   const categoryName = watch("category_name") ?? "";
+  const isGiftable = watch("giftable") ?? false;
 
   // Reset modal-local state whenever it opens or the product changes.
   useEffect(() => {
@@ -127,6 +144,12 @@ export function ProductUpsertModal({
               product.cost_price !== undefined && product.cost_price !== null
                 ? String(product.cost_price)
                 : "",
+            supplier_id: product.supplier_id ?? "",
+            giftable: product.giftable ?? false,
+            giftable_from:
+              product.giftable_from != null
+                ? String(product.giftable_from)
+                : "",
             tenant_id: "",
           }
         : {
@@ -137,9 +160,17 @@ export function ProductUpsertModal({
             category_name: "",
             price: "",
             cost_price: "",
+            supplier_id: "",
+            giftable: false,
+            giftable_from: "",
             tenant_id: "",
           },
     );
+
+    purchaseApi
+      .listSuppliers()
+      .then(setSuppliers)
+      .catch(() => {});
   }, [isOpen, product, isEditing, reset]);
 
   // Edit mode: fetch the full state (attributes, groups) so the sub-sections
@@ -217,6 +248,14 @@ export function ProductUpsertModal({
       data.cost_price && data.cost_price !== ""
         ? parseFloat(data.cost_price)
         : undefined;
+    const supplierId =
+      data.supplier_id && data.supplier_id !== ""
+        ? data.supplier_id
+        : undefined;
+    const giftableFrom =
+      data.giftable && data.giftable_from && data.giftable_from !== ""
+        ? parseFloat(data.giftable_from)
+        : undefined;
     const tenantId = isSuperAdmin
       ? data.tenant_id || currentTenantId
       : currentTenantId;
@@ -229,15 +268,26 @@ export function ProductUpsertModal({
 
       if (isEditing && product) {
         const productId = product.product_variant_id ?? product.product_id;
-        await onUpdate(productId, {
-          product_name: data.product_name,
-          description: data.description || undefined,
-          category_id: data.category_id,
-          price,
-          cost_price: costPrice,
-          attribute_value_ids,
-          group_ids: groupIds,
-        });
+        const supplierName = supplierId
+          ? (suppliers.find((s) => s.supplier_id === supplierId)
+              ?.supplier_name ?? undefined)
+          : undefined;
+        await onUpdate(
+          productId,
+          {
+            product_name: data.product_name,
+            description: data.description || undefined,
+            category_id: data.category_id,
+            price,
+            cost_price: costPrice,
+            supplier_id: supplierId,
+            giftable: data.giftable ?? false,
+            giftable_from: giftableFrom,
+            attribute_value_ids,
+            group_ids: groupIds,
+          },
+          { supplier_name: supplierName },
+        );
         variantId = productId;
       } else {
         variantId = await onCreate({
@@ -248,6 +298,9 @@ export function ProductUpsertModal({
           category_id: data.category_id,
           price,
           cost_price: costPrice,
+          supplier_id: supplierId,
+          giftable: data.giftable ?? false,
+          giftable_from: giftableFrom,
           cabys_code: data.category_id,
           attribute_value_ids,
           group_ids: groupIds,
@@ -370,6 +423,59 @@ export function ProductUpsertModal({
               />
             )}
           />
+
+          <Controller
+            name="supplier_id"
+            control={control}
+            render={({ field }) => (
+              <Select
+                label="Proveedor"
+                value={field.value ?? ""}
+                onChange={field.onChange}
+                name={field.name}
+                options={[
+                  { value: "", label: "Sin proveedor" },
+                  ...suppliers.map((s) => ({
+                    value: s.supplier_id,
+                    label: s.supplier_name,
+                  })),
+                ]}
+              />
+            )}
+          />
+
+          <div className="flex items-center gap-3">
+            <Controller
+              name="giftable"
+              control={control}
+              render={({ field }) => (
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    checked={field.value ?? false}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                  />
+                  <span className="text-sm text-gray-700 font-medium">
+                    Aplica como producto regalable
+                  </span>
+                </label>
+              )}
+            />
+          </div>
+
+          {isGiftable && (
+            <Input
+              label="Monto mínimo de compra para ser regalable (₡)"
+              type="number"
+              placeholder="Ej: 50000.00"
+              step="0.01"
+              min="0"
+              hint="Si se deja vacío, no hay monto mínimo."
+              error={errors.giftable_from?.message}
+              {...register("giftable_from")}
+            />
+          )}
         </section>
 
         {/* ─── Group assignment ─────────────────────── */}

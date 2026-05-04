@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
 import type {
   PromotionRule,
@@ -8,9 +9,11 @@ import type {
 interface Props {
   type: PromotionTypeName | "";
   rule: PromotionRule;
+  tiers?: PromotionRule[];
   errors?: Partial<Record<keyof PromotionRule, string>>;
   disabled?: boolean;
   onChange: (next: PromotionRule) => void;
+  onTiersChange?: (tiers: PromotionRule[]) => void;
 }
 
 const numberOrUndefined = (raw: string): number | undefined =>
@@ -19,9 +22,11 @@ const numberOrUndefined = (raw: string): number | undefined =>
 export function PromotionRuleFields({
   type,
   rule,
+  tiers,
   errors,
   disabled,
   onChange,
+  onTiersChange,
 }: Props) {
   const set = <K extends keyof PromotionRule>(
     key: K,
@@ -199,74 +204,103 @@ export function PromotionRuleFields({
         </div>
       );
 
-    case "tiered_pricing":
+    case "tiered_pricing": {
+      const activeTiers = tiers && tiers.length > 0 ? tiers : [{}];
+      const updateTier = (index: number, patch: Partial<PromotionRule>) => {
+        const next = activeTiers.map((t, i) =>
+          i === index ? { ...t, ...patch, tier_level: i + 1 } : t,
+        );
+        onTiersChange?.(next);
+      };
+      const addTier = () =>
+        onTiersChange?.([...activeTiers, { tier_level: activeTiers.length + 1 }]);
+      const removeTier = (index: number) =>
+        onTiersChange?.(
+          activeTiers
+            .filter((_, i) => i !== index)
+            .map((t, i) => ({ ...t, tier_level: i + 1 })),
+        );
+
       return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Input
-            label="Nivel"
-            type="number"
-            min={1}
-            step="1"
-            value={rule.tier_level ?? ""}
-            onChange={(e) =>
-              set("tier_level", numberOrUndefined(e.target.value))
-            }
-            error={errors?.tier_level}
-            disabled={disabled}
-            required
-          />
-          <Input
-            label="Cantidad mínima del nivel"
-            type="number"
-            min={1}
-            step="1"
-            value={rule.tier_min_quantity ?? ""}
-            onChange={(e) =>
-              set("tier_min_quantity", numberOrUndefined(e.target.value))
-            }
-            error={errors?.tier_min_quantity}
-            disabled={disabled}
-            required
-          />
-          <Input
-            label="Cantidad máxima del nivel"
-            type="number"
-            min={0}
-            step="1"
-            value={rule.tier_max_quantity ?? ""}
-            onChange={(e) =>
-              set("tier_max_quantity", numberOrUndefined(e.target.value))
-            }
-            error={errors?.tier_max_quantity}
-            disabled={disabled}
-          />
-          <Input
-            label="Precio por unidad en el nivel"
-            type="number"
-            min={0}
-            step="0.01"
-            value={rule.tier_price ?? ""}
-            onChange={(e) =>
-              set("tier_price", numberOrUndefined(e.target.value))
-            }
-            error={errors?.tier_price}
-            disabled={disabled}
-          />
-          <Input
-            label="% de descuento del nivel"
-            type="number"
-            min={0}
-            max={100}
-            step="0.01"
-            value={rule.tier_discount_percentage ?? ""}
-            onChange={(e) =>
-              set("tier_discount_percentage", numberOrUndefined(e.target.value))
-            }
-            error={errors?.tier_discount_percentage}
-            disabled={disabled}
-          />
+        <div className="space-y-3">
+          {activeTiers.map((tier, index) => (
+            <div
+              key={index}
+              className="border border-gray-200 rounded-lg p-3 bg-gray-50/50"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-gray-600">
+                  Nivel {index + 1}
+                </span>
+                {activeTiers.length > 1 && !disabled && (
+                  <button
+                    type="button"
+                    onClick={() => removeTier(index)}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >
+                    Quitar nivel
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Input
+                  label="Cantidad mínima"
+                  type="number"
+                  min={1}
+                  step="1"
+                  value={tier.tier_min_quantity ?? ""}
+                  onChange={(e) =>
+                    updateTier(index, {
+                      tier_min_quantity: numberOrUndefined(e.target.value),
+                    })
+                  }
+                  disabled={disabled}
+                  required
+                />
+                <Input
+                  label="Cantidad máxima"
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={tier.tier_max_quantity ?? ""}
+                  onChange={(e) =>
+                    updateTier(index, {
+                      tier_max_quantity: numberOrUndefined(e.target.value),
+                    })
+                  }
+                  disabled={disabled}
+                  hint="Vacío = sin límite superior"
+                />
+                <Input
+                  label="Precio unitario del nivel"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={tier.tier_price ?? ""}
+                  onChange={(e) =>
+                    updateTier(index, {
+                      tier_price: numberOrUndefined(e.target.value),
+                    })
+                  }
+                  disabled={disabled}
+                  required
+                />
+              </div>
+            </div>
+          ))}
+          {!disabled && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={addTier}
+            >
+              + Agregar nivel
+            </Button>
+          )}
         </div>
       );
+    }
 
     case "combo":
       return (

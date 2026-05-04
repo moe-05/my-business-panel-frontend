@@ -38,7 +38,7 @@ export function Table({
   }
 
   return (
-    <div className="overflow-auto max-h-[600px] border border-gray-200 rounded-xl">
+    <div className="overflow-auto max-h-[540px] border border-gray-200 rounded-xl">
       <table className="w-full text-sm">
         {/* Header */}
         <thead className="sticky top-0 z-10">

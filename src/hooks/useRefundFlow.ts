@@ -46,6 +46,7 @@ export function useRefundFlow({ initialReturns }: UseRefundFlowArgs) {
   const [returnStatusId, setReturnStatusId] = useState<number>(
     refundStatuses[0]?.value ?? 1,
   );
+  const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
 
@@ -166,6 +167,13 @@ export function useRefundFlow({ initialReturns }: UseRefundFlowArgs) {
       });
       return;
     }
+    if (!description.trim()) {
+      setToast({
+        mode: "error",
+        message: "La descripción del reembolso es obligatoria",
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -174,6 +182,7 @@ export function useRefundFlow({ initialReturns }: UseRefundFlowArgs) {
         tenant_customer_id: context.customer?.tenant_customer_id ?? undefined,
         refund_method: refundMethod,
         return_status_id: returnStatusId,
+        description: description.trim(),
         return_products: productsToRefund.map((p) => ({
           sale_item_id: p.sale_item_id,
           quantity: p.quantity,
@@ -185,6 +194,7 @@ export function useRefundFlow({ initialReturns }: UseRefundFlowArgs) {
         mode: "success",
         message: result.message ?? "Reembolso parcial registrado",
       });
+      setDescription("");
       clearSale();
       void refreshReturns();
     } catch (err) {
@@ -250,6 +260,8 @@ export function useRefundFlow({ initialReturns }: UseRefundFlowArgs) {
     setRefundMethod,
     setReturnStatusId,
     setToast,
+    description,
+    setDescription,
     // actions
     switchMode,
     lookupSale,

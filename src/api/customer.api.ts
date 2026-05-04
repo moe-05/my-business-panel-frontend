@@ -5,6 +5,10 @@ import type { CreateCustomerRequest } from "@/interfaces/api/requests/CreateCust
 import type { UpdateCustomerRequest } from "@/interfaces/api/requests/UpdateCustomerRequest.interface";
 import type { Customer } from "@/interfaces/entities/Customer.interface";
 import type { CustomersListResponse } from "@/interfaces/api/responses/CustomersListResponse.interface";
+import type {
+  CustomerDetail,
+  CustomerSalesHistoryResponse,
+} from "@/interfaces/entities/CustomerDetail.interface";
 
 export const customerApi = {
   async create(data: CreateCustomerRequest): Promise<Customer> {
@@ -213,6 +217,39 @@ export const customerApi = {
         error instanceof Error ? error.message : "Error al buscar clientes",
       );
     }
+  },
+
+  async getDetail(customerId: string): Promise<CustomerDetail> {
+    const response = await fetch(`${url}/customers/${customerId}/detail`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    if (!response.ok) {
+      throw new Error(`Error ${response.status} al obtener detalle del cliente`);
+    }
+    const json: ApiResponse<CustomerDetail> = await response.json();
+    return json.data;
+  },
+
+  async getSalesHistory(
+    customerId: string,
+    page = 1,
+    limit = 10,
+  ): Promise<CustomerSalesHistoryResponse> {
+    const response = await fetch(
+      `${url}/customers/${customerId}/sales?page=${page}&limit=${limit}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Error ${response.status} al obtener historial de ventas`);
+    }
+    const json: ApiResponse<CustomerSalesHistoryResponse> = await response.json();
+    return json.data;
   },
 
   async filterBySegment(

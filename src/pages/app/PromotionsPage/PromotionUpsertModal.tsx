@@ -57,23 +57,7 @@ const normalizeRule = (rule?: PromotionRule | null): PromotionRule => ({
   tier_min_quantity: toNumberOrUndefined(rule?.tier_min_quantity),
   tier_max_quantity: toNumberOrUndefined(rule?.tier_max_quantity),
   tier_price: toNumberOrUndefined(rule?.tier_price),
-  tier_discount_percentage: toNumberOrUndefined(rule?.tier_discount_percentage),
   min_purchase_amount: toNumberOrUndefined(rule?.min_purchase_amount),
-});
-
-const initialFormState = () => ({
-  promotion_name: "",
-  promotion_code: "",
-  promotion_description: "",
-  promotion_type_id: 0,
-  customer_segment_id: 0,
-  promotion_start_date: new Date().toISOString().split("T")[0],
-  promotion_end_date: "",
-  is_active: true,
-  is_default: false,
-  is_stackable: true,
-  target_group_ids: [] as string[],
-  rules: {} as PromotionRule,
 });
 
 const segmentNumericId = (
@@ -82,6 +66,22 @@ const segmentNumericId = (
   const value = Number(segment.customer_segment_id ?? segment.segment_id);
   return Number.isFinite(value) ? value : null;
 };
+
+const initialFormState = () => ({
+  promotion_name: "",
+  promotion_code: "",
+  promotion_description: "",
+  promotion_type_id: 0,
+  is_universal: true,
+  customer_segment_ids: [] as number[],
+  promotion_start_date: new Date().toISOString().split("T")[0],
+  promotion_end_date: "",
+  is_active: true,
+  is_default: false,
+  is_stackable: true,
+  target_group_ids: [] as string[],
+  rules: {} as PromotionRule,
+});
 
 export function PromotionUpsertModal({
   isOpen,
@@ -94,13 +94,13 @@ export function PromotionUpsertModal({
   onSubmit,
 }: Props) {
   const [form, setForm] = useState(initialFormState());
+  const [tiers, setTiers] = useState<PromotionRule[]>([{}]);
   const [scope, setScope] = useState<Scope>("ALL");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [groupTypes, setGroupTypes] = useState<TenantProductGroupType[]>([]);
   const [groups, setGroups] = useState<TenantProductGroup[]>([]);
 
-  // Load tenant-specific groups when the modal opens.
   useEffect(() => {
     if (!isOpen || !tenantId) return;
     let cancelled = false;
@@ -130,12 +130,18 @@ export function PromotionUpsertModal({
         .filter((t) => t.target_type === "GROUP" && t.target_group_id)
         .map((t) => t.target_group_id as string);
 
+      const isUniversal = promotion.is_universal !== false;
+      const segmentIds = (promotion.customer_segment_ids ?? [])
+        .map(Number)
+        .filter(Number.isFinite);
+
       setForm({
         promotion_name: promotion.promotion_name ?? "",
         promotion_code: promotion.promotion_code ?? "",
         promotion_description: promotion.promotion_description ?? "",
         promotion_type_id: promotion.promotion_type_id ?? 0,
-        customer_segment_id: promotion.customer_segment_id ?? 0,
+        is_universal: isUniversal,
+        customer_segment_ids: segmentIds,
         promotion_start_date:
           promotion.promotion_start_date?.slice(0, 10) ?? "",
         promotion_end_date: promotion.promotion_end_date?.slice(0, 10) ?? "",
@@ -145,9 +151,16 @@ export function PromotionUpsertModal({
         target_group_ids: existingGroupIds,
         rules: normalizeRule(promotion.rule),
       });
+
+      const existingTiers = (promotion.rules ?? [])
+        .filter((r) => r.tier_level != null)
+        .sort((a, b) => (a.tier_level ?? 0) - (b.tier_level ?? 0))
+        .map(normalizeRule);
+      setTiers(existingTiers.length > 0 ? existingTiers : [{}]);
       setScope(existingGroupIds.length > 0 ? "FAMILY" : "ALL");
     } else {
       setForm(initialFormState());
+      setTiers([{}]);
       setScope("ALL");
     }
     setErrors({});
@@ -159,6 +172,7 @@ export function PromotionUpsertModal({
   const selectedTypeName = (selectedType?.type_name ?? "") as
     | PromotionTypeName
     | "";
+  const isTieredPricing = selectedTypeName === "tiered_pricing";
 
   const groupOptions = useMemo(() => {
     const typeNameById = new Map(
@@ -190,6 +204,24 @@ export function PromotionUpsertModal({
         "Selecciona al menos una familia o cambia a 'Todos los productos'.";
     }
 
+    if (isTieredPricing) {
+      if (tiers.length === 0) {
+        next.tiers = "Debe agregar al menos un nivel.";
+      } else {
+        for (let i = 0; i < tiers.length; i++) {
+          const t = tiers[i];
+          if (t.tier_min_quantity == null || t.tier_min_quantity < 1) {
+            next.tiers = `Nivel ${i + 1}: la cantidad mínima debe ser ≥ 1.`;
+            break;
+          }
+          if (t.tier_price == null || t.tier_price < 0) {
+            next.tiers = `Nivel ${i + 1}: el precio unitario es requerido.`;
+            break;
+          }
+        }
+      }
+    }
+
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -203,6 +235,15 @@ export function PromotionUpsertModal({
     }));
   };
 
+  const toggleSegment = (segId: number) => {
+    setForm((p) => ({
+      ...p,
+      customer_segment_ids: p.customer_segment_ids.includes(segId)
+        ? p.customer_segment_ids.filter((id) => id !== segId)
+        : [...p.customer_segment_ids, segId],
+    }));
+  };
+
   const handleSubmit = async () => {
     if (!validate()) return;
     if (!tenantId) {
@@ -210,19 +251,24 @@ export function PromotionUpsertModal({
       return;
     }
 
+    const rulesPayload: PromotionRule | PromotionRule[] = isTieredPricing
+      ? tiers.map((t, i) => ({ ...normalizeRule(t), tier_level: i + 1 }))
+      : normalizeRule(form.rules);
+
     const payload: CreatePromotionRequest = {
       tenant_id: tenantId,
       promotion_name: form.promotion_name,
       promotion_code: form.promotion_code,
       promotion_description: form.promotion_description || undefined,
       promotion_type_id: form.promotion_type_id,
-      customer_segment_id: form.customer_segment_id,
+      is_universal: form.is_universal,
+      customer_segment_ids: form.is_universal ? [] : form.customer_segment_ids,
       promotion_start_date: form.promotion_start_date,
       promotion_end_date: form.promotion_end_date,
       is_active: form.is_active,
       is_default: form.is_default,
       is_stackable: form.is_stackable,
-      rules: normalizeRule(form.rules),
+      rules: rulesPayload,
       targets:
         scope === "FAMILY"
           ? form.target_group_ids.map((id) => ({
@@ -237,7 +283,7 @@ export function PromotionUpsertModal({
       await onSubmit(payload);
       onClose();
     } catch {
-      // Parent component shows the toast; keep modal open for correction.
+      // Parent shows toast; keep modal open.
     } finally {
       setSubmitting(false);
     }
@@ -247,15 +293,6 @@ export function PromotionUpsertModal({
     value: t.promotion_type_id,
     label: promotionTypeLabel(t.type_name),
   }));
-
-  const segmentOptions = segments
-    .map((s) => {
-      const id = segmentNumericId(s);
-      return id == null
-        ? null
-        : { value: id, label: s.segment_name ?? `Segmento ${id}` };
-    })
-    .filter((o): o is { value: number; label: string } => o !== null);
 
   return (
     <Modal
@@ -312,20 +349,6 @@ export function PromotionUpsertModal({
             options={typeOptions}
             placeholder="Seleccionar tipo"
             error={errors.promotion_type_id}
-            required
-          />
-          <Select
-            label="Segmento de cliente"
-            value={String(form.customer_segment_id || "")}
-            onChange={(e) =>
-              setForm((p) => ({
-                ...p,
-                customer_segment_id: Number(e.target.value),
-              }))
-            }
-            options={segmentOptions}
-            placeholder="Seleccionar segmento"
-            error={errors.customer_segment_id}
             required
           />
         </div>
@@ -385,7 +408,7 @@ export function PromotionUpsertModal({
             />
             <span>
               <span className="block text-sm font-medium text-gray-700">
-                Default
+                Predeterminada
               </span>
               <span className="block text-xs text-gray-500">
                 Se aplica automáticamente en cada venta nueva mientras esté
@@ -415,11 +438,86 @@ export function PromotionUpsertModal({
           </label>
         </div>
 
-        {/* Scope */}
+        {/* Segment targeting */}
         <div className="rounded-xl border border-gray-200 p-4 space-y-3">
           <p className="text-sm font-semibold text-gray-700">
-            Aplicable a
+            Segmentos de cliente
           </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="segment_scope"
+                checked={form.is_universal}
+                onChange={() =>
+                  setForm((p) => ({
+                    ...p,
+                    is_universal: true,
+                    customer_segment_ids: [],
+                  }))
+                }
+                className="text-accent-600 focus:ring-accent-400"
+              />
+              <span className="text-sm text-gray-700">
+                Todos los segmentos (incluye clientes sin segmento)
+              </span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="segment_scope"
+                checked={!form.is_universal}
+                onChange={() => setForm((p) => ({ ...p, is_universal: false }))}
+                className="text-accent-600 focus:ring-accent-400"
+              />
+              <span className="text-sm text-gray-700">
+                Segmentos específicos
+              </span>
+            </label>
+          </div>
+
+          {!form.is_universal && (
+            <div className="space-y-2">
+              {segments.length === 0 ? (
+                <p className="text-xs text-gray-500">
+                  No hay segmentos registrados para este tenant.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {segments.map((seg) => {
+                    const id = segmentNumericId(seg);
+                    if (id == null) return null;
+                    const selected = form.customer_segment_ids.includes(id);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => toggleSegment(id)}
+                        className={[
+                          "cursor-pointer px-3 py-1.5 text-xs rounded-full border transition-colors",
+                          selected
+                            ? "bg-accent-100 border-accent-500 text-accent-700 font-medium"
+                            : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50",
+                        ].join(" ")}
+                      >
+                        {seg.segment_name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {errors.customer_segment_ids && (
+                <p className="text-xs text-red-500">
+                  {errors.customer_segment_ids}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Scope */}
+        <div className="rounded-xl border border-gray-200 p-4 space-y-3">
+          <p className="text-sm font-semibold text-gray-700">Aplicable a</p>
           <div className="flex flex-col sm:flex-row gap-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -430,9 +528,7 @@ export function PromotionUpsertModal({
                 onChange={() => setScope("ALL")}
                 className="text-accent-600 focus:ring-accent-400"
               />
-              <span className="text-sm text-gray-700">
-                Todos los productos
-              </span>
+              <span className="text-sm text-gray-700">Todos los productos</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -493,8 +589,13 @@ export function PromotionUpsertModal({
           <PromotionRuleFields
             type={selectedTypeName}
             rule={form.rules}
+            tiers={isTieredPricing ? tiers : undefined}
             onChange={(rules) => setForm((p) => ({ ...p, rules }))}
+            onTiersChange={isTieredPricing ? setTiers : undefined}
           />
+          {errors.tiers && (
+            <p className="text-xs text-red-500 mt-2">{errors.tiers}</p>
+          )}
         </div>
 
         {errors._root && <p className="text-sm text-red-500">{errors._root}</p>}

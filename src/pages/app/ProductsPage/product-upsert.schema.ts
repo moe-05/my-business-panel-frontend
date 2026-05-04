@@ -24,6 +24,20 @@ export function buildProductUpsertSchema(requireTenant: boolean) {
         (v) => v === undefined || v === "" || parseFloat(v) >= 0,
         "El costo no puede ser negativo",
       ),
+    supplier_id: z.string().optional().or(z.literal("")),
+    giftable: z.boolean().optional(),
+    giftable_from: z
+      .string()
+      .optional()
+      .or(z.literal(""))
+      .refine(
+        (v) => v === undefined || v === "" || !isNaN(parseFloat(v)),
+        "El monto debe ser un número válido",
+      )
+      .refine(
+        (v) => v === undefined || v === "" || parseFloat(v) >= 0,
+        "El monto no puede ser negativo",
+      ),
     tenant_id: requireTenant
       ? z.string().min(1, "Empresa (Tenant) es requerida")
       : z.string(),

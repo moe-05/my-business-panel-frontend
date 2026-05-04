@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -11,6 +11,8 @@ import {
 
 import { productApi, type BulkProductInput } from "@/api/product.api";
 import { productCompositionApi } from "@/api/productComposition.api";
+import { purchaseApi } from "@/api/purchase.api";
+import type { Supplier } from "@/interfaces/entities/Purchase.interface";
 
 interface BulkPackageModalProps {
   isOpen: boolean;
@@ -22,6 +24,8 @@ interface BulkPackageModalProps {
     product_name: string;
     cabys_code: string;
     price: number;
+    cost_price: number;
+    supplier_id?: string;
     tenant_id: string;
   }) => void;
   onConfirmCreate: (tempId: string, createdParentId: string) => void;
@@ -33,6 +37,7 @@ interface ParentForm {
   name: string;
   cabys_code: string;
   cabys_name: string;
+  supplier_id: string;
 }
 
 interface ComponentForm {
@@ -52,6 +57,7 @@ const EMPTY_PARENT: ParentForm = {
   name: "",
   cabys_code: "",
   cabys_name: "",
+  supplier_id: "",
 };
 
 const newComponent = (): ComponentForm => ({
@@ -78,13 +84,28 @@ export function BulkPackageModal({
   ]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [useUniformPricing, setUseUniformPricing] = useState(true);
+  const [uniformPrice, setUniformPrice] = useState("");
+  const [uniformCost, setUniformCost] = useState("");
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   const reset = () => {
     setParent(EMPTY_PARENT);
     setComponents([newComponent()]);
     setError(null);
     setSubmitting(false);
+    setUseUniformPricing(true);
+    setUniformPrice("");
+    setUniformCost("");
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    purchaseApi
+      .listSuppliers()
+      .then(setSuppliers)
+      .catch(() => {});
+  }, [isOpen]);
 
   const close = () => {
     if (submitting) return;
@@ -98,8 +119,7 @@ export function BulkPackageModal({
     );
   };
 
-  const addComponent = () =>
-    setComponents((prev) => [...prev, newComponent()]);
+  const addComponent = () => setComponents((prev) => [...prev, newComponent()]);
 
   const removeComponent = (key: string) =>
     setComponents((prev) =>
@@ -116,6 +136,16 @@ export function BulkPackageModal({
     if (components.length === 0) {
       return "Agrega al menos un componente";
     }
+
+    if (useUniformPricing) {
+      const price = parseFloat(uniformPrice);
+      if (!Number.isFinite(price) || price < 0)
+        return "Ingresa un precio unitario válido para todos los componentes";
+      const cost = parseFloat(uniformCost);
+      if (!Number.isFinite(cost) || cost < 0)
+        return "Ingresa un costo unitario válido para todos los componentes";
+    }
+
     const seenSkus = new Set<string>();
     for (let i = 0; i < components.length; i++) {
       const c = components[i];
@@ -126,12 +156,16 @@ export function BulkPackageModal({
         return `${label}: SKU duplicado entre componentes (${sku})`;
       seenSkus.add(sku);
       if (!c.name.trim()) return `${label}: nombre es obligatorio`;
-      const price = parseFloat(c.unit_price);
-      if (!Number.isFinite(price) || price < 0)
-        return `${label}: precio unitario inválido`;
-      const cost = parseFloat(c.cost_price);
-      if (!Number.isFinite(cost) || cost < 0)
-        return `${label}: costo unitario inválido`;
+
+      if (!useUniformPricing) {
+        const price = parseFloat(c.unit_price);
+        if (!Number.isFinite(price) || price < 0)
+          return `${label}: precio unitario inválido`;
+        const cost = parseFloat(c.cost_price);
+        if (!Number.isFinite(cost) || cost < 0)
+          return `${label}: costo unitario inválido`;
+      }
+
       const qty = parseFloat(c.quantity_per_parent);
       if (!Number.isFinite(qty) || qty <= 0)
         return `${label}: la cantidad por lote debe ser > 0`;
@@ -149,26 +183,46 @@ export function BulkPackageModal({
     setSubmitting(true);
 
     const cabys = parent.cabys_code;
-    const optimisticPrice = Number(
-      components
-        .reduce((acc, component) => {
-          const unitPrice = parseFloat(component.unit_price) || 0;
-          const quantity = parseFloat(component.quantity_per_parent) || 0;
-          return acc + unitPrice * quantity;
+
+    const childInputs: BulkProductInput[] = components.map((c) => {
+      const unitPrice = useUniformPricing
+        ? parseFloat(uniformPrice) || 0
+        : parseFloat(c.unit_price) || 0;
+      const costPrice = useUniformPricing
+        ? parseFloat(uniformCost) || 0
+        : parseFloat(c.cost_price) || 0;
+
+      return {
+        tenant_id: tenantId,
+        sku: c.sku.trim().toUpperCase(),
+        variant_name: c.name.trim(),
+        cabys_code: cabys,
+        unit_price: unitPrice,
+        cost_price: costPrice,
+        attribute_value_ids: c.attributes.flatMap((r) => r.selected_value_ids),
+        supplier_id: parent.supplier_id || undefined,
+      };
+    });
+
+    const optimisticTotalPrice = Number(
+      childInputs
+        .reduce((acc, c, i) => {
+          const qty = parseFloat(components[i].quantity_per_parent) || 1;
+          return acc + c.unit_price * qty;
         }, 0)
         .toFixed(2),
     );
-    const tempId = `temp-bulk-${crypto.randomUUID()}`;
 
-    const childInputs: BulkProductInput[] = components.map((c) => ({
-      tenant_id: tenantId,
-      sku: c.sku.trim().toUpperCase(),
-      variant_name: c.name.trim(),
-      cabys_code: cabys,
-      unit_price: parseFloat(c.unit_price) || 0,
-      cost_price: parseFloat(c.cost_price) || 0,
-      attribute_value_ids: c.attributes.flatMap((r) => r.selected_value_ids),
-    }));
+    const optimisticTotalCost = Number(
+      childInputs
+        .reduce((acc, c, i) => {
+          const qty = parseFloat(components[i].quantity_per_parent) || 1;
+          return acc + (c.cost_price || 0) * qty;
+        }, 0)
+        .toFixed(2),
+    );
+
+    const tempId = `temp-bulk-${crypto.randomUUID()}`;
 
     try {
       onOptimisticCreate({
@@ -176,7 +230,9 @@ export function BulkPackageModal({
         sku: parent.sku.trim().toUpperCase(),
         product_name: parent.name.trim(),
         cabys_code: cabys,
-        price: optimisticPrice,
+        price: optimisticTotalPrice,
+        cost_price: optimisticTotalCost,
+        supplier_id: parent.supplier_id || undefined,
         tenant_id: tenantId,
       });
 
@@ -189,15 +245,25 @@ export function BulkPackageModal({
         );
       }
 
-      // 2) Create the parent (lote). No price by design — lotes don't carry
-      // their own price; the value is in the components.
+      // 2) Create the parent (lote) with the summed price and cost.
+      const parentTotalPrice = childInputs.reduce((acc, c, i) => {
+        const qty = parseFloat(components[i].quantity_per_parent) || 1;
+        return acc + c.unit_price * qty;
+      }, 0);
+      const parentTotalCost = childInputs.reduce((acc, c, i) => {
+        const qty = parseFloat(components[i].quantity_per_parent) || 1;
+        return acc + (c.cost_price || 0) * qty;
+      }, 0);
+
       const parentCreated = await productApi.create({
         tenant_id: tenantId,
         sku: parent.sku.trim().toUpperCase(),
         product_name: parent.name.trim(),
         category_id: cabys,
         cabys_code: cabys,
-        price: 0,
+        price: Number(parentTotalPrice.toFixed(2)),
+        cost_price: Number(parentTotalCost.toFixed(2)),
+        supplier_id: parent.supplier_id || undefined,
       });
 
       // 3) Wire composition with each component's quantity_per_parent.
@@ -230,9 +296,9 @@ export function BulkPackageModal({
       <div className="space-y-5">
         <p className="text-sm text-gray-600">
           Crea un producto compuesto (lote) y sus componentes individuales en
-          una sola operación. Cada componente puede tener su propio SKU,
-          precio, costo y atributos. El lote no tiene precio propio — el valor
-          se distribuye entre los componentes.
+          una sola operación. Cada componente puede tener su propio SKU, precio,
+          costo y atributos. El lote no tiene precio propio — el valor se
+          distribuye entre los componentes.
         </p>
 
         <section className="space-y-3 rounded-2xl border border-gray-200 p-4">
@@ -241,9 +307,8 @@ export function BulkPackageModal({
               Producto padre (el lote)
             </h3>
             <p className="text-xs text-gray-500">
-              Es el producto compuesto que el usuario verá en compras y
-              ventas. Se desglosa automáticamente en sus componentes al
-              desagrupar.
+              Es el producto compuesto que el usuario verá en compras y ventas.
+              Se desglosa automáticamente en sus componentes al desagrupar.
             </p>
           </header>
 
@@ -282,28 +347,92 @@ export function BulkPackageModal({
             hint="Se aplicará el mismo CABYS al lote y a todos los componentes."
             required
           />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Proveedor (opcional)
+            </label>
+            <select
+              aria-label="provider"
+              value={parent.supplier_id ?? ""}
+              onChange={(e) =>
+                setParent((p) => ({ ...p, supplier_id: e.target.value }))
+              }
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Sin proveedor</option>
+              {suppliers.map((s) => (
+                <option key={s.supplier_id} value={s.supplier_id}>
+                  {s.supplier_name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Se asignará a todos los componentes del lote
+            </p>
+          </div>
+        </section>
+
+        <section className="space-y-3 rounded-2xl border border-gray-200 p-4">
+          <header>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">
+              Configuración de precios
+            </h3>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={useUniformPricing}
+                onChange={(e) => setUseUniformPricing(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm text-gray-700 font-medium">
+                Usar el mismo precio y costo para todos los componentes
+              </span>
+            </label>
+            <p className="text-xs text-gray-500 mt-1">
+              {useUniformPricing
+                ? "Desactiva esta opción si cada componente tiene diferentes precios y costos"
+                : "Activa esta opción para ingresar precio y costo una sola vez"}
+            </p>
+          </header>
+
+          {useUniformPricing && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Precio de venta (c/u) para todos"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Ej: 5000.00"
+                value={uniformPrice}
+                onChange={(e) => setUniformPrice(e.target.value)}
+                required
+              />
+              <Input
+                label="Costo de adquisición (c/u) para todos"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Ej: 2500.00"
+                value={uniformCost}
+                onChange={(e) => setUniformCost(e.target.value)}
+                required
+              />
+            </div>
+          )}
         </section>
 
         <section className="space-y-3 rounded-2xl border border-gray-200 p-4">
           <header className="flex items-start justify-between gap-4">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">
-                Componentes del lote
+                Productos del lote
               </h3>
               <p className="text-xs text-gray-500">
-                Cada componente es un producto individual con su propio SKU,
-                precio, costo y atributos.
+                Cada producto simple es un producto individual con su propio SKU
+                {useUniformPricing ? "" : ", precio, costo"} y atributos.
               </p>
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={addComponent}
-              disabled={submitting}
-            >
-              + Agregar componente
-            </Button>
           </header>
 
           <div className="space-y-4">
@@ -314,16 +443,16 @@ export function BulkPackageModal({
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Componente #{i + 1}
+                    Producto #{i + 1}
                   </span>
-                  <button
-                    type="button"
+                  <Button
+                    variant="dangerOutline"
+                    size="xs"
                     onClick={() => removeComponent(c.key)}
                     disabled={submitting || components.length === 1}
-                    className="text-xs text-red-600 hover:text-red-700 disabled:text-gray-300 disabled:cursor-not-allowed"
                   >
-                    Quitar
-                  </button>
+                    Eliminar producto
+                  </Button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -347,42 +476,45 @@ export function BulkPackageModal({
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Input
-                    label="Precio unitario"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={c.unit_price}
-                    onChange={(e) =>
-                      updateComponent(c.key, { unit_price: e.target.value })
-                    }
-                  />
-                  <Input
-                    label="Costo unitario"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={c.cost_price}
-                    onChange={(e) =>
-                      updateComponent(c.key, { cost_price: e.target.value })
-                    }
-                  />
-                  <Input
-                    label="Cantidad por lote"
-                    type="number"
-                    min="0.001"
-                    step="0.001"
-                    value={c.quantity_per_parent}
-                    onChange={(e) =>
-                      updateComponent(c.key, {
-                        quantity_per_parent: e.target.value,
-                      })
-                    }
-                    hint="Cuántas unidades caben en 1 lote"
-                    required
-                  />
-                </div>
+                {useUniformPricing ? (
+                  <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
+                    <p className="text-xs text-blue-700">
+                      Precio: ₡
+                      {Number(uniformPrice || 0).toLocaleString("es-CR", {
+                        minimumFractionDigits: 2,
+                      })}{" "}
+                      | Costo: ₡
+                      {Number(uniformCost || 0).toLocaleString("es-CR", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Input
+                      label="Precio de venta (c/u)"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={c.unit_price}
+                      onChange={(e) =>
+                        updateComponent(c.key, { unit_price: e.target.value })
+                      }
+                      required
+                    />
+                    <Input
+                      label="Costo de adquisición (c/u)"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={c.cost_price}
+                      onChange={(e) =>
+                        updateComponent(c.key, { cost_price: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                )}
 
                 <div>
                   <p className="text-xs font-medium text-gray-700 mb-1">
@@ -399,8 +531,80 @@ export function BulkPackageModal({
                 </div>
               </div>
             ))}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={addComponent}
+              disabled={submitting}
+            >
+              + Agregar producto al lote
+            </Button>
           </div>
         </section>
+
+        {components.length > 0 &&
+          (() => {
+            const totalSalePrice = components.reduce((acc, c) => {
+              const price = useUniformPricing
+                ? parseFloat(uniformPrice) || 0
+                : parseFloat(c.unit_price) || 0;
+              return acc + price * (parseFloat(c.quantity_per_parent) || 0);
+            }, 0);
+            const totalCost = components.reduce((acc, c) => {
+              const cost = useUniformPricing
+                ? parseFloat(uniformCost) || 0
+                : parseFloat(c.cost_price) || 0;
+              return acc + cost * (parseFloat(c.quantity_per_parent) || 0);
+            }, 0);
+            const margin = totalSalePrice - totalCost;
+            const marginPercent =
+              totalSalePrice > 0
+                ? ((margin / totalSalePrice) * 100).toFixed(1)
+                : 0;
+
+            return (
+              <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-blue-700 font-medium">
+                    Resumen del lote:
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-4 text-right">
+                  <div>
+                    <p className="text-xs text-blue-500">
+                      Precio de venta total
+                    </p>
+                    <p className="font-semibold text-blue-900">
+                      ₡
+                      {totalSalePrice.toLocaleString("es-CR", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-blue-500">Costo total</p>
+                    <p className="font-semibold text-blue-900">
+                      ₡
+                      {totalCost.toLocaleString("es-CR", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-blue-500">Margen</p>
+                    <p className="font-semibold text-blue-900">
+                      ₡
+                      {margin.toLocaleString("es-CR", {
+                        minimumFractionDigits: 2,
+                      })}{" "}
+                      ({marginPercent}%)
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
         {error && <p className="text-sm font-medium text-red-600">{error}</p>}
 

@@ -36,6 +36,7 @@ import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface"
 
 import { CustomerDetailModal } from "./CustomerDetailModal";
 import { CustomerUpsertModal } from "./CustomerUpsertModal";
+import { QuickSegmentChangeModal } from "./QuickSegmentChangeModal";
 
 type CustomerWithTenant = Customer & { tenant_name?: string };
 
@@ -76,6 +77,7 @@ export function CustomersPage() {
 
   // Modals
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
+  const [isQuickSegmentOpen, setIsQuickSegmentOpen] = useState(false);
   const [upsertModal, setUpsertModal] = useState<UpsertModalState>({
     open: false,
     mode: "create",
@@ -392,15 +394,26 @@ export function CustomersPage() {
               {total} cliente{total !== 1 ? "s" : ""}
             </span>
             {canManage && (
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => setUpsertModal({ open: true, mode: "create" })}
-                className="w-full lg:w-auto"
-              >
-                <IconPlus />
-                Nuevo Cliente
-              </Button>
+              <>
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setIsQuickSegmentOpen(true)}
+                  className="w-full lg:w-auto"
+                  title="Buscar un cliente y cambiar rápidamente su segmento"
+                >
+                  Cambiar segmento
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => setUpsertModal({ open: true, mode: "create" })}
+                  className="w-full lg:w-auto"
+                >
+                  <IconPlus />
+                  Nuevo Cliente
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -444,6 +457,17 @@ export function CustomersPage() {
         onClose={() => setUpsertModal((prev) => ({ ...prev, open: false }))}
         onCreate={handleCreate}
         onUpdate={handleUpdate}
+      />
+
+      <QuickSegmentChangeModal
+        isOpen={isQuickSegmentOpen}
+        tenantId={currentUser?.tenant.tenant_id ?? ""}
+        onClose={() => setIsQuickSegmentOpen(false)}
+        onSuccess={() => {
+          setQuery("");
+          setSegment("");
+          setPage(1);
+        }}
       />
     </div>
   );

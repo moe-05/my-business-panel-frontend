@@ -2,11 +2,11 @@
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import type { InventoryItem } from "@/interfaces/entities/InventoryItem.interface";
+import type { AggregatedInventoryItem } from "@/interfaces/entities/InventoryItem.interface";
 
 interface DisaggregateModalProps {
   isOpen: boolean;
-  item: InventoryItem | null;
+  item: AggregatedInventoryItem | null;
   isSubmitting: boolean;
   onClose: () => void;
   onSubmit: (quantity: number) => Promise<void>;

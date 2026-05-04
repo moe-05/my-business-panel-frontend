@@ -73,6 +73,66 @@ export const cashRegisterApi = {
     }
   },
 
+  async listPaginated(filters?: {
+    branchId?: string;
+    isActive?: boolean;
+    page?: number;
+    limit?: number;
+  }): Promise<{ results: CashRegister[]; total: number; page: number; limit: number }> {
+    const params = new URLSearchParams();
+    if (filters?.branchId) params.set("branch_id", filters.branchId);
+    if (filters?.isActive !== undefined)
+      params.set("is_active", String(filters.isActive));
+    if (filters?.page) params.set("page", String(filters.page));
+    if (filters?.limit) params.set("limit", String(filters.limit));
+    const query = params.toString();
+    const response = await fetch(
+      `${url}/cash-register/all/paginated${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+    const json = await response.json();
+    if (!response.ok) {
+      throw new Error(json?.message ?? "Error al listar cajas");
+    }
+    return (json as ApiResponse<{ results: CashRegister[]; total: number; page: number; limit: number }>).data ?? json;
+  },
+
+  async update(
+    cashRegisterId: string,
+    data: { register_name?: string; is_active?: boolean; cash_register_key?: string | null },
+  ): Promise<CashRegister> {
+    const response = await fetch(`${url}/cash-register/${cashRegisterId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ cash_register_id: cashRegisterId, ...data }),
+    });
+    const json = await response.json();
+    if (!response.ok) {
+      const message = Array.isArray(json?.message)
+        ? json.message.join(", ")
+        : (json?.message ?? "Error al actualizar caja");
+      throw new Error(message);
+    }
+    return (json as ApiResponse<{ updated: CashRegister }>).data.updated;
+  },
+
+  async remove(cashRegisterId: string): Promise<void> {
+    const response = await fetch(`${url}/cash-register/${cashRegisterId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    if (!response.ok) {
+      const json = await response.json().catch(() => ({})) as { message?: string };
+      throw new Error(json?.message ?? "Error al eliminar caja registradora");
+    }
+  },
+
   async listSessions(filters?: {
     branchId?: string;
     isActive?: boolean | null;

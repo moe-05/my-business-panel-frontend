@@ -27,6 +27,7 @@ import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface"
 
 import { promotionTypeLabel } from "@/utils/promotion";
 import { PromotionUpsertModal } from "./PromotionUpsertModal";
+import { capitalize } from "@/utils/capitalize";
 
 const formatDate = (raw?: string) =>
   raw ? new Date(raw).toLocaleDateString("es-CR") : "—";
@@ -60,7 +61,7 @@ export function PromotionsPage() {
         p.promotion_name?.toLowerCase().includes(q) ||
         p.promotion_code?.toLowerCase().includes(q) ||
         promotionTypeLabel(p.type_name).toLowerCase().includes(q) ||
-        (p.segment_name ?? "").toLowerCase().includes(q),
+        (p.segment_names ?? []).some((s) => s.toLowerCase().includes(q)),
     );
   }, [items, search]);
 
@@ -166,9 +167,7 @@ export function PromotionsPage() {
       await updatePromotion(promotionId, { is_active: nextActive });
       setToast({
         mode: "success",
-        message: nextActive
-          ? "Promoción activada"
-          : "Promoción desactivada",
+        message: nextActive ? "Promoción activada" : "Promoción desactivada",
       });
     } catch (error) {
       setItems(previous);
@@ -202,10 +201,24 @@ export function PromotionsPage() {
       ),
     },
     {
-      key: "segment_name",
-      label: "Segmento",
+      key: "segment_names",
+      label: "Segmentos",
       width: "12%",
-      render: (v) => (v ? <Badge variant="secondary">{v}</Badge> : "—"),
+      render: (_: unknown, row: Promotion) => {
+        if (row.is_universal !== false)
+          return <Badge variant="secondary">Todos</Badge>;
+        const names = row.segment_names ?? [];
+        if (names.length === 0) return "—";
+        return (
+          <div className="flex flex-wrap gap-1">
+            {names.map((n) => (
+              <Badge key={n} variant="secondary">
+                {capitalize(n)}
+              </Badge>
+            ))}
+          </div>
+        );
+      },
     },
     {
       key: "promotion_start_date",
@@ -232,16 +245,11 @@ export function PromotionsPage() {
             label: "Acciones",
             width: "7%",
             render: (_: unknown, row: Promotion) => (
-              <div
-                className="flex gap-2"
-                onClick={(e) => e.stopPropagation()}
-              >
+              <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                 <Button
                   onClick={() => handleToggleActive(row)}
                   title={
-                    row.is_active
-                      ? "Desactivar promoción"
-                      : "Activar promoción"
+                    row.is_active ? "Desactivar promoción" : "Activar promoción"
                   }
                   variant="secondary"
                   className="hover:bg-gray-50 rounded-lg transition-colors"

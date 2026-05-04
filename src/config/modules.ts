@@ -124,17 +124,17 @@ export const MODULES: Record<ModuleId, Module> = {
     icon: "shopping-cart",
     submodules: [
       {
+        id: "create-sale",
+        label: "Crear venta",
+        path: "/app/pos/sales/new",
+        icon: "shopping-cart",
+      },
+      {
         id: "cash-sessions",
         label: "Sesiones de caja",
         path: "/app/pos/cash-sessions",
         icon: "credit-card",
         rolesAllowed: [1, 2, 3],
-      },
-      {
-        id: "create-sale",
-        label: "Crear venta",
-        path: "/app/pos/sales/new",
-        icon: "shopping-cart",
       },
       {
         id: "sales-history",

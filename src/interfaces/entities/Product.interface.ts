@@ -15,5 +15,10 @@ export interface Product {
   product_variant_id?: string;
   variant_name?: string;
   unit_price?: number;
+  cost_price?: number;
   is_composite?: boolean;
+  supplier_id?: string;
+  supplier_name?: string;
+  giftable?: boolean;
+  giftable_from?: number;
 }

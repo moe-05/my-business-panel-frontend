@@ -8,6 +8,7 @@ import type {
   DigitalInvoiceInfo,
   ElectronicInvoiceInfo,
   SaleCondition,
+  SaleItemDetail,
   SaleListItem,
 } from "@/interfaces/entities/Sale.interface";
 
@@ -90,6 +91,21 @@ export const saleApi = {
           ? error.message
           : "Error al obtener historial de ventas",
       );
+    }
+  },
+
+  async getSaleItems(saleId: string): Promise<SaleItemDetail[]> {
+    try {
+      const response = await fetch(`${url}/items/${saleId}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (!response.ok) return [];
+      const json: ApiResponse<SaleItemDetail[]> = await response.json();
+      return json.data ?? [];
+    } catch {
+      return [];
     }
   },
 
