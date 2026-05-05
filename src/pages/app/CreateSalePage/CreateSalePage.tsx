@@ -55,10 +55,6 @@ import type { Promotion } from "@/interfaces/entities/Promotion.interface";
 import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
 import type { CustomerDetail } from "@/interfaces/entities/CustomerDetail.interface";
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// Seeded IDs from general/006-insert-currencies.sql.
-const CRC_CURRENCY_ID = 1;
-
 import type { CreateSalePageLoaderData } from "@/router/loaders/sale.loaders";
 import type { Customer } from "@/interfaces/entities/Customer.interface";
 import type {
@@ -111,6 +107,8 @@ interface PaymentSplit {
 }
 
 const TAX_RATE = 0.13;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CRC_CURRENCY_ID = 1;
 
 const formatAmount = (value: number, symbol: string) =>
   `${symbol} ${value.toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
@@ -1071,7 +1069,8 @@ export function CreateSalePage() {
     });
 
     const amountPaid = splitTotalInSaleCurrency;
-    const changeAmount = paymentBalance < -0.01 ? round2(Math.abs(paymentBalance)) : 0;
+    const changeAmount =
+      paymentBalance < -0.01 ? round2(Math.abs(paymentBalance)) : 0;
 
     const payload: CreateSaleRequest = {
       tenant_id: tenantId,
@@ -1088,7 +1087,8 @@ export function CreateSalePage() {
       is_completed: !isApartado,
       has_electronic_invoice: hasElectronicInvoice,
       seller_user_id: user?.user_id,
-      due_date: isApartado && dueDate ? dueDate : new Date().toISOString().slice(0, 10),
+      due_date:
+        isApartado && dueDate ? dueDate : new Date().toISOString().slice(0, 10),
       ad_message: adMessage.trim() || undefined,
       amount_paid: amountPaid,
       change_amount: changeAmount,
@@ -2387,53 +2387,53 @@ export function CreateSalePage() {
           hint="El cajero puede incluir un mensaje que aparecerá en la factura digital."
         />
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={hasElectronicInvoice}
-            onChange={(e) => setHasElectronicInvoice(e.target.checked)}
-            className="w-5 h-5 rounded border-gray-300 text-accent-600 focus:ring-accent-400"
-          />
-          <span className="text-sm font-medium text-gray-700">
-            Generar factura electrónica
-          </span>
-        </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hasElectronicInvoice}
+              onChange={(e) => setHasElectronicInvoice(e.target.checked)}
+              className="w-5 h-5 rounded border-gray-300 text-accent-600 focus:ring-accent-400"
+            />
+            <span className="text-sm font-medium text-gray-700">
+              Generar factura electrónica
+            </span>
+          </label>
 
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">
-            {items.length} producto{items.length !== 1 ? "s" : ""} ·{" "}
-            {formatAmount(totalAmountDisplay, currencySymbol)}
-          </span>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => setIsPromotionModalOpen(true)}
-            disabled={items.length === 0 || hasNonStackableDefault}
-            title={
-              hasNonStackableDefault
-                ? "Hay una promoción default activa que no permite acumular más promociones"
-                : undefined
-            }
-          >
-            <IconTrendingUp />
-            Agregar promoción
-          </Button>
-          <Button
-            variant="primary"
-            onClick={handleSubmitSale}
-            loading={isSubmitting}
-            disabled={
-              (!customer && !isWalkInSale) ||
-              items.length === 0 ||
-              !branchId ||
-              !cashRegisterId ||
-              isSubmitting
-            }
-          >
-            <IconShoppingCart />
-            Procesar venta
-          </Button>
-        </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">
+              {items.length} producto{items.length !== 1 ? "s" : ""} ·{" "}
+              {formatAmount(totalAmountDisplay, currencySymbol)}
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsPromotionModalOpen(true)}
+              disabled={items.length === 0 || hasNonStackableDefault}
+              title={
+                hasNonStackableDefault
+                  ? "Hay una promoción default activa que no permite acumular más promociones"
+                  : undefined
+              }
+            >
+              <IconTrendingUp />
+              Agregar promoción
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSubmitSale}
+              loading={isSubmitting}
+              disabled={
+                (!customer && !isWalkInSale) ||
+                items.length === 0 ||
+                !branchId ||
+                !cashRegisterId ||
+                isSubmitting
+              }
+            >
+              <IconShoppingCart />
+              Procesar venta
+            </Button>
+          </div>
         </div>
       </div>
 
