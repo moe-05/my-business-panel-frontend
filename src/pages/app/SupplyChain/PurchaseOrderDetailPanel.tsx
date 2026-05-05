@@ -220,7 +220,7 @@ export function PurchaseOrderDetailPanel({
 
       {!productsOnly && (
         <div className="grid gap-4 md:grid-cols-[1.5fr_1fr]">
-          <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5">
+          <section className="rounded-2xl border border-amber-200 bg-linear-to-br from-amber-50 via-white to-orange-50 p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">

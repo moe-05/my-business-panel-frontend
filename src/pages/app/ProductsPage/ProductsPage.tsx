@@ -13,9 +13,11 @@ import type { ProductsPageLoaderData } from "@/router/loaders/product.loaders";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { Table, Pagination } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Toast } from "@/components/ui/Toast";
+
 import { IconEdit, IconEye, IconPlus, IconTrash } from "@/assets/icons";
 
 import type { Product } from "@/interfaces/entities/Product.interface";
@@ -287,36 +289,33 @@ export function ProductsPage() {
           </div>
 
           <div className="w-full lg:w-48">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tipo de producto
-            </label>
-            <select
+            <Select
+              label="Tipo de producto"
               value={filterType}
               onChange={(e) =>
                 setFilterType(e.target.value as "all" | "simple" | "composite")
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Todos</option>
-              <option value="simple">Productos simples</option>
-              <option value="composite">Lotes</option>
-            </select>
+              options={[
+                { value: "all", label: "Todos" },
+                { value: "simple", label: "Productos simples" },
+                { value: "composite", label: "Lotes" },
+              ]}
+              placeholder="Seleccionar"
+            />
           </div>
 
-          <div className="w-full lg:w-48">
+          <div className="flex-1 lg:w-48">
             <Input
               label="Proveedor"
               placeholder="Buscar proveedor..."
               value={filterSupplierQuery}
               onChange={(e) => setFilterSupplierQuery(e.target.value)}
               className="w-full"
+              required
             />
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500 whitespace-nowrap">
-              {filteredProducts.length} de {total}
-            </span>
             {canManageProducts && (
               <>
                 <Button
