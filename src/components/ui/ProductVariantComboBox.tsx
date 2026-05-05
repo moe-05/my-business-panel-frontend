@@ -81,7 +81,12 @@ export function ProductVariantComboBox({
           // Aggregate available simple units: expand composite inventory into child units
           const map = new Map<
             string,
-            { stock: number; sku?: string; variant_name?: string; unit_price?: number }
+            {
+              stock: number;
+              sku?: string;
+              variant_name?: string;
+              unit_price?: number;
+            }
           >();
 
           for (const it of inventory ?? []) {
@@ -129,7 +134,7 @@ export function ProductVariantComboBox({
           // Enrich with unit_price for those missing it (mostly expanded children not explicitly in inventory)
           const result: ProductVariantRow[] = [];
           const enrichPromises: Array<Promise<void>> = [];
-          
+
           for (const [id, val] of map.entries()) {
             const r: ProductVariantRow = {
               product_id: id,
@@ -150,9 +155,13 @@ export function ProductVariantComboBox({
               enrichPromises.push(
                 (async () => {
                   try {
-                    const pd = await productApi.getByIdWithAttributes(tenantId, id);
+                    const pd = await productApi.getByIdWithAttributes(
+                      tenantId,
+                      id,
+                    );
                     if (pd) {
-                      r.variant_name = r.variant_name ?? pd.variant_name ?? pd.product_name;
+                      r.variant_name =
+                        r.variant_name ?? pd.variant_name ?? pd.product_name;
                       r.sku = r.sku ?? pd.sku ?? undefined;
                       r.unit_price = Number(pd.unit_price ?? pd.price ?? 0);
                     }
@@ -180,7 +189,7 @@ export function ProductVariantComboBox({
 
           setVariants(final);
         } else {
-          const data = await productApi.search(tenantId, term, 1, 50);
+          const data = await productApi.search(tenantId, term, 1, 100);
           setVariants((data?.products ?? []) as ProductVariantRow[]);
         }
       } catch {

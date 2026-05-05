@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { ProductVariantComboBox, type ProductVariantSelection } from "@/components/ui/ProductVariantComboBox";
 import { Select } from "@/components/ui/Select";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table } from "@/components/ui/Table";
@@ -32,7 +33,6 @@ import type {
   CreatePurchasePaymentRequest,
 } from "@/interfaces/api/requests/PurchaseModuleRequests.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
-import type { Product } from "@/interfaces/entities/Product.interface";
 import type {
   PurchaseMatching,
   PurchaseOrder,
@@ -53,6 +53,8 @@ interface PurchaseItemFormRow {
   product_variant_id: string;
   quantity_ordered: string;
   unit_price: string;
+  variant_name?: string;
+  sku?: string;
 }
 
 interface PurchaseFormState {
@@ -91,7 +93,6 @@ export function PurchasesPage() {
     orders: initialOrders,
     suppliers,
     warehouses,
-    products,
     catalogs,
     currentTenantName,
     isSuperuser,
@@ -168,34 +169,6 @@ export function PurchasesPage() {
   const warehouseOptions = warehouses.map((warehouse) => ({
     value: warehouse.warehouse_id,
     label: warehouse.warehouse_name,
-  }));
-
-  const getProductVariantId = (product: Product) =>
-    (product as Product & { product_variant_id?: string }).product_variant_id ??
-    product.product_id;
-
-  const getProductLabel = (product: Product) =>
-    `${product.sku} · ${
-      (product as Product & { variant_name?: string }).variant_name ??
-      product.product_name
-    }`;
-
-  const getProductPrice = (product: Product) => {
-    const unitPrice =
-      (product as Product & { unit_price?: number }).unit_price ??
-      product.price;
-    return Number(unitPrice);
-  };
-
-  const isCompositeProduct = (product: Product) => {
-    return (
-      (product as Product & { is_composite?: boolean }).is_composite === true
-    );
-  };
-
-  const productOptions = products.map((product) => ({
-    value: getProductVariantId(product),
-    label: getProductLabel(product),
   }));
 
   const resetCreateModal = () => {
@@ -320,26 +293,46 @@ export function PurchasesPage() {
     }
   };
 
-  const handleItemChange = async (
+  const handleItemChange = (
     index: number,
     field: keyof PurchaseItemFormRow,
-    value: string,
+    value: string | number,
   ) => {
     setFormData((prev) => {
       const items = prev.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item,
+        itemIndex === index ? { ...item, [field]: String(value) } : item,
       );
+      return { ...prev, items };
+    });
+  };
 
-      if (field === "product_variant_id") {
-        const matchedProduct = products.find(
-          (product) => getProductVariantId(product) === value,
-        );
+  const handleProductSelect = (
+    index: number,
+    selection: ProductVariantSelection,
+  ) => {
+    setFormData((prev) => {
+      const items = prev.items.map((item, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...item,
+              product_variant_id: selection.product_variant_id,
+              variant_name: selection.variant_name,
+              sku: selection.sku,
+              unit_price: String(selection.unit_price),
+            }
+          : item,
+      );
+      return { ...prev, items };
+    });
+  };
 
-        if (matchedProduct) {
-          items[index].unit_price = String(getProductPrice(matchedProduct));
-        }
-      }
-
+  const handleProductClear = (index: number) => {
+    setFormData((prev) => {
+      const items = prev.items.map((item, itemIndex) =>
+        itemIndex === index
+          ? { ...emptyItem }
+          : item,
+      );
       return { ...prev, items };
     });
   };
@@ -713,18 +706,14 @@ export function PurchasesPage() {
                   key={`purchase-item-${index}`}
                   className="grid gap-3 rounded-2xl border border-white bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] md:grid-cols-[1.8fr_0.7fr_0.8fr_auto]"
                 >
-                  <Select
-                    label={`Producto ${index + 1}`}
+                  <ProductVariantComboBox
+                    tenantId={user?.tenant.tenant_id || ""}
                     value={item.product_variant_id}
-                    onChange={(event) =>
-                      handleItemChange(
-                        index,
-                        "product_variant_id",
-                        event.target.value,
-                      )
-                    }
-                    options={productOptions}
-                    placeholder="Seleccionar producto"
+                    displayValue={item.sku ? `${item.variant_name} (${item.sku})` : item.variant_name}
+                    onChange={(selection) => handleProductSelect(index, selection)}
+                    onClear={() => handleProductClear(index)}
+                    label={`Producto ${index + 1}`}
+                    placeholder="Buscar por SKU o nombre"
                     required
                   />
 
@@ -745,40 +734,21 @@ export function PurchasesPage() {
                   />
 
                   <div>
-                    {(() => {
-                      const selectedProduct = products.find(
-                        (p) =>
-                          getProductVariantId(p) === item.product_variant_id,
-                      );
-                      const isComposite =
-                        selectedProduct && isCompositeProduct(selectedProduct);
-                      return (
-                        <>
-                          <Input
-                            label="Costo unitario"
-                            type="number"
-                            min="0.01"
-                            step="0.001"
-                            value={item.unit_price}
-                            onChange={(event) =>
-                              handleItemChange(
-                                index,
-                                "unit_price",
-                                event.target.value,
-                              )
-                            }
-                            disabled={isComposite}
-                            required
-                          />
-                          {isComposite && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              Precio calculado automáticamente (producto
-                              compuesto)
-                            </p>
-                          )}
-                        </>
-                      );
-                    })()}
+                    <Input
+                      label="Costo unitario"
+                      type="number"
+                      min="0.01"
+                      step="0.001"
+                      value={item.unit_price}
+                      onChange={(event) =>
+                        handleItemChange(
+                          index,
+                          "unit_price",
+                          event.target.value,
+                        )
+                      }
+                      required
+                    />
                   </div>
 
                   <div className="flex items-end">
