@@ -92,11 +92,12 @@ export function HREmployeesPage() {
         (statusFilter === "inactive" && !employee.is_active);
       const matchesSearch =
         !normalizedSearch ||
-        `${employee.first_name} ${employee.last_name}`
+        `${employee.first_name || ""} ${employee.last_name || ""}`
           .toLowerCase()
           .includes(normalizedSearch) ||
-        employee.document_number.toLowerCase().includes(normalizedSearch) ||
-        employee.email.toLowerCase().includes(normalizedSearch);
+        (employee.document_number?.toLowerCase().includes(normalizedSearch) ??
+          false) ||
+        (employee.email?.toLowerCase().includes(normalizedSearch) ?? false);
 
       return matchesBranch && matchesStatus && matchesSearch;
     });
@@ -120,7 +121,9 @@ export function HREmployeesPage() {
       setToast({
         mode: "error",
         message:
-          error instanceof Error ? error.message : "No se pudo crear el empleado",
+          error instanceof Error
+            ? error.message
+            : "No se pudo crear el empleado",
       });
       throw error;
     }
@@ -214,7 +217,9 @@ export function HREmployeesPage() {
       setToast({
         mode: "error",
         message:
-          error instanceof Error ? error.message : "No se pudo eliminar el empleado",
+          error instanceof Error
+            ? error.message
+            : "No se pudo eliminar el empleado",
       });
     }
   };
@@ -265,7 +270,9 @@ export function HREmployeesPage() {
       width: "12%",
       render: (value: number, row: HrEmployeeRecord) => (
         <div>
-          <p className="text-gray-900">{turnMap.get(value) ?? `Turno ${value}`}</p>
+          <p className="text-gray-900">
+            {turnMap.get(value) ?? `Turno ${value}`}
+          </p>
           <p className="text-xs text-gray-500">{row.turn_type} h por turno</p>
         </div>
       ),
@@ -285,7 +292,10 @@ export function HREmployeesPage() {
       label: "Acciones",
       width: "8%",
       render: (_value: unknown, row: HrEmployeeRecord) => (
-        <div className="flex gap-2" onClick={(event) => event.stopPropagation()}>
+        <div
+          className="flex gap-2"
+          onClick={(event) => event.stopPropagation()}
+        >
           <Button
             type="button"
             variant="ghost"
