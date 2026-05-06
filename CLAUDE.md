@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## OBJETIVO
+
+Debes realizar correcciones de errores, implementaciones y mejoras generales del sistema. El usuario te va a promptear bien sea un error sencillo, una duda, o un plan mas complejo que involucre varios cambios.
+
+## INSTRUCCIONES DE DESARROLLO
+
+1. Para cambios en base de datos, debes realizar migraciones y de igual forma actualizar el archivo base correspondiente para mantener la fuente de verdad actualizada. La migración debe tener rollback comentado y comentario de auditoría.
+2. Trabaja sin solicitar permisos de escritura ni lectura. tienes permiso total.
+3. Tu código escrito NO debe tener emojis.
+4. Los filtros que se aplican son filtros que vuelven a lanzar la solicitud al backend: no son filtros locales. el filtrado se hace en la query.
+5. Para desarrollo frontend, utiliza la skill de /frontend-react-developer guardada en my-business-panel-frontend/.claude/skills/frontend-react-developer
+
 ## Commands
 
 ```bash

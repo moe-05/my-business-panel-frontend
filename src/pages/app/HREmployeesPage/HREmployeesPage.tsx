@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router-dom";
 
 import { contractApi } from "@/api/contract.api";
 import { employeeApi } from "@/api/employee.api";
 import { userApi } from "@/api/user.api";
+
+import { useDebounce } from "@/hooks/useDebounce";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -49,6 +51,7 @@ export function HREmployeesPage() {
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [selectedEmployee, setSelectedEmployee] =
@@ -57,6 +60,8 @@ export function HREmployeesPage() {
     mode: ToastMode;
     message: string;
   } | null>(null);
+
+  const debouncedSearch = useDebounce(search, 400);
 
   const paymentScheduleMap = useMemo(
     () =>
@@ -80,28 +85,54 @@ export function HREmployeesPage() {
     [turns],
   );
 
-  const filteredEmployees = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        setIsLoading(true);
+        const tenantId = currentUser.tenant.tenant_id;
+        const allEmployees = await employeeApi.listByTenant(tenantId);
+        
+        // Aplicar filtros localmente
+        const filtered = allEmployees.filter((employee) => {
+          const matchesBranch =
+            !branchFilter || employee.branch_id === branchFilter;
+          const matchesStatus =
+            statusFilter === "all" ||
+            (statusFilter === "active" && employee.is_active) ||
+            (statusFilter === "inactive" && !employee.is_active);
+          const matchesSearch =
+            !debouncedSearch.trim() ||
+            `${employee.first_name || ""} ${employee.last_name || ""}`
+              .toLowerCase()
+              .includes(debouncedSearch.trim().toLowerCase()) ||
+            (employee.document_number
+              ?.toLowerCase()
+              .includes(debouncedSearch.trim().toLowerCase()) ?? false) ||
+            (employee.email
+              ?.toLowerCase()
+              .includes(debouncedSearch.trim().toLowerCase()) ?? false);
 
-    return employees.filter((employee) => {
-      const matchesBranch =
-        !branchFilter || employee.branch_id === branchFilter;
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "active" && employee.is_active) ||
-        (statusFilter === "inactive" && !employee.is_active);
-      const matchesSearch =
-        !normalizedSearch ||
-        `${employee.first_name || ""} ${employee.last_name || ""}`
-          .toLowerCase()
-          .includes(normalizedSearch) ||
-        (employee.document_number?.toLowerCase().includes(normalizedSearch) ??
-          false) ||
-        (employee.email?.toLowerCase().includes(normalizedSearch) ?? false);
+          return matchesBranch && matchesStatus && matchesSearch;
+        });
+        
+        setEmployees(filtered);
+      } catch (error) {
+        setToast({
+          mode: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error al cargar empleados",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-      return matchesBranch && matchesStatus && matchesSearch;
-    });
-  }, [branchFilter, employees, search, statusFilter]);
+    fetchEmployees();
+  }, [debouncedSearch, branchFilter, statusFilter, currentUser.tenant.tenant_id]);
+
+  const filteredEmployees = useMemo(() => employees, [employees]);
 
   const refreshEmployees = async () => {
     const tenantId = currentUser.tenant.tenant_id;
