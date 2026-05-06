@@ -13,6 +13,7 @@ Debes realizar correcciones de errores, implementaciones y mejoras generales del
 3. Tu código escrito NO debe tener emojis.
 4. Los filtros que se aplican son filtros que vuelven a lanzar la solicitud al backend: no son filtros locales. el filtrado se hace en la query.
 5. Para desarrollo frontend, utiliza la skill de /frontend-react-developer guardada en my-business-panel-frontend/.claude/skills/frontend-react-developer
+6. Utiliza siempre la skill de /caveman en modo full.
 
 ## Commands
 

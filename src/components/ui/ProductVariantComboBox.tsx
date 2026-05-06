@@ -25,6 +25,7 @@ interface ProductVariantComboBoxProps {
   disabled?: boolean;
   hint?: string;
   placeholder?: string;
+  hideOutOfStock?: boolean;
 }
 
 type ProductVariantRow = Product & {
@@ -61,6 +62,7 @@ export function ProductVariantComboBox({
   disabled,
   hint,
   placeholder = "Buscar producto por SKU o nombre...",
+  hideOutOfStock = false,
 }: ProductVariantComboBoxProps) {
   // State
   const [isOpen, setIsOpen] = useState(false);
@@ -297,9 +299,17 @@ export function ProductVariantComboBox({
             )}
 
             {!isLoading &&
-              variants.map((variant) => {
-                const id = getVariantId(variant);
-                const isSelected = !!id && id === value;
+              variants
+                .filter((v) => {
+                  if (!hideOutOfStock || !warehouseId) return true;
+                  const id = getVariantId(v);
+                  if (!id) return true;
+                  const stock = getStockForVariant(id);
+                  return (stock ?? 0) > 0;
+                })
+                .map((variant) => {
+                  const id = getVariantId(variant);
+                  const isSelected = !!id && id === value;
 
                 return (
                   <li key={id ?? `${variant.sku}-${variant.product_name}`}>
@@ -314,8 +324,15 @@ export function ProductVariantComboBox({
                       ].join(" ")}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="block truncate">
-                          {getVariantName(variant)}
+                        <span className="flex flex-1 items-center gap-2 truncate">
+                          <span className="truncate">
+                            {getVariantName(variant)}
+                          </span>
+                          {variant.is_composite && (
+                            <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-blue-700">
+                              Lote
+                            </span>
+                          )}
                         </span>
                         <span className="whitespace-nowrap rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">
                           {variant.sku ?? "—"}

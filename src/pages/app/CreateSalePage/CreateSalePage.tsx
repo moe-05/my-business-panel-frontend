@@ -87,6 +87,7 @@ import {
   type AppliedPromotion,
 } from "./ApplyPromotionModal";
 import { QuickCashRegisterModal } from "./QuickCashRegisterModal";
+import { RoyaltyPanel } from "./RoyaltyPanel";
 
 interface CartItem {
   id: string;
@@ -143,7 +144,7 @@ export function CreateSalePage() {
 
   const [branchId, setBranchId] = useState(defaultBranchId);
   const [saleCondition, setSaleCondition] = useState(defaultCondition);
-  const [currencyId, setCurrencyId] = useState<number>(defaultCurrency.value);
+  const currencyId = defaultCurrency.value;
   const [isPartialPayment, setIsPartialPayment] = useState(false);
   const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([
     {
@@ -196,8 +197,6 @@ export function CreateSalePage() {
   // override does not persist to the database — closing the session loses it.
   const [serverExchangeRate, setServerExchangeRate] =
     useState<ExchangeRate | null>(null);
-  const [exchangeRateOverride, setExchangeRateOverride] = useState<string>("");
-
   // Exchange rates for each payment split: keyed by split.id
   const [exchangeRatesForSplits, setExchangeRatesForSplits] = useState<
     Record<string, ExchangeRate | null>
@@ -424,11 +423,9 @@ export function CreateSalePage() {
   // Effective rate: cashier override wins if it parses to a positive number;
   // otherwise the server rate is used.
   const effectiveExchangeRate = useMemo(() => {
-    const parsed = parseFloat(exchangeRateOverride);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
     const serverRate = Number(serverExchangeRate?.rate ?? 0);
     return Number.isFinite(serverRate) && serverRate > 0 ? serverRate : 0;
-  }, [exchangeRateOverride, serverExchangeRate]);
+  }, [serverExchangeRate]);
 
   const convertCrcToSaleCurrency = useCallback(
     (amount: number) => {
@@ -597,9 +594,6 @@ export function CreateSalePage() {
     };
   }, [currencyId]);
 
-  useEffect(() => {
-    setExchangeRateOverride("");
-  }, [currencyId]);
 
   // Load exchange rates for each payment split when their currency changes
   // We load rates to convert each split's currency to CRC (as a pivot)
@@ -773,17 +767,26 @@ export function CreateSalePage() {
     };
   }, [user?.user_id, user?.email]);
 
-  // When partial payment is disabled, keep only the first split and auto-fill the amount
   useEffect(() => {
     if (!isPartialPayment) {
-      setPaymentSplits((p) => [
-        {
-          ...(p.length > 1 ? p[0] : p[0]),
-          amount: String(totalAmountDisplay),
-        },
-      ]);
+      setPaymentSplits((p) => [{ ...p[0], amount: String(totalAmountDisplay) }]);
     }
   }, [isPartialPayment, totalAmountDisplay]);
+
+  useEffect(() => {
+    if (isPartialPayment) {
+      setPaymentSplits(
+        paymentMethods
+          .filter((m) => !(m.code === "loyalty_points" && isWalkInSale))
+          .map((m) => ({
+            id: `split-${m.value}`,
+            methodId: m.value,
+            amount: "",
+            currencyId: CRC_CURRENCY_ID,
+          })),
+      );
+    }
+  }, [isPartialPayment]);
 
   useEffect(() => {
     const trimmed = debouncedDocNumber.trim();
@@ -1019,10 +1022,10 @@ export function CreateSalePage() {
       }
     }
 
-    if (Math.abs(paymentBalance) > 0.01) {
+    if (paymentBalance > 0.01) {
       setToast({
         mode: "error",
-        message: `El total de pagos no coincide con el monto de la venta (diferencia: ${formatAmount(Math.abs(paymentBalance), currencySymbol)})`,
+        message: `Monto insuficiente. Falta: ${formatAmount(paymentBalance, currencySymbol)}`,
       });
       return;
     }
@@ -1270,10 +1273,6 @@ export function CreateSalePage() {
       value: String(m.value),
       label: m.label,
     }));
-  const currencyOptions = currencies.map((c) => ({
-    value: String(c.value),
-    label: c.label,
-  }));
   const cashRegisterOptions = cashRegisters.map((register) => ({
     value: register.cash_register_id,
     label: register.register_name || register.cash_register_id,
@@ -1409,9 +1408,6 @@ export function CreateSalePage() {
       {/* ── Step 1: customer lookup ───────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
-          <span className="w-8 h-8 rounded-full bg-accent-100 text-accent-700 flex items-center justify-center font-semibold">
-            1
-          </span>
           <h2 className="text-lg font-semibold text-gray-900">
             Datos del cliente
           </h2>
@@ -1615,49 +1611,73 @@ export function CreateSalePage() {
         }`}
       >
         <div className="flex items-center gap-2 mb-4">
-          <span className="w-8 h-8 rounded-full bg-accent-100 text-accent-700 flex items-center justify-center font-semibold">
-            2
-          </span>
           <h2 className="text-lg font-semibold text-gray-900">
             Productos y servicios
           </h2>
         </div>
 
-        <form
-          onSubmit={itemForm.handleSubmit(handleAddItem)}
-          className="grid grid-cols-1 md:grid-cols-12 gap-3"
-        >
-          <div className="md:col-span-6">
-            <ProductVariantComboBox
-              tenantId={tenantId}
-              warehouseId={branchWarehouseId}
-              manualSkuEnabled
-              label="Producto"
-              value={itemForm.watch("product_variant_id")}
-              displayValue={
-                selectedVariant ? buildVariantLabel(selectedVariant) : ""
-              }
-              onChange={handleVariantSelect}
-              onClear={handleVariantClear}
-              error={itemForm.formState.errors.product_variant_id?.message}
-            />
-          </div>
-          <div className="md:col-span-2">
-            <Input
-              label="Cantidad"
-              type="number"
-              min={1}
-              {...itemForm.register("quantity", { valueAsNumber: true })}
-              error={itemForm.formState.errors.quantity?.message}
+        <div className="flex flex-col md:flex-row md:items-end gap-3">
+          <form
+            onSubmit={itemForm.handleSubmit(handleAddItem)}
+            className="flex-1 grid grid-cols-1 md:grid-cols-9 gap-3"
+          >
+            <div className="md:col-span-6">
+              <ProductVariantComboBox
+                tenantId={tenantId}
+                warehouseId={branchWarehouseId}
+                manualSkuEnabled
+                label="Producto"
+                value={itemForm.watch("product_variant_id")}
+                displayValue={
+                  selectedVariant ? buildVariantLabel(selectedVariant) : ""
+                }
+                onChange={handleVariantSelect}
+                onClear={handleVariantClear}
+                error={itemForm.formState.errors.product_variant_id?.message}
+                hideOutOfStock={true}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Input
+                label="Cantidad"
+                type="number"
+                min={1}
+                {...itemForm.register("quantity", { valueAsNumber: true })}
+                error={itemForm.formState.errors.quantity?.message}
+                required
+              />
+            </div>
+            <div className="md:col-span-1 flex items-end">
+              <Button type="submit" variant="primary" fullWidth>
+                <IconPlus />
+              </Button>
+            </div>
+          </form>
+          <div className="w-full md:w-52 shrink-0">
+            <Select
+              label="Condición de venta"
+              value={saleCondition}
+              onChange={(e) => setSaleCondition(e.target.value)}
+              options={conditionOptions}
               required
             />
           </div>
-          <div className="md:col-span-1 flex items-end">
-            <Button type="submit" variant="primary" fullWidth>
-              <IconPlus />
+          <div className="flex items-end shrink-0">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsPromotionModalOpen(true)}
+              disabled={items.length === 0 || hasNonStackableDefault}
+              title={
+                hasNonStackableDefault
+                  ? "Hay una promoción default activa que no permite acumular más"
+                  : "Agregar promoción"
+              }
+            >
+              <IconTrendingUp />
             </Button>
           </div>
-        </form>
+        </div>
 
         <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div className="text-sm text-gray-600">
@@ -1724,6 +1744,27 @@ export function CreateSalePage() {
             </Button>
           </div>
         )}
+
+        <div className="mt-4">
+          <RoyaltyPanel
+            customer={isWalkInSale ? null : customer}
+            tenantId={tenantId}
+            totalAmount={totalAmount}
+            onAddItems={(royaltyItems) => {
+              setItems((prev) => [
+                ...prev,
+                ...royaltyItems.filter(
+                  (ri) =>
+                    !prev.some(
+                      (ex) =>
+                        ex.product_variant_id === ri.product_variant_id &&
+                        ex.unit_price === 0,
+                    ),
+                ),
+              ]);
+            }}
+          />
+        </div>
 
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
@@ -1827,40 +1868,6 @@ export function CreateSalePage() {
             data={items}
             emptyMessage="Aún no hay productos en la venta"
           />
-          {/* Exchange rate panel — local override only, lost on session close. */}
-          {currencyId !== CRC_CURRENCY_ID && (
-            <div className="mt-6 rounded-xl border border-gray-200 bg-white p-4 flex flex-col md:flex-row md:items-center gap-4">
-              <div className="flex-1">
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Tasa de cambio USD → CRC
-                </p>
-                <p className="text-sm text-gray-600 mt-1">
-                  {serverExchangeRate
-                    ? `Tasa actual del sistema: ₡${Number(serverExchangeRate.rate).toLocaleString("es-CR", { minimumFractionDigits: 2, maximumFractionDigits: 6 })} (efectiva ${String(serverExchangeRate.effective_date).slice(0, 10)})`
-                    : "No hay tasa registrada en el sistema."}
-                </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  El cajero puede sobrescribirla solo durante esta sesión de
-                  caja — no se guarda en la base de datos.
-                </p>
-              </div>
-              <div className="w-full md:w-56">
-                <Input
-                  label="Tasa local (override)"
-                  type="number"
-                  min="0"
-                  step="0.000001"
-                  placeholder={
-                    serverExchangeRate
-                      ? String(serverExchangeRate.rate)
-                      : "Ej: 510.00"
-                  }
-                  value={exchangeRateOverride}
-                  onChange={(e) => setExchangeRateOverride(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -2084,24 +2091,6 @@ export function CreateSalePage() {
             </div>
           </div>
 
-          {/* Condition and currency selectors */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <Select
-              label="Condición de venta"
-              value={saleCondition}
-              onChange={(e) => setSaleCondition(e.target.value)}
-              options={conditionOptions}
-              required
-            />
-            <Select
-              label="Moneda"
-              value={String(currencyId)}
-              onChange={(e) => setCurrencyId(Number(e.target.value))}
-              options={currencyOptions}
-              required
-            />
-          </div>
-
           {/* Partial payment checkbox */}
           <label className="flex items-center gap-3 cursor-pointer mb-6 p-3 rounded-lg bg-gray-50 border border-gray-200">
             <input
@@ -2165,32 +2154,6 @@ export function CreateSalePage() {
                       }
                       options={paymentOptions}
                     />
-                  </div>
-                  <div className="flex-1">
-                    {Number(split.methodId) === 5 ? (
-                      <Input
-                        label={idx === 0 ? "Puntos disponibles" : undefined}
-                        type="number"
-                        min={0}
-                        step="1"
-                        placeholder="0"
-                        value={String(availablePoints)}
-                        disabled
-                      />
-                    ) : (
-                      <Select
-                        label={idx === 0 ? "Moneda" : undefined}
-                        value={String(split.currencyId)}
-                        onChange={(e) =>
-                          updatePaymentSplit(
-                            split.id,
-                            "currencyId",
-                            Number(e.target.value),
-                          )
-                        }
-                        options={currencyOptions}
-                      />
-                    )}
                   </div>
                   <div className="flex-1">
                     {idx === 0 && (
@@ -2404,20 +2367,6 @@ export function CreateSalePage() {
               {items.length} producto{items.length !== 1 ? "s" : ""} ·{" "}
               {formatAmount(totalAmountDisplay, currencySymbol)}
             </span>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setIsPromotionModalOpen(true)}
-              disabled={items.length === 0 || hasNonStackableDefault}
-              title={
-                hasNonStackableDefault
-                  ? "Hay una promoción default activa que no permite acumular más promociones"
-                  : undefined
-              }
-            >
-              <IconTrendingUp />
-              Agregar promoción
-            </Button>
             <Button
               variant="primary"
               onClick={handleSubmitSale}

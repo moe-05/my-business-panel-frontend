@@ -54,8 +54,9 @@ export const getCustomersByTenant = async (
   tenantId: string,
   page = 1,
   limit = CUSTOMERS_PAGE_LIMIT,
+  segmentId?: string,
 ): Promise<CustomersListResponse> =>
-  customerApi.listByTenant(tenantId, page, limit);
+  customerApi.listByTenant(tenantId, page, limit, segmentId);
 
 export const getCustomerById = async (customerId: string): Promise<Customer> =>
   customerApi.getById(customerId);
@@ -69,8 +70,9 @@ export const searchCustomers = async (
   query: string,
   page = 1,
   limit = CUSTOMERS_PAGE_LIMIT,
+  segmentId?: string,
 ): Promise<CustomersListResponse> =>
-  customerApi.search(tenantId, query, page, limit);
+  customerApi.search(tenantId, query, page, limit, segmentId);
 
 export const getCustomersBySegment = async (
   tenantId: string,

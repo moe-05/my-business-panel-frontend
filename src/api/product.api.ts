@@ -249,10 +249,24 @@ export const productApi = {
     query: string,
     page = 1,
     limit = 100,
+    groupIds?: string[],
+    attributeValueIds?: string[],
+    noSupplier?: boolean,
   ): Promise<ProductsListResponse> {
     try {
+      const params = new URLSearchParams({
+        q: query,
+        page: String(page),
+        limit: String(limit),
+      });
+      if (groupIds && groupIds.length > 0)
+        params.set("group_ids", groupIds.join(","));
+      if (attributeValueIds && attributeValueIds.length > 0)
+        params.set("attribute_value_ids", attributeValueIds.join(","));
+      if (noSupplier) params.set("no_supplier", "true");
+
       const response = await fetch(
-        `${url}/product/${tenantId}/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
+        `${url}/product/${tenantId}/search?${params.toString()}`,
         {
           method: "GET",
           headers: { "Content-Type": "application/json" },

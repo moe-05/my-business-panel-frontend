@@ -158,6 +158,20 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "trending-up",
         rolesAllowed: [1, 2, 3],
       },
+      {
+        id: "expenses",
+        label: "Gastos",
+        path: "/app/pos/expenses",
+        icon: "trending-down",
+        rolesAllowed: [1, 2, 3, 4],
+      },
+      {
+        id: "royalties",
+        label: "Regalías",
+        path: "/app/pos/royalties",
+        icon: "gift",
+        rolesAllowed: [1, 2],
+      },
     ],
   },
 
@@ -175,7 +189,7 @@ export const MODULES: Record<ModuleId, Module> = {
         label: "Inventario",
         path: "/app/int/inventory",
         icon: "package",
-        rolesAllowed: [1, 2, 3],
+        rolesAllowed: [1, 2, 3, 4],
       },
       {
         id: "movements",

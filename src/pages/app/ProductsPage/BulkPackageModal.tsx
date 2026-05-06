@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { Select } from "@/components/ui/Select";
 import { CategoryComboBox } from "@/components/ui/CategoryComboBox";
+import { GroupAssignmentEditor } from "@/components/ui/GroupAssignmentEditor";
 import {
   AttributeAssignmentEditor,
   type AttributeAssignmentRow,
@@ -60,15 +62,21 @@ const EMPTY_PARENT: ParentForm = {
   supplier_id: "",
 };
 
-const newComponent = (): ComponentForm => ({
+const newComponent = (
+  parentSku?: string,
+  initialAttributes: AttributeAssignmentRow[] = [],
+): ComponentForm => ({
   key: `c-${crypto.randomUUID()}`,
-  sku: "",
+  sku: parentSku ? `${parentSku}-` : "",
   name: "",
   unit_price: "0",
   cost_price: "0",
   quantity_per_parent: "1",
-  attributes: [],
+  attributes: [...initialAttributes],
 });
+
+const MIN_COMPONENTS = 1;
+const MAX_COMPONENTS = 50;
 
 export function BulkPackageModal({
   isOpen,
@@ -79,6 +87,12 @@ export function BulkPackageModal({
   onRollbackCreate,
 }: BulkPackageModalProps) {
   const [parent, setParent] = useState<ParentForm>(EMPTY_PARENT);
+  const [parentGroupIds, setParentGroupIds] = useState<string[]>([]);
+  const [parentAttributes, setParentAttributes] = useState<AttributeAssignmentRow[]>(
+    [],
+  );
+  const [useParentSkuAsPrefix, setUseParentSkuAsPrefix] = useState(true);
+  const [componentCount, setComponentCount] = useState(0);
   const [components, setComponents] = useState<ComponentForm[]>([
     newComponent(),
   ]);
@@ -89,8 +103,34 @@ export function BulkPackageModal({
   const [uniformCost, setUniformCost] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
+  // Synchronize parent attributes to all components in real-time
+  useEffect(() => {
+    setComponents((prev) =>
+      prev.map((c) => {
+        // Filter out child attributes that are already defined in the parent to avoid duplicates/conflicts
+        const specificAttributes = c.attributes.filter(
+          (childAttr) =>
+            !parentAttributes.some(
+              (pAttr) =>
+                pAttr.tenant_attribute_id === childAttr.tenant_attribute_id &&
+                pAttr.tenant_attribute_id !== "",
+            ),
+        );
+
+        return {
+          ...c,
+          attributes: [...parentAttributes, ...specificAttributes],
+        };
+      }),
+    );
+  }, [parentAttributes]);
+
   const reset = () => {
     setParent(EMPTY_PARENT);
+    setParentGroupIds([]);
+    setParentAttributes([]);
+    setUseParentSkuAsPrefix(true);
+    setComponentCount(1);
     setComponents([newComponent()]);
     setError(null);
     setSubmitting(false);
@@ -107,6 +147,47 @@ export function BulkPackageModal({
       .catch(() => {});
   }, [isOpen]);
 
+  // Sync components array length to componentCount.
+  useEffect(() => {
+    setComponents((prev) => {
+      if (componentCount > prev.length) {
+        const additions = Array.from(
+          { length: componentCount - prev.length },
+          () =>
+            newComponent(useParentSkuAsPrefix ? parent.sku.trim() : undefined),
+        );
+        return [...prev, ...additions];
+      }
+      if (componentCount < prev.length) {
+        return prev.slice(0, componentCount);
+      }
+      return prev;
+    });
+  }, [componentCount, useParentSkuAsPrefix, parent.sku]);
+
+  // Sync parent SKU prefix to existing components when checkbox changes
+  useEffect(() => {
+    if (componentCount === 0) return;
+    setComponents((prev) =>
+      prev.map((c) => {
+        if (useParentSkuAsPrefix && parent.sku.trim()) {
+          const parentSkuPrefix = parent.sku.trim();
+          // If the component SKU doesn't start with the parent prefix, update it
+          if (!c.sku.startsWith(parentSkuPrefix)) {
+            return { ...c, sku: `${parentSkuPrefix}-` };
+          }
+        } else if (
+          !useParentSkuAsPrefix &&
+          c.sku.startsWith(parent.sku.trim())
+        ) {
+          // When disabling prefix, clear SKUs that start with the parent SKU
+          return { ...c, sku: "" };
+        }
+        return c;
+      }),
+    );
+  }, [useParentSkuAsPrefix, parent.sku]);
+
   const close = () => {
     if (submitting) return;
     reset();
@@ -119,12 +200,35 @@ export function BulkPackageModal({
     );
   };
 
-  const addComponent = () => setComponents((prev) => [...prev, newComponent()]);
+  const handleCountChange = (raw: string) => {
+    if (raw === "") {
+      setComponentCount(0);
+    } else {
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n) && n > 0) {
+        setComponentCount(n);
+        setComponents((prev) => {
+          if (n > prev.length) {
+            const extra = Array.from({ length: n - prev.length }, () =>
+              newComponent(
+                useParentSkuAsPrefix ? parent.sku : undefined,
+                parentAttributes,
+              ),
+            );
+            return [...prev, ...extra];
+          }
+          return prev.slice(0, n);
+        });
+      }
+    }
+  };
 
-  const removeComponent = (key: string) =>
-    setComponents((prev) =>
-      prev.length === 1 ? prev : prev.filter((c) => c.key !== key),
-    );
+  const handleCountBlur = () => {
+    setComponentCount((c) => {
+      if (c === 0) return MIN_COMPONENTS;
+      return Math.min(c, MAX_COMPONENTS);
+    });
+  };
 
   const validate = (): string | null => {
     if (!tenantId) return "No se identificó el tenant";
@@ -200,6 +304,8 @@ export function BulkPackageModal({
         unit_price: unitPrice,
         cost_price: costPrice,
         attribute_value_ids: c.attributes.flatMap((r) => r.selected_value_ids),
+        // Children inherit the parent's groups.
+        group_ids: parentGroupIds.length ? parentGroupIds : undefined,
         supplier_id: parent.supplier_id || undefined,
       };
     });
@@ -264,6 +370,7 @@ export function BulkPackageModal({
         price: Number(parentTotalPrice.toFixed(2)),
         cost_price: Number(parentTotalCost.toFixed(2)),
         supplier_id: parent.supplier_id || undefined,
+        group_ids: parentGroupIds.length ? parentGroupIds : undefined,
       });
 
       // 3) Wire composition with each component's quantity_per_parent.
@@ -301,6 +408,7 @@ export function BulkPackageModal({
           distribuye entre los componentes.
         </p>
 
+        {/* ─── Producto padre ─────────────────────────────────────────── */}
         <section className="space-y-3 rounded-2xl border border-gray-200 p-4">
           <header>
             <h3 className="text-sm font-semibold text-gray-900">
@@ -333,6 +441,23 @@ export function BulkPackageModal({
             />
           </div>
 
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={useParentSkuAsPrefix}
+              onChange={(e) => setUseParentSkuAsPrefix(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-700 font-medium">
+              Usar SKU del lote como prefijo para los componentes
+            </span>
+          </label>
+          <p className="text-xs text-gray-500">
+            {useParentSkuAsPrefix
+              ? `Los SKUs de los componentes comenzarán con "${parent.sku || "[SKU]"}-"`
+              : "Ingresa el SKU completo para cada componente"}
+          </p>
+
           <CategoryComboBox
             label="Categoría CABYS"
             value={parent.cabys_code}
@@ -349,30 +474,71 @@ export function BulkPackageModal({
           />
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Proveedor (opcional)
-            </label>
-            <select
-              aria-label="provider"
+            <Select
+              label="Proveedor (opcional)"
               value={parent.supplier_id ?? ""}
               onChange={(e) =>
                 setParent((p) => ({ ...p, supplier_id: e.target.value }))
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Sin proveedor</option>
-              {suppliers.map((s) => (
-                <option key={s.supplier_id} value={s.supplier_id}>
-                  {s.supplier_name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Se asignará a todos los componentes del lote
+              options={[
+                { value: "", label: "Sin proveedor" },
+                ...suppliers.map((s) => ({
+                  value: s.supplier_id,
+                  label: s.supplier_name,
+                })),
+              ]}
+              hint="Se asignará al lote y a todos los componentes"
+            />
+          </div>
+
+          {/* Grupos/dimensiones del lote — los productos hijos los heredan */}
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-gray-700">
+              Familias y dimensiones (opcional)
             </p>
+            <p className="text-xs text-gray-500">
+              Los grupos asignados al lote se heredan en todos los productos
+              simples que lo componen.
+            </p>
+            {tenantId ? (
+              <GroupAssignmentEditor
+                tenantId={tenantId}
+                value={parentGroupIds}
+                onChange={setParentGroupIds}
+                disabled={submitting}
+              />
+            ) : (
+              <p className="text-xs text-gray-400">
+                No se pudo identificar el tenant.
+              </p>
+            )}
+          </div>
+
+          {/* Atributos del lote — los productos hijos los heredan */}
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-gray-700">
+              Atributos heredados (opcional)
+            </p>
+            <p className="text-xs text-gray-500">
+              Los atributos y valores asignados al lote se aplicarán a todos los
+              productos que lo componen.
+            </p>
+            {tenantId ? (
+              <AttributeAssignmentEditor
+                tenantId={tenantId}
+                rows={parentAttributes}
+                onChange={setParentAttributes}
+                disabled={submitting}
+              />
+            ) : (
+              <p className="text-xs text-gray-400">
+                No se pudo identificar el tenant.
+              </p>
+            )}
           </div>
         </section>
 
+        {/* ─── Configuración de precios ────────────────────────────────── */}
         <section className="space-y-3 rounded-2xl border border-gray-200 p-4">
           <header>
             <h3 className="text-sm font-semibold text-gray-900 mb-3">
@@ -422,8 +588,9 @@ export function BulkPackageModal({
           )}
         </section>
 
+        {/* ─── Productos del lote ──────────────────────────────────────── */}
         <section className="space-y-3 rounded-2xl border border-gray-200 p-4">
-          <header className="flex items-start justify-between gap-4">
+          <header className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">
                 Productos del lote
@@ -431,6 +598,25 @@ export function BulkPackageModal({
               <p className="text-xs text-gray-500">
                 Cada producto simple es un producto individual con su propio SKU
                 {useUniformPricing ? "" : ", precio, costo"} y atributos.
+              </p>
+            </div>
+
+            {/* Cantidad de componentes */}
+            <div className="flex items-end gap-3">
+              <div className="w-40">
+                <Input
+                  label="Cantidad de productos"
+                  type="number"
+                  step="1"
+                  value={String(componentCount)}
+                  onChange={(e) => handleCountChange(e.target.value)}
+                  onBlur={handleCountBlur}
+                  hint={`Mín. ${MIN_COMPONENTS} — máx. ${MAX_COMPONENTS}`}
+                  disabled={submitting}
+                />
+              </div>
+              <p className="text-xs text-gray-500 pb-1">
+                Define cuántos productos simples componen el lote.
               </p>
             </div>
           </header>
@@ -445,14 +631,6 @@ export function BulkPackageModal({
                   <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
                     Producto #{i + 1}
                   </span>
-                  <Button
-                    variant="dangerOutline"
-                    size="xs"
-                    onClick={() => removeComponent(c.key)}
-                    disabled={submitting || components.length === 1}
-                  >
-                    Eliminar producto
-                  </Button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -531,18 +709,10 @@ export function BulkPackageModal({
                 </div>
               </div>
             ))}
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={addComponent}
-              disabled={submitting}
-            >
-              + Agregar producto al lote
-            </Button>
           </div>
         </section>
 
+        {/* ─── Resumen ────────────────────────────────────────────────── */}
         {components.length > 0 &&
           (() => {
             const totalSalePrice = components.reduce((acc, c) => {
@@ -623,10 +793,11 @@ export function BulkPackageModal({
             variant="primary"
             onClick={handleSubmit}
             loading={submitting}
+            disabled={components.length === 0 || submitting}
           >
             {submitting
               ? "Creando lote..."
-              : `Crear lote y ${components.length} componente${components.length === 1 ? "" : "s"}`}
+              : `Crear lote y ${components.length} producto${components.length === 1 ? "" : "s"}`}
           </Button>
         </div>
       </div>

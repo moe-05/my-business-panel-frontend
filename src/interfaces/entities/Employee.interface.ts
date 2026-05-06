@@ -3,7 +3,7 @@ export interface IEmployeeDetail {
   contract_id: string;
   first_name: string;
   last_name: string;
-  document_number: string;
+  doc_number: string;
   phone: string;
   email: string;
   is_active: boolean;
@@ -21,7 +21,7 @@ export interface IEmployeeDetail {
 export interface UpdateEmployeePayload {
   first_name?: string;
   last_name?: string;
-  document_number?: string;
+  doc_number?: string;
   identification_type_id?: number;
   phone?: string;
   email?: string;

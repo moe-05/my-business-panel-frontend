@@ -225,7 +225,7 @@ export function CustomerUpsertModal({
   const onSubmit = (data: CustomerUpsertFormData) => {
     if (hasUniquenessConflict) return;
 
-    const segmentId = data.segment_id ? Number(data.segment_id) : undefined;
+    const segmentId = data.segment_id ? Number(data.segment_id) : null;
 
     if (isEditing && customer) {
       onUpdate(customer.customer_id, {

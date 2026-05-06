@@ -350,6 +350,19 @@ export function PurchasesPage() {
     });
   };
 
+  const handleUpdatePayment = async (
+    paymentId: string,
+    payload: Partial<CreatePurchasePaymentRequest>,
+  ) => {
+    const result = await purchaseApi.updatePayment(paymentId, payload);
+    setSelectedOrder(result.order);
+    updateOrderRow(result.order);
+    setToast({
+      mode: "success",
+      message: "Abono actualizado correctamente",
+    });
+  };
+
   const handleStatusUpdate = async (order: PurchaseOrder, statusId: number) => {
     try {
       const updated = await purchaseApi.updateOrderStatus(
@@ -872,6 +885,7 @@ export function PurchasesPage() {
             showTenant={isSuperuser}
             paymentMethods={canManage ? catalogs.payment_methods : undefined}
             onRegisterPayment={canManage ? handleRegisterPayment : undefined}
+            onUpdatePayment={canManage ? handleUpdatePayment : undefined}
           />
         )}
       </Modal>

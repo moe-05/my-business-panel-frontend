@@ -15,6 +15,7 @@ export interface SaleListItem {
   currency_code: string;
   symbol: string;
   has_electronic_invoice?: boolean;
+  is_refunded?: boolean;
   tenant_customer_id?: string;
   created_at?: string;
   return_transaction_id?: string | null;

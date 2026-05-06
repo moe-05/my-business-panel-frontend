@@ -19,6 +19,7 @@ export interface Customer {
   postal_code?: string;
   segment_id?: number;
   segment?: Segment;
+  is_wholesale?: boolean;
   created_at: string;
   updated_at: string;
 }

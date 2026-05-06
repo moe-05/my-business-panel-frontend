@@ -498,6 +498,7 @@ export function MovementsPage() {
       <TransferModal
         isOpen={isModalOpen}
         warehouses={warehouses}
+        tenantId={tenantId}
         isSubmitting={isSubmitting}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleCreateTransfer}

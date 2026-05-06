@@ -51,7 +51,6 @@ export function HREmployeesPage() {
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [selectedEmployee, setSelectedEmployee] =
@@ -88,10 +87,9 @@ export function HREmployeesPage() {
   useEffect(() => {
     const fetchEmployees = async () => {
       try {
-        setIsLoading(true);
         const tenantId = currentUser.tenant.tenant_id;
         const allEmployees = await employeeApi.listByTenant(tenantId);
-        
+
         // Aplicar filtros localmente
         const filtered = allEmployees.filter((employee) => {
           const matchesBranch =
@@ -105,16 +103,18 @@ export function HREmployeesPage() {
             `${employee.first_name || ""} ${employee.last_name || ""}`
               .toLowerCase()
               .includes(debouncedSearch.trim().toLowerCase()) ||
-            (employee.document_number
+            (employee.doc_number
               ?.toLowerCase()
-              .includes(debouncedSearch.trim().toLowerCase()) ?? false) ||
+              .includes(debouncedSearch.trim().toLowerCase()) ??
+              false) ||
             (employee.email
               ?.toLowerCase()
-              .includes(debouncedSearch.trim().toLowerCase()) ?? false);
+              .includes(debouncedSearch.trim().toLowerCase()) ??
+              false);
 
           return matchesBranch && matchesStatus && matchesSearch;
         });
-        
+
         setEmployees(filtered);
       } catch (error) {
         setToast({
@@ -124,13 +124,16 @@ export function HREmployeesPage() {
               ? error.message
               : "Error al cargar empleados",
         });
-      } finally {
-        setIsLoading(false);
       }
     };
 
     fetchEmployees();
-  }, [debouncedSearch, branchFilter, statusFilter, currentUser.tenant.tenant_id]);
+  }, [
+    debouncedSearch,
+    branchFilter,
+    statusFilter,
+    currentUser.tenant.tenant_id,
+  ]);
 
   const filteredEmployees = useMemo(() => employees, [employees]);
 
@@ -281,7 +284,7 @@ export function HREmployeesPage() {
         </div>
       ),
     },
-    { key: "document_number", label: "Documento", width: "12%" },
+    { key: "doc_number", label: "Documento", width: "12%" },
     { key: "branch_name", label: "Sucursal", width: "14%" },
     {
       key: "payment_schedule_id",

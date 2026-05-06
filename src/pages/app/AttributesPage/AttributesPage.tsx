@@ -1,17 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/context/AuthContext";
-import {
-  attributeValueApi,
-  tenantAttributeApi,
-} from "@/api/attribute.api";
-import {
-  productGroupApi,
-  productGroupTypeApi,
-} from "@/api/productGroup.api";
+import { attributeValueApi, tenantAttributeApi } from "@/api/attribute.api";
+import { productGroupApi, productGroupTypeApi } from "@/api/productGroup.api";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { Toast } from "@/components/ui/Toast";
 
 import type {
@@ -50,9 +45,7 @@ export function AttributesPage() {
   if (!tenantId) {
     return (
       <div className="p-6">
-        <p className="text-gray-600">
-          Cargando información del tenant...
-        </p>
+        <p className="text-gray-600">Cargando información del tenant...</p>
       </div>
     );
   }
@@ -73,8 +66,8 @@ export function AttributesPage() {
         </h1>
         <p className="text-gray-600">
           Define atributos (color, talla, marca, ...) con sus valores y
-          clasifica tus productos por dimensiones (Departamento, Familia,
-          Marca, ...).
+          clasifica tus productos por dimensiones (Departamento, Familia, Marca,
+          ...).
         </p>
       </header>
 
@@ -141,7 +134,10 @@ function AttributesSection({ tenantId, onError, onSuccess }: SectionProps) {
     try {
       const data = await tenantAttributeApi.listByTenant(tenantId);
       setAttributes(data);
-      if (selectedAttrId && !data.some((a) => a.tenant_attribute_id === selectedAttrId)) {
+      if (
+        selectedAttrId &&
+        !data.some((a) => a.tenant_attribute_id === selectedAttrId)
+      ) {
         setSelectedAttrId(null);
       }
     } catch (err) {
@@ -306,9 +302,8 @@ function AttributesSection({ tenantId, onError, onSuccess }: SectionProps) {
             tenantId={tenantId}
             tenantAttributeId={selectedAttrId}
             attributeName={
-              attributes.find(
-                (a) => a.tenant_attribute_id === selectedAttrId,
-              )?.attribute_name ?? ""
+              attributes.find((a) => a.tenant_attribute_id === selectedAttrId)
+                ?.attribute_name ?? ""
             }
             onError={onError}
             onSuccess={onSuccess}
@@ -390,11 +385,7 @@ function AttributeValuesPanel({
     const next = prompt("Nuevo valor:", currentValue);
     if (!next || next.trim() === currentValue) return;
     try {
-      const updated = await attributeValueApi.update(
-        tenantId,
-        id,
-        next.trim(),
-      );
+      const updated = await attributeValueApi.update(tenantId, id, next.trim());
       setValues((prev) =>
         prev.map((v) => (v.attribute_value_id === id ? updated : v)),
       );
@@ -581,9 +572,7 @@ function GroupsSection({ tenantId, onError, onSuccess }: SectionProps) {
       return;
     try {
       await productGroupApi.remove(tenantId, id);
-      setGroups((prev) =>
-        prev.filter((g) => g.tenant_product_group_id !== id),
-      );
+      setGroups((prev) => prev.filter((g) => g.tenant_product_group_id !== id));
       onSuccess("Grupo eliminado");
     } catch (err) {
       onError(err, "Error al eliminar grupo");
@@ -623,9 +612,7 @@ function GroupsSection({ tenantId, onError, onSuccess }: SectionProps) {
         {isLoading ? (
           <p className="text-xs text-gray-500">Cargando...</p>
         ) : types.length === 0 ? (
-          <p className="text-xs text-gray-500">
-            Aún no hay dimensiones.
-          </p>
+          <p className="text-xs text-gray-500">Aún no hay dimensiones.</p>
         ) : (
           <ul className="space-y-1">
             {types.map((t) => {
@@ -688,22 +675,17 @@ function GroupsSection({ tenantId, onError, onSuccess }: SectionProps) {
                 onChange={(e) => setNewGroupName(e.target.value)}
                 placeholder="Nuevo grupo (ej: Camisas)"
               />
-              <select
+              <Select
                 value={newGroupParent}
                 onChange={(e) => setNewGroupParent(e.target.value)}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
-              >
-                <option value="">— Sin padre (raíz) —</option>
-                {groupsOfType.map((g) => (
-                  <option
-                    key={g.tenant_product_group_id}
-                    value={g.tenant_product_group_id}
-                  >
-                    {"— ".repeat(g.hierarchy_level ?? 0)}
-                    {g.group_name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "— Sin padre (raíz) —" },
+                  ...groupsOfType.map((g) => ({
+                    value: g.tenant_product_group_id,
+                    label: `${"— ".repeat(g.hierarchy_level ?? 0)}${g.group_name}`,
+                  })),
+                ]}
+              />
               <Button
                 type="button"
                 variant="primary"

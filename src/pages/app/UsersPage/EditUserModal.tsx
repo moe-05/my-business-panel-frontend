@@ -4,6 +4,9 @@ import { z } from "zod";
 import { branchApi } from "@/api/branch.api";
 import { employeeApi } from "@/api/employee.api";
 
+import { contractApi } from "@/api/contract.api";
+import { turnsApi } from "@/api/turns.api";
+
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -14,12 +17,23 @@ import type { User } from "@/interfaces/entities/User.interface";
 import type { Role } from "@/interfaces/entities/Role.interface";
 import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type { UpdateUserRequest } from "@/interfaces/api/requests/UpdateUserRequest.interface";
+import type {
+  HrPaymentSchedule,
+  HrTurn,
+} from "@/interfaces/entities/Hr.interface";
 
 import { capitalize } from "@/utils/capitalize";
 import { contractSchema } from "./newUser.schema";
 import { updateUser } from "@/router/actions/user.actions";
 import { updateEmployee } from "@/router/actions/employee.actions";
 import { updateContract } from "@/router/actions/contract.actions";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const TURN_TYPES = [
+  { value: "1", label: "Rotativo" },
+  { value: "2", label: "Fijo" },
+];
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -34,13 +48,7 @@ const editEmployeeSchema = z.object({
   document_number: z.string().trim().min(1, "Requerido"),
   phone: z.string().trim().min(1, "Requerido"),
   employee_email: z.string().trim().min(1, "Requerido").email("Email inválido"),
-  payment_schedule_id: z
-    .string()
-    .trim()
-    .min(1, "Debe ser ≥ 1")
-    .refine((v) => Number.isFinite(Number(v)) && Number(v) >= 1, {
-      message: "Debe ser ≥ 1",
-    }),
+  payment_schedule_id: z.string().trim().min(1, "Requerido"),
 });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -71,7 +79,7 @@ const EMPTY_CTR: ContractFields = {
   hours: "",
   base_salary: "",
   duties: "",
-  turn_type: "",
+  turn_type: "1",
   turn_id: "",
 };
 
@@ -127,6 +135,10 @@ export function EditUserModal({
   const [accErrors, setAccErrors] = useState<AccountErrors>({});
 
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [paymentSchedules, setPaymentSchedules] = useState<HrPaymentSchedule[]>(
+    [],
+  );
+  const [turns, setTurns] = useState<HrTurn[]>([]);
 
   const availableRoles = roles.filter((r) => r.role_id !== 1);
 
@@ -145,10 +157,12 @@ export function EditUserModal({
 
     Promise.all([
       branchApi.listByTenant(tenantId),
+      contractApi.getPaymentSchedules(),
       employeeApi.getByUserId(user.user_id),
     ])
-      .then(([branchRes, empDetail]) => {
+      .then(([branchRes, schedules, empDetail]) => {
         setBranches(branchRes.branches);
+        setPaymentSchedules(schedules);
         setIsEmployeeUser(Boolean(empDetail));
 
         if (empDetail) {
@@ -157,7 +171,7 @@ export function EditUserModal({
           setEmpData({
             first_name: empDetail.first_name,
             last_name: empDetail.last_name,
-            document_number: empDetail.document_number,
+            document_number: empDetail.doc_number,
             phone: empDetail.phone,
             employee_email: empDetail.email,
             branch_id: empDetail.branch_id,
@@ -183,8 +197,16 @@ export function EditUserModal({
       .finally(() => setIsLoading(false));
   }, [isOpen, user, tenantId]);
 
-  // ── Reset on close ─────────────────────────────────────────────────────────
+  // Load turns when branch changes
+  useEffect(() => {
+    if (!empData.branch_id) {
+      setTurns([]);
+      return;
+    }
+    turnsApi.listByBranch(empData.branch_id).then(setTurns).catch(console.error);
+  }, [empData.branch_id]);
 
+  // Reset on close
   useEffect(() => {
     if (!isOpen) {
       setStep(1);
@@ -198,6 +220,8 @@ export function EditUserModal({
       setCtrErrors({});
       setAccErrors({});
       setBranches([]);
+      setPaymentSchedules([]);
+      setTurns([]);
     }
   }, [isOpen]);
 
@@ -260,7 +284,7 @@ export function EditUserModal({
           updateEmployee(employeeId, {
             first_name: empData.first_name,
             last_name: empData.last_name,
-            document_number: empData.document_number,
+            doc_number: empData.document_number,
             phone: empData.phone,
             email: empData.employee_email,
             payment_schedule_id: Number(empData.payment_schedule_id),
@@ -354,13 +378,16 @@ export function EditUserModal({
         }))}
         disabled
       />
-      <Input
-        label="ID jornada de pago"
-        type="number"
+      <Select
+        label="Jornada de pago"
         value={empData.payment_schedule_id}
         onChange={(e) =>
           setEmpData((p) => ({ ...p, payment_schedule_id: e.target.value }))
         }
+        options={paymentSchedules.map((s) => ({
+          value: String(s.payment_schedule_id),
+          label: `${s.description} · ${s.daycount} días`,
+        }))}
         error={empErrors.payment_schedule_id}
         required
       />
@@ -419,23 +446,26 @@ export function EditUserModal({
         required
       />
       <div className="grid grid-cols-2 gap-4">
-        <Input
+        <Select
           label="Tipo de turno"
-          type="number"
           value={ctrData.turn_type}
           onChange={(e) =>
             setCtrData((p) => ({ ...p, turn_type: e.target.value }))
           }
+          options={TURN_TYPES}
           error={ctrErrors.turn_type}
           required
         />
-        <Input
-          label="ID de turno"
-          type="number"
+        <Select
+          label="Turno"
           value={ctrData.turn_id}
           onChange={(e) =>
             setCtrData((p) => ({ ...p, turn_id: e.target.value }))
           }
+          options={turns.map((t) => ({
+            value: String(t.turn_id),
+            label: `${t.entry.slice(0, 5)} - ${t.out.slice(0, 5)}`,
+          }))}
           error={ctrErrors.turn_id}
           required
         />

@@ -42,6 +42,10 @@ interface PurchaseOrderDetailPanelProps {
   onRegisterPayment?: (
     payload: CreatePurchasePaymentRequest,
   ) => Promise<void> | void;
+  onUpdatePayment?: (
+    paymentId: string,
+    payload: Partial<CreatePurchasePaymentRequest>,
+  ) => Promise<void> | void;
 }
 
 const cell = "px-3 py-2 text-sm text-gray-700 align-top";
@@ -54,6 +58,7 @@ export function PurchaseOrderDetailPanel({
   showTenant = false,
   paymentMethods,
   onRegisterPayment,
+  onUpdatePayment,
 }: PurchaseOrderDetailPanelProps) {
   const [productsOnly, setProductsOnly] = useState(false);
   const [showQuickPayment, setShowQuickPayment] = useState(false);
@@ -62,6 +67,15 @@ export function PurchaseOrderDetailPanel({
     null,
   );
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [editPaymentForm, setEditPaymentForm] = useState<{
+    amount_paid: string;
+    payment_method_id: number;
+    payment_reference: string;
+  }>({ amount_paid: "", payment_method_id: 0, payment_reference: "" });
+  const [isEditingPaymentSubmitting, setIsEditingPaymentSubmitting] =
+    useState(false);
+  const [editPaymentError, setEditPaymentError] = useState<string | null>(null);
 
   const balanceDue = Number(order.balance_due ?? 0);
   const accountPayableId = order.purchase_account_payable_id ?? "";
@@ -192,6 +206,47 @@ export function PurchaseOrderDetailPanel({
       );
     } finally {
       setQuickPaymentSubmitting(false);
+    }
+  };
+
+  const handleEditPayment = (payment: any) => {
+    setEditPaymentForm({
+      amount_paid: String(payment.amount_paid),
+      payment_method_id: payment.payment_method_id,
+      payment_reference: payment.payment_reference ?? "",
+    });
+    setEditingPaymentId(payment.purchase_order_payment_id);
+    setEditPaymentError(null);
+  };
+
+  const submitEditPayment = async () => {
+    if (!onUpdatePayment || !editingPaymentId) return;
+
+    const amount = Number(editPaymentForm.amount_paid);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setEditPaymentError("Ingresa un monto mayor a 0");
+      return;
+    }
+
+    // Logic for checking if the new amount exceeds balance might be tricky here
+    // since balanceDue already reflects the OLD amount being paid.
+    // However, usually we can just let the backend handle it or do a rough check.
+
+    setIsEditingPaymentSubmitting(true);
+    try {
+      await onUpdatePayment(editingPaymentId, {
+        amount_paid: amount,
+        payment_method_id: editPaymentForm.payment_method_id,
+        payment_reference:
+          editPaymentForm.payment_reference.trim() || undefined,
+      });
+      setEditingPaymentId(null);
+    } catch (err) {
+      setEditPaymentError(
+        err instanceof Error ? err.message : "Error al actualizar el abono",
+      );
+    } finally {
+      setIsEditingPaymentSubmitting(false);
     }
   };
 
@@ -661,6 +716,92 @@ export function PurchaseOrderDetailPanel({
                   </div>
                 </div>
               )}
+
+              {editingPaymentId && (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 mb-3 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-blue-900">
+                        Modificar abono
+                      </p>
+                      <p className="text-xs text-blue-700 font-mono">
+                        ID: {editingPaymentId.slice(0, 8)}...
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingPaymentId(null)}
+                      disabled={isEditingPaymentSubmitting}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Input
+                      label="Monto"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={editPaymentForm.amount_paid}
+                      onChange={(e) =>
+                        setEditPaymentForm((p) => ({
+                          ...p,
+                          amount_paid: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                    <Select
+                      label="Método de pago"
+                      value={String(editPaymentForm.payment_method_id)}
+                      onChange={(e) =>
+                        setEditPaymentForm((p) => ({
+                          ...p,
+                          payment_method_id: Number(e.target.value),
+                        }))
+                      }
+                      options={filteredPaymentMethods.map((m) => ({
+                        value: String(m.payment_method_id),
+                        label: formatPaymentMethodName(m.name),
+                      }))}
+                      required
+                    />
+                    <Input
+                      label="Referencia"
+                      placeholder="Opcional"
+                      value={editPaymentForm.payment_reference}
+                      onChange={(e) =>
+                        setEditPaymentForm((p) => ({
+                          ...p,
+                          payment_reference: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  {editPaymentError && (
+                    <p className="text-xs text-red-600 font-medium">
+                      {editPaymentError}
+                    </p>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-1 border-t border-blue-200">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={submitEditPayment}
+                      loading={isEditingPaymentSubmitting}
+                    >
+                      Guardar cambios
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <StackList
                 items={order.payments.map((payment) => ({
                   id: payment.purchase_order_payment_id,
@@ -668,7 +809,9 @@ export function PurchaseOrderDetailPanel({
                     `${formatCurrency(payment.amount_paid)} ${payment.currency_code && payment.currency_code !== "CRC" ? `(${payment.currency_code})` : ""}`.trim(),
                   meta: `${formatPaymentMethodName(payment.payment_method_name)} · ${formatDateTime(payment.payment_date)}`,
                   description: payment.payment_reference ?? "Sin referencia",
+                  originalData: payment,
                 }))}
+                onEdit={onUpdatePayment ? handleEditPayment : undefined}
                 emptyMessage="Todavía no se han registrado abonos."
               />
             </Section>
@@ -791,6 +934,7 @@ function AmountRow({
 function StackList({
   items,
   emptyMessage,
+  onEdit,
 }: {
   items: Array<{
     id: string;
@@ -800,7 +944,9 @@ function StackList({
     amount?: string;
     badge?: string;
     badgeVariant?: "green" | "yellow" | "red" | "blue" | "secondary";
+    originalData?: any;
   }>;
+  onEdit?: (item: any) => void;
   emptyMessage: string;
 }) {
   if (items.length === 0) {
@@ -835,6 +981,16 @@ function StackList({
               <Badge variant={item.badgeVariant ?? "secondary"}>
                 {item.badge}
               </Badge>
+            )}
+            {onEdit && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onEdit(item.originalData || item)}
+              >
+                Modificar abono
+              </Button>
             )}
           </div>
         </div>

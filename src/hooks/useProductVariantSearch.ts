@@ -73,6 +73,7 @@ export function useProductVariantSearch({
         sku?: string;
         variant_name?: string;
         unit_price?: number;
+        is_composite?: boolean;
       }
     >();
 
@@ -84,9 +85,11 @@ export function useProductVariantSearch({
         sku: item.sku ?? undefined,
         variant_name: item.variant_name ?? item.product_name,
         unit_price: item.unit_price,
+        is_composite: item.is_composite,
       };
       entry.stock += Number(item.stock ?? 0);
       if (item.unit_price !== undefined) entry.unit_price = item.unit_price;
+      if (item.is_composite !== undefined) entry.is_composite = item.is_composite;
       map.set(id, entry);
 
       // 2. Si es compuesto, expandir children para stock virtual
@@ -102,6 +105,7 @@ export function useProductVariantSearch({
               sku: comp.child_sku ?? undefined,
               variant_name: comp.child_variant_name ?? undefined,
               unit_price: 0,
+              is_composite: false, // children components are usually not composites themselves in this flattened view
             };
             existing.stock += childStock;
             if (!existing.sku && comp.child_sku) existing.sku = comp.child_sku;
@@ -133,6 +137,7 @@ export function useProductVariantSearch({
         sku: value.sku ?? "",
         unit_price: value.unit_price ?? 0,
         price: value.unit_price ?? 0,
+        is_composite: value.is_composite,
       };
       result.push(row);
       inventoryStockRef.current.set(id, value.stock);
@@ -154,6 +159,7 @@ export function useProductVariantSearch({
                 row.unit_price = Number(
                   product.unit_price ?? product.price ?? 0,
                 );
+                row.is_composite = product.is_composite;
               }
             } catch {
               // ignorar errores de enriquecimiento

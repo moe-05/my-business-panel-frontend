@@ -4,6 +4,7 @@ import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
 import type {
   CashRegister,
   CashRegisterSession,
+  SessionGroupSale,
 } from "@/interfaces/entities/CashRegister.interface";
 
 interface ListWrapper<T> {
@@ -248,5 +249,15 @@ export const cashRegisterApi = {
         error instanceof Error ? error.message : "Error al cerrar sesión",
       );
     }
+  },
+
+  async getSessionReport(sessionId: string): Promise<SessionGroupSale[]> {
+    const res = await fetch(
+      `${url}/cash-register/sessions/${sessionId}/report`,
+      { credentials: "include" },
+    );
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.message ?? "Error al cargar reporte");
+    return (body as ApiResponse<SessionGroupSale[]>).data;
   },
 };

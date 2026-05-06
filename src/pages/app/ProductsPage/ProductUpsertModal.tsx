@@ -268,8 +268,14 @@ export function ProductUpsertModal({
 
       if (isEditing && product) {
         const productId = product.product_variant_id ?? product.product_id;
-        const supplierName = supplierId
-          ? (suppliers.find((s) => s.supplier_id === supplierId)
+        // In edit mode, an empty supplier_id must be sent as null so the
+        // backend sets the field to NULL (undefined would leave it unchanged).
+        const editSupplierId: string | null =
+          data.supplier_id && data.supplier_id !== ""
+            ? data.supplier_id
+            : null;
+        const supplierName = editSupplierId
+          ? (suppliers.find((s) => s.supplier_id === editSupplierId)
               ?.supplier_name ?? undefined)
           : undefined;
         await onUpdate(
@@ -280,7 +286,7 @@ export function ProductUpsertModal({
             category_id: data.category_id,
             price,
             cost_price: costPrice,
-            supplier_id: supplierId,
+            supplier_id: editSupplierId,
             giftable: data.giftable ?? false,
             giftable_from: giftableFrom,
             attribute_value_ids,
@@ -289,6 +295,21 @@ export function ProductUpsertModal({
           { supplier_name: supplierName },
         );
         variantId = productId;
+
+        // Propagate supplier change to child products when editing a composite.
+        if (product.is_composite) {
+          const composition = await productApi.getComposition(
+            product.tenant_id,
+            productId,
+          );
+          await Promise.all(
+            composition.map((child) =>
+              productApi.update(child.child_product_variant_id, {
+                supplier_id: editSupplierId,
+              }),
+            ),
+          );
+        }
       } else {
         variantId = await onCreate({
           tenant_id: tenantId,

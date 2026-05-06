@@ -164,7 +164,7 @@ export function EmployeeUpsertModal({
     setEmployeeData({
       first_name: employee.first_name,
       last_name: employee.last_name,
-      document_number: employee.document_number,
+      document_number: employee.doc_number,
       identification_type_id:
         (employee as HrEmployeeRecord & { identification_type_id?: number })
           .identification_type_id ?? 1,
@@ -385,7 +385,7 @@ export function EmployeeUpsertModal({
           employee: {
             first_name: employeeData.first_name,
             last_name: employeeData.last_name,
-            document_number: employeeData.document_number,
+            doc_number: employeeData.document_number,
             identification_type_id: Number(employeeData.identification_type_id),
             phone: employeeData.phone,
             email: employeeData.employee_email,
