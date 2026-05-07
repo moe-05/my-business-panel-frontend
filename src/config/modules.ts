@@ -23,7 +23,9 @@ export interface SubModule {
     | "contact"
     | "building"
     | "tag"
-    | "shield";
+    | "shield"
+    | "trending-down"
+    | "gift";
   /** Si está definido, solo los roles listados pueden acceder. Si es undefined, todos pueden. */
   rolesAllowed?: number[];
   end?: boolean;

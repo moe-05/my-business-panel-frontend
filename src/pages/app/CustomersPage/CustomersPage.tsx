@@ -6,7 +6,6 @@ import {
   getAllCustomers,
   getCustomersByTenant,
   searchCustomers,
-  getCustomersBySegment,
   CUSTOMERS_PAGE_LIMIT,
   type CustomersPageLoaderData,
 } from "@/router/loaders/customer.loaders";
@@ -156,7 +155,7 @@ export function CustomersPage() {
       city: data.city,
       province: data.province,
       postal_code: data.postal_code,
-      segment_id: data.segment_id,
+      segment_id: data.segment_id ?? undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -186,7 +185,7 @@ export function CustomersPage() {
     const original = customers.find((c) => c.customer_id === customerId);
 
     setCustomers((prev) =>
-      prev.map((c) => (c.customer_id === customerId ? { ...c, ...data } : c)),
+      prev.map((c) => (c.customer_id === customerId ? { ...c, ...data, segment_id: data.segment_id ?? undefined } : c)),
     );
 
     void updateCustomer(customerId, data)

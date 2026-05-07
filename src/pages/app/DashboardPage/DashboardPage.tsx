@@ -23,6 +23,7 @@ import {
 
 import { generalOptions } from "./general-options";
 import { SuperuserDashboard } from "./SuperUserDashboard";
+import { capitalize } from "@/utils/capitalize";
 
 function getModuleIcon(icon: Module["icon"]): ReactNode {
   const map: Record<Module["icon"], ReactNode> = {
@@ -44,7 +45,10 @@ export function TenantDashboard() {
   const tenant = user?.tenant;
 
   const mainModules = Object.values(MODULES)
-    .filter((mod) => mod.id !== "general" && isAllowedForRole(mod.rolesAllowed, roleId))
+    .filter(
+      (mod) =>
+        mod.id !== "general" && isAllowedForRole(mod.rolesAllowed, roleId),
+    )
     .map((mod) => ({
       label: mod.label,
       description: mod.description,
@@ -67,7 +71,7 @@ export function TenantDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 font-display">
-          Bienvenido
+          Bienvenido, {user?.email}
         </h1>
         <p className="text-sm text-gray-500 mt-1">
           {user?.email}
@@ -78,8 +82,8 @@ export function TenantDashboard() {
 
       {/* Company info card */}
       {tenant && (
-        <div className="bg-white rounded-2xl border border-gray-300 p-5 flex flex-col sm:flex-row sm:items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl bg-gray-800 flex items-center justify-center shrink-0">
+        <div className="bg-white rounded-xl border border-gray-300 p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center shrink-0">
             <span className="text-white font-bold text-xl font-display">
               {tenant.tenant_name.slice(0, 1).toUpperCase()}
             </span>
@@ -103,7 +107,9 @@ export function TenantDashboard() {
             </div>
           </div>
           <div className="shrink-0">
-            <Badge variant="accent">{user?.role.role_name}</Badge>
+            <Badge variant="accent">
+              {capitalize(user?.role.role_name ?? "")}
+            </Badge>
           </div>
         </div>
       )}
