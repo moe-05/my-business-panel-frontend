@@ -65,11 +65,6 @@ export function HRAttendancePage() {
   const [incapacityPercent, setIncapacityPercent] = useState("60");
   const [isSubmittingIncapacity, setIsSubmittingIncapacity] = useState(false);
 
-  // Manual clocking state
-  const [manualClockInEmployeeId, setManualClockInEmployeeId] = useState("");
-  const [manualClockInDatetime, setManualClockInDatetime] = useState("");
-  const [isSubmittingManualIn, setIsSubmittingManualIn] = useState(false);
-
   const [manualClockOutModalOpen, setManualClockOutModalOpen] = useState(false);
   const [manualClockOutId, setManualClockOutId] = useState<number | null>(null);
   const [manualClockOutDatetime, setManualClockOutDatetime] = useState("");
@@ -255,31 +250,6 @@ export function HRAttendancePage() {
     }
   };
 
-  const handleManualClockIn = async () => {
-    if (!manualClockInEmployeeId || !manualClockInDatetime || !selectedBranchId) {
-      setToast({ mode: "error", message: "Seleccione empleado y fecha/hora de entrada" });
-      return;
-    }
-
-    setIsSubmittingManualIn(true);
-    try {
-      await clockingApi.manualClockIn({
-        employeeId: manualClockInEmployeeId,
-        branchId: selectedBranchId,
-        clockIn: manualClockInDatetime,
-      });
-      await loadBranchRecords(selectedBranchId);
-      setManualClockInDatetime("");
-      setToast({ mode: "success", message: "Clock-in manual registrado correctamente" });
-    } catch (error) {
-      setToast({
-        mode: "error",
-        message: error instanceof Error ? error.message : "No se pudo registrar el clock-in",
-      });
-    } finally {
-      setIsSubmittingManualIn(false);
-    }
-  };
 
   const openManualClockOut = (clockingId: number) => {
     setManualClockOutId(clockingId);

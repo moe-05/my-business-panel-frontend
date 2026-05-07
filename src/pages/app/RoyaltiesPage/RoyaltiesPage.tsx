@@ -9,7 +9,6 @@ import { Toast } from "@/components/ui/Toast";
 import { Badge } from "@/components/ui/Badge";
 
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
-import type { TenantProductGroup } from "@/interfaces/entities/ProductGroup.interface";
 import type {
   GiftableProduct,
   RoyaltyOption,

@@ -20,13 +20,6 @@ interface CartItem {
   total_price: number;
 }
 
-interface RoyaltySelection {
-  royalty_rule_id: string;
-  royalty_option_id: string;
-  product_variant_id: string;
-  product_name: string;
-  quantity: number;
-}
 
 interface Props {
   customer: Customer | null;
