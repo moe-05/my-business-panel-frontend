@@ -51,9 +51,18 @@ export const customerApi = {
       );
 
       const json: ApiResponse<CustomersListResponse> = await response.json();
-      console.log(json);
+
+      if (!response.ok) {
+        throw new Error(json.message ?? `Error ${response.status} al listar clientes`);
+      }
+
+      if (!json.data) {
+        return { customers: [], total: 0, page, limit };
+      }
+
       return json.data;
     } catch (error) {
+      console.error("listAll error:", error);
       throw new Error(
         error instanceof Error ? error.message : "Error al listar clientes",
       );
@@ -64,10 +73,12 @@ export const customerApi = {
     tenantId: string,
     page = 1,
     limit = 100,
+    segmentId?: string,
   ): Promise<CustomersListResponse> {
     try {
+      const segmentQuery = segmentId ? `&segment_id=${segmentId}` : "";
       const response = await fetch(
-        `${url}/customers/tenant/${tenantId}?page=${page}&limit=${limit}`,
+        `${url}/customers/tenant/${tenantId}?page=${page}&limit=${limit}${segmentQuery}`,
         {
           method: "GET",
           headers: { "Content-Type": "application/json" },
@@ -76,8 +87,18 @@ export const customerApi = {
       );
 
       const json: ApiResponse<CustomersListResponse> = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json.message ?? `Error ${response.status} al listar clientes`);
+      }
+
+      if (!json.data) {
+        return { customers: [], total: 0, page, limit };
+      }
+
       return json.data;
     } catch (error) {
+      console.error("listByTenant error:", error);
       throw new Error(
         error instanceof Error
           ? error.message
@@ -199,10 +220,12 @@ export const customerApi = {
     query: string,
     page = 1,
     limit = 100,
+    segmentId?: string,
   ): Promise<CustomersListResponse> {
     try {
+      const segmentQuery = segmentId ? `&segment_id=${segmentId}` : "";
       const response = await fetch(
-        `${url}/customers/tenant/${tenantId}/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
+        `${url}/customers/tenant/${tenantId}/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}${segmentQuery}`,
         {
           method: "GET",
           headers: { "Content-Type": "application/json" },
@@ -211,8 +234,18 @@ export const customerApi = {
       );
 
       const json: ApiResponse<CustomersListResponse> = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json.message ?? `Error ${response.status} al buscar clientes`);
+      }
+
+      if (!json.data) {
+        return { customers: [], total: 0, page, limit };
+      }
+
       return json.data;
     } catch (error) {
+      console.error("search error:", error);
       throw new Error(
         error instanceof Error ? error.message : "Error al buscar clientes",
       );
@@ -258,24 +291,6 @@ export const customerApi = {
     page = 1,
     limit = 100,
   ): Promise<CustomersListResponse> {
-    try {
-      const response = await fetch(
-        `${url}/customers/tenant/${tenantId}?segment_id=${segmentId}&page=${page}&limit=${limit}`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-        },
-      );
-
-      const json: ApiResponse<CustomersListResponse> = await response.json();
-      return json.data;
-    } catch (error) {
-      throw new Error(
-        error instanceof Error
-          ? error.message
-          : "Error al filtrar clientes por segmento",
-      );
-    }
+    return this.listByTenant(tenantId, page, limit, segmentId);
   },
 };

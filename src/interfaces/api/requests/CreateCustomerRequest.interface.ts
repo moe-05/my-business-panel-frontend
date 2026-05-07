@@ -12,5 +12,5 @@ export interface CreateCustomerRequest {
   city?: string;
   province?: string;
   postal_code?: string;
-  segment_id?: number;
+  segment_id?: number | null;
 }

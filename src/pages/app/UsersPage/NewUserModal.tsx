@@ -5,6 +5,9 @@ import { branchApi } from "@/api/branch.api";
 import { employeeApi } from "@/api/employee.api";
 import { userApi } from "@/api/user.api";
 
+import { contractApi } from "@/api/contract.api";
+import { turnsApi } from "@/api/turns.api";
+
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -15,6 +18,7 @@ import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
 import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type { NewUserModalProps } from "@/interfaces/components/ui/NewUserModalProps.interface";
 import type { CreateUserRequest } from "@/interfaces/api/requests/CreateUserRequest.interface";
+import type { HrPaymentSchedule, HrTurn } from "@/interfaces/entities/Hr.interface";
 
 import { capitalize } from "@/utils/capitalize";
 import {
@@ -25,6 +29,11 @@ import {
 import { StepIndicator } from "../../../components/ui/StepIndicator";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const TURN_TYPES = [
+  { value: "1", label: "Rotativo" },
+  { value: "2", label: "Fijo" },
+];
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
@@ -44,7 +53,7 @@ const INITIAL_EMPLOYEE: EmployeeFields = {
   phone: "",
   employee_email: "",
   branch_id: "",
-  payment_schedule_id: "1",
+  payment_schedule_id: "",
 };
 
 const INITIAL_CONTRACT: ContractFields = {
@@ -54,7 +63,7 @@ const INITIAL_CONTRACT: ContractFields = {
   base_salary: "0",
   duties: "",
   turn_type: "1",
-  turn_id: "1",
+  turn_id: "",
 };
 
 const INITIAL_ACCOUNT: AccountFields = {
@@ -100,22 +109,39 @@ export function NewUserModal({
   const [ctrErrors, setCtrErrors] = useState<ContractErrors>({});
   const [accErrors, setAccErrors] = useState<AccountErrors>({});
 
-  // Branches
+  // Reference data
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [paymentSchedules, setPaymentSchedules] = useState<HrPaymentSchedule[]>([]);
+  const [turns, setTurns] = useState<HrTurn[]>([]);
 
   const availableRoles = roles.filter((r) => r.role_id !== 1);
 
-  // Load branches when modal opens
+  // Load basic reference data when modal opens
   useEffect(() => {
     if (!isOpen || !tenantId) return;
+
     setIsLoadingBranches(true);
-    branchApi
-      .listByTenant(tenantId)
-      .then((res) => setBranches(res.branches))
+    Promise.all([
+      branchApi.listByTenant(tenantId),
+      contractApi.getPaymentSchedules(),
+    ])
+      .then(([branchRes, schedules]) => {
+        setBranches(branchRes.branches);
+        setPaymentSchedules(schedules);
+      })
       .catch(console.error)
       .finally(() => setIsLoadingBranches(false));
   }, [isOpen, tenantId]);
+
+  // Load turns when branch changes
+  useEffect(() => {
+    if (!employee.branch_id) {
+      setTurns([]);
+      return;
+    }
+    turnsApi.listByBranch(employee.branch_id).then(setTurns).catch(console.error);
+  }, [employee.branch_id]);
 
   // Reset on close
   useEffect(() => {
@@ -452,34 +478,38 @@ export function NewUserModal({
       {isLoadingBranches ? (
         <div className="flex items-center gap-2 py-2 text-sm text-gray-500">
           <span className="w-4 h-4 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
-          Cargando sucursales…
+          Cargando datos…
         </div>
       ) : (
-        <Select
-          label="Sucursal"
-          value={employee.branch_id}
-          onChange={(e) =>
-            setEmployee((p) => ({ ...p, branch_id: e.target.value }))
-          }
-          options={branches.map((b) => ({
-            value: b.branch_id,
-            label: b.branch_name,
-          }))}
-          error={empErrors.branch_id}
-          required
-        />
+        <>
+          <Select
+            label="Sucursal"
+            value={employee.branch_id}
+            onChange={(e) =>
+              setEmployee((p) => ({ ...p, branch_id: e.target.value }))
+            }
+            options={branches.map((b) => ({
+              value: b.branch_id,
+              label: b.branch_name,
+            }))}
+            error={empErrors.branch_id}
+            required
+          />
+          <Select
+            label="Jornada de pago"
+            value={employee.payment_schedule_id}
+            onChange={(e) =>
+              setEmployee((p) => ({ ...p, payment_schedule_id: e.target.value }))
+            }
+            options={paymentSchedules.map((s) => ({
+              value: String(s.payment_schedule_id),
+              label: `${s.description} · ${s.daycount} días`,
+            }))}
+            error={empErrors.payment_schedule_id}
+            required
+          />
+        </>
       )}
-      <Input
-        label="ID jornada de pago"
-        type="number"
-        placeholder="1"
-        value={employee.payment_schedule_id}
-        onChange={(e) =>
-          setEmployee((p) => ({ ...p, payment_schedule_id: e.target.value }))
-        }
-        error={empErrors.payment_schedule_id}
-        required
-      />
     </div>
   );
 
@@ -540,26 +570,28 @@ export function NewUserModal({
         required
       />
       <div className="grid grid-cols-2 gap-4">
-        <Input
+        <Select
           label="Tipo de turno"
-          type="number"
-          placeholder="1"
           value={contract.turn_type}
           onChange={(e) =>
             setContract((p) => ({ ...p, turn_type: e.target.value }))
           }
+          options={TURN_TYPES}
           error={ctrErrors.turn_type}
           required
         />
-        <Input
-          label="ID de turno"
-          type="number"
-          placeholder="1"
+        <Select
+          label="Turno"
           value={contract.turn_id}
           onChange={(e) =>
             setContract((p) => ({ ...p, turn_id: e.target.value }))
           }
+          options={turns.map((t) => ({
+            value: String(t.turn_id),
+            label: `${t.entry.slice(0, 5)} - ${t.out.slice(0, 5)}`,
+          }))}
           error={ctrErrors.turn_id}
+          disabled={!employee.branch_id}
           required
         />
       </div>

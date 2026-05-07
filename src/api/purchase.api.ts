@@ -189,6 +189,28 @@ export const purchaseApi = {
     }>(res, "Error al registrar el pago");
   },
 
+  async updatePayment(
+    paymentId: string,
+    data: Partial<CreatePurchasePaymentRequest>,
+  ): Promise<{
+    payment_id: string;
+    purchase_account_payable: PurchaseAccountPayable;
+    order: PurchaseOrderDetail;
+  }> {
+    const res = await fetch(`${url}/purchase/payment/${paymentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+
+    return json<{
+      payment_id: string;
+      purchase_account_payable: PurchaseAccountPayable;
+      order: PurchaseOrderDetail;
+    }>(res, "Error al actualizar el pago");
+  },
+
   async getExchangeRate(fromCurrencyId: number): Promise<ExchangeRateResult | null> {
     const res = await fetch(`${url}/purchase/exchange-rate/${fromCurrencyId}`, {
       method: "GET",

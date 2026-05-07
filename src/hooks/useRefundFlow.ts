@@ -210,20 +210,29 @@ export function useRefundFlow({ initialReturns }: UseRefundFlowArgs) {
 
   const submitFull = async () => {
     if (!context) return;
+    if (!description.trim()) {
+      setToast({
+        mode: "error",
+        message: "La descripción del reembolso es obligatoria",
+      });
+      return;
+    }
     const confirmed = confirm(
-      "¿Confirma el reembolso completo? Se eliminarán los registros de factura digital" +
-        (context.sale.has_electronic_invoice ? " y electrónica" : "") +
-        " asociados a esta venta.",
+      "¿Confirma el reembolso completo? La venta quedará marcada como cancelada.",
     );
     if (!confirmed) return;
 
     setIsSubmitting(true);
     try {
-      const result = await processFullRefund(context.sale.sale_id);
+      const result = await processFullRefund(
+        context.sale.sale_id,
+        description.trim(),
+      );
       setToast({
         mode: "success",
-        message: result.message ?? "Factura(s) eliminada(s)",
+        message: result.message ?? "Reembolso completo registrado",
       });
+      setDescription("");
       clearSale();
       void refreshReturns();
     } catch (err) {

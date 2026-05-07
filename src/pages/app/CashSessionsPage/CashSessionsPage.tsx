@@ -28,7 +28,7 @@ import type {
 import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
 
-import { CashSessionDetailModal } from "./CashSessionDetailModal";
+import { CashSessionModal } from "./CashSessionModal";
 import { CashRegisterEditModal } from "./CashRegisterEditModal";
 
 type StatusFilter = "all" | "active" | "inactive";
@@ -97,7 +97,7 @@ export function CashSessionsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreatingRegister, setIsCreatingRegister] = useState(false);
 
-  const [selected, setSelected] = useState<CashRegisterSession | null>(null);
+  const [sessionModal, setSessionModal] = useState<CashRegisterSession | null>(null);
   const [toast, setToast] = useState<{
     mode: ToastMode;
     message: string;
@@ -494,6 +494,24 @@ export function CashSessionsPage() {
         <Badge variant={v ? "green" : "gray"}>{v ? "Activa" : "Cerrada"}</Badge>
       ),
     },
+    {
+      key: "actions",
+      label: "",
+      width: "8%",
+      render: (_: unknown, row: CashRegisterSession) =>
+        row.is_active ? null : (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Ver reporte de turno"
+              onClick={() => setSessionModal(row)}
+            >
+              <IconEye />
+            </Button>
+          </div>
+        ),
+    },
   ];
 
   return (
@@ -638,7 +656,7 @@ export function CashSessionsPage() {
             data={sessions}
             isLoading={isLoading}
             emptyMessage="No hay sesiones de caja registradas"
-            onRowClick={(row) => setSelected(row)}
+            onRowClick={(row) => setSessionModal(row)}
           />
         </div>
       </div>
@@ -760,10 +778,9 @@ export function CashSessionsPage() {
         </div>
       </div>
 
-      <CashSessionDetailModal
-        isOpen={selected !== null}
-        session={selected}
-        onClose={() => setSelected(null)}
+      <CashSessionModal
+        session={sessionModal}
+        onClose={() => setSessionModal(null)}
       />
 
       {editingRegister && (

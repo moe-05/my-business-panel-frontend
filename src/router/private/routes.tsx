@@ -32,6 +32,8 @@ import {
 import { getCashSessionsPageData } from "@/router/loaders/cashRegister.loaders";
 import { getRefundsPageData } from "@/router/loaders/returns.loaders";
 import { getPromotionsPageData } from "@/router/loaders/promotion.loaders";
+import { getPosExpensePageData } from "@/router/loaders/posExpense.loaders";
+import { getRoyaltiesPageData } from "@/router/loaders/royalties.loaders";
 import { getWarehousesPageData } from "@/router/loaders/warehouse.loaders";
 import { getInventoryPageData } from "@/router/loaders/inventory.loaders";
 import { getMovementsPageData } from "@/router/loaders/inventoryTransfer.loaders";
@@ -186,6 +188,26 @@ export const privateRoutes: RouteObject[] = [
                 "@/pages/app/PromotionsPage/PromotionsPage"
               );
               return { Component: PromotionsPage };
+            },
+          },
+          {
+            path: "pos/expenses",
+            loader: getPosExpensePageData,
+            lazy: async () => {
+              const { PosExpensePage } = await import(
+                "@/pages/app/PosExpensePage/PosExpensePage"
+              );
+              return { Component: PosExpensePage };
+            },
+          },
+          {
+            path: "pos/royalties",
+            loader: getRoyaltiesPageData,
+            lazy: async () => {
+              const { RoyaltiesPage } = await import(
+                "@/pages/app/RoyaltiesPage/RoyaltiesPage"
+              );
+              return { Component: RoyaltiesPage };
             },
           },
           {

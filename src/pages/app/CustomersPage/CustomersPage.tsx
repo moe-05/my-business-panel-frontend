@@ -86,6 +86,12 @@ export function CustomersPage() {
   // Re-fetch on search/filter/page changes (skip initial render — data from loader)
   const isFirstRender = useRef(true);
 
+  // Reset to first page when query or segment changes
+  useEffect(() => {
+    if (isFirstRender.current) return;
+    setPage(1);
+  }, [query, segment]);
+
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -107,19 +113,14 @@ export function CustomersPage() {
             query,
             page,
             CUSTOMERS_PAGE_LIMIT,
-          );
-        } else if (segment) {
-          result = await getCustomersBySegment(
-            tenantId,
             segment,
-            page,
-            CUSTOMERS_PAGE_LIMIT,
           );
         } else {
           result = await getCustomersByTenant(
             tenantId,
             page,
             CUSTOMERS_PAGE_LIMIT,
+            segment,
           );
         }
 

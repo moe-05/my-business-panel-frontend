@@ -289,7 +289,6 @@ export function AccountsPayablePage() {
         setSelectedMatching(matching);
       }
 
-      setToast({ mode: "success", message: "Abono registrado correctamente" });
       closePaymentModal();
     } catch (error) {
       setToast({
@@ -302,6 +301,63 @@ export function AccountsPayablePage() {
     } finally {
       setIsSubmittingPayment(false);
     }
+  };
+
+  const handleRegisterPaymentPanel = async (
+    payload: CreatePurchasePaymentRequest,
+  ) => {
+    const response = await purchaseApi.registerPayment(payload);
+
+    setPayables((prev) =>
+      prev.map((item) =>
+        item.purchase_account_payable_id ===
+        payload.purchase_account_payable_id
+          ? {
+              ...item,
+              ...response.purchase_account_payable,
+            }
+          : item,
+      ),
+    );
+
+    if (selectedOrder?.purchase_order_id === response.order.purchase_order_id) {
+      setSelectedOrder(response.order);
+      const matching = await purchaseApi.getMatching(
+        response.order.purchase_order_id,
+      ).catch(() => null);
+      if (matching) setSelectedMatching(matching);
+    }
+
+    setToast({ mode: "success", message: "Abono registrado correctamente" });
+  };
+
+  const handleUpdatePaymentPanel = async (
+    paymentId: string,
+    payload: Partial<CreatePurchasePaymentRequest>,
+  ) => {
+    const response = await purchaseApi.updatePayment(paymentId, payload);
+
+    setPayables((prev) =>
+      prev.map((item) =>
+        item.purchase_account_payable_id ===
+        response.purchase_account_payable.purchase_account_payable_id
+          ? {
+              ...item,
+              ...response.purchase_account_payable,
+            }
+          : item,
+      ),
+    );
+
+    if (selectedOrder?.purchase_order_id === response.order.purchase_order_id) {
+      setSelectedOrder(response.order);
+      const matching = await purchaseApi.getMatching(
+        response.order.purchase_order_id,
+      ).catch(() => null);
+      if (matching) setSelectedMatching(matching);
+    }
+
+    setToast({ mode: "success", message: "Abono actualizado correctamente" });
   };
 
   const selectedCurrency = catalogs.currencies?.find(
@@ -785,6 +841,9 @@ export function AccountsPayablePage() {
             order={selectedOrder}
             matching={selectedMatching}
             showTenant={isSuperuser}
+            paymentMethods={catalogs.payment_methods}
+            onRegisterPayment={handleRegisterPaymentPanel}
+            onUpdatePayment={handleUpdatePaymentPanel}
           />
         )}
       </Modal>

@@ -38,16 +38,19 @@ export const returnsApi = {
     return (json as ApiResponse<SaleRefundContext>).data;
   },
 
-  async deleteFullRefund(saleId: string): Promise<{
-    message: string;
-    digital_deleted: string | null;
-    electronic_deleted: string | null;
-  }> {
-    const response = await fetch(`${url}/returns/sale/${saleId}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-    });
+  async processFullRefund(
+    saleId: string,
+    description: string,
+  ): Promise<{ message: string; return_transaction_id: string }> {
+    const response = await fetch(
+      `${url}/returns/sale/${saleId}/full-refund`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ description }),
+      },
+    );
     const json = await response.json();
     if (!response.ok) {
       const message = Array.isArray(json?.message)
@@ -58,8 +61,7 @@ export const returnsApi = {
     return (
       (json as ApiResponse<{
         message: string;
-        digital_deleted: string | null;
-        electronic_deleted: string | null;
+        return_transaction_id: string;
       }>).data ?? json
     );
   },

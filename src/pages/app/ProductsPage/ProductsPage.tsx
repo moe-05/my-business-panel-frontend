@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useLoaderData } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -11,17 +11,31 @@ import {
 
 import type { ProductsPageLoaderData } from "@/router/loaders/product.loaders";
 
+import { productApi } from "@/api/product.api";
+import { productGroupTypeApi, productGroupApi } from "@/api/productGroup.api";
+import { tenantAttributeApi, attributeValueApi } from "@/api/attribute.api";
+
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { Table, Pagination } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Toast } from "@/components/ui/Toast";
+
 import { IconEdit, IconEye, IconPlus, IconTrash } from "@/assets/icons";
 
 import type { Product } from "@/interfaces/entities/Product.interface";
 import type { CreateProductRequest } from "@/interfaces/api/requests/CreateProductRequest.interface";
 import type { UpdateProductRequest } from "@/interfaces/api/requests/UpdateProductRequest.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
+import type {
+  TenantProductGroupType,
+  TenantProductGroup,
+} from "@/interfaces/entities/ProductGroup.interface";
+import type {
+  TenantAttribute,
+  AttributeValue,
+} from "@/interfaces/entities/Attribute.interface";
 
 import { ProductDetailModal } from "./ProductDetailModal";
 import { ProductUpsertModal } from "./ProductUpsertModal";
@@ -52,6 +66,9 @@ export function ProductsPage() {
 
   const isSuperAdmin = currentUser?.role.role_id === 1;
   const canManageProducts = isSuperAdmin || currentUser?.role.role_id === 2;
+  const tenantId = currentUser?.tenant.tenant_id ?? "";
+
+  // ─── Product list state ────────────────────────────────────────────────────
 
   const [products, setProducts] = useState<ProductWithVariant[]>(
     (initialProducts?.products ?? []) as ProductWithVariant[],
@@ -62,7 +79,37 @@ export function ProductsPage() {
       (initialProducts?.total ?? 0) / (initialProducts?.limit ?? LIMIT),
     ),
   );
-  const [total, setTotal] = useState(initialProducts?.total ?? 0);
+  const [, setTotal] = useState(initialProducts?.total ?? 0);
+
+  // ─── Local filter state (name/SKU, type, supplier text) ──────────────────
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "simple" | "composite">(
+    "all",
+  );
+  const [filterSupplierQuery, setFilterSupplierQuery] = useState<string>("");
+  const debouncedSupplierQuery = useDebounce(filterSupplierQuery, 300);
+
+  // ─── Backend filter state (MG1, MG2, MG3) ────────────────────────────────
+
+  // MG1 — dimension/group filter
+  const [groupTypes, setGroupTypes] = useState<TenantProductGroupType[]>([]);
+  const [groupsByType, setGroupsByType] = useState<
+    Record<string, TenantProductGroup[]>
+  >({});
+  const [filterDimensionTypeId, setFilterDimensionTypeId] = useState("");
+  const [filterGroupId, setFilterGroupId] = useState("");
+
+  // MG2 — attribute/value filter
+  const [attributes, setAttributes] = useState<TenantAttribute[]>([]);
+  const [attributeValues, setAttributeValues] = useState<AttributeValue[]>([]);
+  const [filterAttributeId, setFilterAttributeId] = useState("");
+  const [filterAttributeValueId, setFilterAttributeValueId] = useState("");
+
+  // MG3 — no supplier filter
+  const [filterNoSupplier, setFilterNoSupplier] = useState(false);
+
+  // ─── Modal / toast state ──────────────────────────────────────────────────
 
   const [selectedProduct, setSelectedProduct] =
     useState<ProductWithVariant | null>(null);
@@ -71,17 +118,100 @@ export function ProductsPage() {
     mode: "create",
   });
   const [isBulkPackageOpen, setIsBulkPackageOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "simple" | "composite">(
-    "all",
-  );
-  const [filterSupplierQuery, setFilterSupplierQuery] = useState<string>("");
-  const debouncedSupplierQuery = useDebounce(filterSupplierQuery, 300);
-
   const [toast, setToast] = useState<{
     mode: ToastMode;
     message: string;
   } | null>(null);
+
+  // ─── Load dimension types and attributes for non-superadmin ──────────────
+
+  useEffect(() => {
+    if (isSuperAdmin || !tenantId) return;
+
+    productGroupTypeApi
+      .listByTenant(tenantId)
+      .then(setGroupTypes)
+      .catch(() => {});
+
+    tenantAttributeApi
+      .listByTenant(tenantId)
+      .then(setAttributes)
+      .catch(() => {});
+  }, [tenantId, isSuperAdmin]);
+
+  // Load groups when a dimension type is selected
+  useEffect(() => {
+    if (!filterDimensionTypeId || !tenantId) {
+      setGroupsByType((prev) => {
+        const next = { ...prev };
+        delete next[filterDimensionTypeId];
+        return next;
+      });
+      setFilterGroupId("");
+      return;
+    }
+    if (groupsByType[filterDimensionTypeId]) return; // already cached
+    productGroupApi
+      .tree(tenantId, filterDimensionTypeId)
+      .then((groups) =>
+        setGroupsByType((prev) => ({
+          ...prev,
+          [filterDimensionTypeId]: groups,
+        })),
+      )
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterDimensionTypeId, tenantId]);
+
+  // Load attribute values when an attribute is selected
+  useEffect(() => {
+    setFilterAttributeValueId("");
+    setAttributeValues([]);
+    if (!filterAttributeId || !tenantId) return;
+    attributeValueApi
+      .listByAttribute(tenantId, filterAttributeId)
+      .then(setAttributeValues)
+      .catch(() => {});
+  }, [filterAttributeId, tenantId]);
+
+  // ─── Re-fetch from backend when MG1/MG2/MG3 filters change ──────────────
+
+  const fetchWithFilters = useCallback(
+    async (groupId: string, attrValueId: string, noSup: boolean) => {
+      if (isSuperAdmin || !tenantId) return;
+      try {
+        const data = await productApi.search(
+          tenantId,
+          "",
+          1,
+          LIMIT,
+          groupId ? [groupId] : undefined,
+          attrValueId ? [attrValueId] : undefined,
+          noSup || undefined,
+        );
+        setProducts(data.products as ProductWithVariant[]);
+        setTotal(data.total);
+      } catch {
+        // silently maintain current list on fetch error
+      }
+    },
+    [tenantId, isSuperAdmin],
+  );
+
+  useEffect(() => {
+    const hasBackendFilter =
+      filterGroupId || filterAttributeValueId || filterNoSupplier;
+    if (!hasBackendFilter) {
+      // Reset to the initial loader data when all backend filters are cleared
+      setProducts((initialProducts?.products ?? []) as ProductWithVariant[]);
+      setTotal(initialProducts?.total ?? 0);
+      return;
+    }
+    fetchWithFilters(filterGroupId, filterAttributeValueId, filterNoSupplier);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterGroupId, filterAttributeValueId, filterNoSupplier]);
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
 
   const getProductId = (p: ProductWithVariant) =>
     p.product_variant_id ?? p.product_id;
@@ -91,6 +221,8 @@ export function ProductsPage() {
 
   const getProductPrice = (p: ProductWithVariant) =>
     Number(p.unit_price ?? p.price ?? 0);
+
+  // ─── Local filtering (name/SKU, type, supplier text) ─────────────────────
 
   const getFilteredProducts = (): ProductWithVariant[] => {
     let filtered = [...products];
@@ -128,7 +260,7 @@ export function ProductsPage() {
 
   const filteredProducts = getFilteredProducts();
 
-  // ─── Handlers ───────────────────────────────────────────────────────────────
+  // ─── Handlers ─────────────────────────────────────────────────────────────
 
   const handleCreateProduct = async (
     data: CreateProductRequest,
@@ -180,7 +312,6 @@ export function ProductsPage() {
     data: UpdateProductRequest,
     meta?: { supplier_name?: string },
   ): Promise<void> => {
-    // Optimistic update: apply UI changes immediately and rollback on error
     let previousSnapshot: ProductWithVariant[] | undefined;
     setProducts((prev) => {
       previousSnapshot = prev;
@@ -189,7 +320,8 @@ export function ProductsPage() {
           ? {
               ...p,
               ...data,
-              // supplier_name is not in UpdateProductRequest, propagate from meta
+              // Normalize null → undefined for the ProductWithVariant type
+              supplier_id: data.supplier_id ?? undefined,
               supplier_name:
                 meta?.supplier_name !== undefined
                   ? meta.supplier_name
@@ -249,7 +381,20 @@ export function ProductsPage() {
 
   const closeModal = () => setUpsertModal({ open: false, mode: "create" });
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
+  const clearBackendFilters = () => {
+    setFilterDimensionTypeId("");
+    setFilterGroupId("");
+    setFilterAttributeId("");
+    setFilterAttributeValueId("");
+    setFilterNoSupplier(false);
+  };
+
+  const hasBackendFilters =
+    !!filterGroupId || !!filterAttributeValueId || filterNoSupplier;
+
+  const currentGroups = groupsByType[filterDimensionTypeId] ?? [];
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="p-6 lg:p-8">
@@ -275,6 +420,7 @@ export function ProductsPage() {
 
       {/* Search & Filters */}
       <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6 space-y-4">
+        {/* Row 1: text search + type + supplier text + action buttons */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:gap-4">
           <div className="flex-1 min-w-0">
             <Input
@@ -287,23 +433,22 @@ export function ProductsPage() {
           </div>
 
           <div className="w-full lg:w-48">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tipo de producto
-            </label>
-            <select
+            <Select
+              label="Tipo de producto"
               value={filterType}
               onChange={(e) =>
                 setFilterType(e.target.value as "all" | "simple" | "composite")
               }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Todos</option>
-              <option value="simple">Productos simples</option>
-              <option value="composite">Lotes</option>
-            </select>
+              options={[
+                { value: "all", label: "Todos" },
+                { value: "simple", label: "Productos simples" },
+                { value: "composite", label: "Lotes" },
+              ]}
+              placeholder="Seleccionar"
+            />
           </div>
 
-          <div className="w-full lg:w-48">
+          <div className="flex-1 lg:w-48">
             <Input
               label="Proveedor"
               placeholder="Buscar proveedor..."
@@ -314,9 +459,6 @@ export function ProductsPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500 whitespace-nowrap">
-              {filteredProducts.length} de {total}
-            </span>
             {canManageProducts && (
               <>
                 <Button
@@ -342,6 +484,120 @@ export function ProductsPage() {
             )}
           </div>
         </div>
+
+        {/* Row 2: backend filters (MG1, MG2, MG3) — solo para no-superadmin */}
+        {!isSuperAdmin && (
+          <div className="border-t border-gray-100 pt-4 space-y-3">
+            <div className="flex flex-wrap gap-4 items-end">
+              {/* MG1 — Dimensiones/familias */}
+              {groupTypes.length > 0 && (
+                <>
+                  <div className="w-56">
+                    <Select
+                      label="Dimensión"
+                      value={filterDimensionTypeId}
+                      onChange={(e) => {
+                        setFilterDimensionTypeId(e.target.value);
+                        setFilterGroupId("");
+                      }}
+                      placeholder="Todas las dimensiones"
+                      options={[
+                        { value: "", label: "Todas las dimensiones" },
+                        ...groupTypes.map((t) => ({
+                          value: t.tenant_product_group_type_id,
+                          label: t.type_name,
+                        })),
+                      ]}
+                    />
+                  </div>
+
+                  {filterDimensionTypeId && (
+                    <div className="w-52">
+                      <Select
+                        label="Familia / grupo"
+                        value={filterGroupId}
+                        onChange={(e) => setFilterGroupId(e.target.value)}
+                        placeholder="Todos los grupos"
+                        options={[
+                          { value: "", label: "Todos los grupos" },
+                          ...currentGroups.map((g) => ({
+                            value: g.tenant_product_group_id,
+                            label: `${"—".repeat(g.hierarchy_level ?? 0)} ${g.group_name}`,
+                          })),
+                        ]}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* MG2 — Atributos y valores */}
+              {attributes.length > 0 && (
+                <>
+                  <div className="w-48">
+                    <Select
+                      label="Atributo"
+                      value={filterAttributeId}
+                      onChange={(e) => setFilterAttributeId(e.target.value)}
+                      placeholder="Todos los atributos"
+                      options={[
+                        { value: "", label: "Todos los atributos" },
+                        ...attributes.map((a) => ({
+                          value: a.tenant_attribute_id,
+                          label: a.attribute_name,
+                        })),
+                      ]}
+                    />
+                  </div>
+
+                  {filterAttributeId && attributeValues.length > 0 && (
+                    <div className="w-48">
+                      <Select
+                        label="Valor"
+                        value={filterAttributeValueId}
+                        onChange={(e) =>
+                          setFilterAttributeValueId(e.target.value)
+                        }
+                        placeholder="Todos los valores"
+                        options={[
+                          { value: "", label: "Todos los valores" },
+                          ...attributeValues.map((v) => ({
+                            value: v.attribute_value_id,
+                            label: v.value,
+                          })),
+                        ]}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* MG3 — Sin proveedor */}
+              <div className="flex items-center gap-2 pb-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={filterNoSupplier}
+                    onChange={(e) => setFilterNoSupplier(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Sin proveedor
+                </label>
+              </div>
+
+              {/* Limpiar filtros backend */}
+              {hasBackendFilters && (
+                <button
+                  type="button"
+                  onClick={clearBackendFilters}
+                  className="text-xs text-blue-600 hover:underline pb-1"
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -461,7 +717,10 @@ export function ProductsPage() {
           data={filteredProducts}
           emptyMessage={
             filteredProducts.length === 0 &&
-            (searchQuery || filterType !== "all" || filterSupplierQuery)
+            (searchQuery ||
+              filterType !== "all" ||
+              filterSupplierQuery ||
+              hasBackendFilters)
               ? "No hay productos que coincidan con los filtros"
               : "No hay productos para mostrar"
           }
@@ -489,7 +748,7 @@ export function ProductsPage() {
         mode={upsertModal.mode}
         product={upsertModal.product}
         isSuperAdmin={isSuperAdmin}
-        currentTenantId={currentUser?.tenant.tenant_id ?? ""}
+        currentTenantId={tenantId}
         tenants={tenants}
         onClose={closeModal}
         onCreate={handleCreateProduct}
@@ -498,7 +757,7 @@ export function ProductsPage() {
 
       <BulkPackageModal
         isOpen={isBulkPackageOpen}
-        tenantId={currentUser?.tenant.tenant_id ?? ""}
+        tenantId={tenantId}
         onClose={() => setIsBulkPackageOpen(false)}
         onOptimisticCreate={(product) => {
           setProducts((prev) => [

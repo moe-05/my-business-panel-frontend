@@ -181,8 +181,9 @@ export function SaleContextPanel({
         />
       ) : (
         <FullRefundActions
-          context={context}
           isSubmitting={isSubmitting}
+          description={description}
+          onDescriptionChange={onDescriptionChange}
           onSubmit={onSubmitFull}
         />
       )}
@@ -307,41 +308,45 @@ function PartialRefundActions({
 }
 
 interface FullRefundActionsProps {
-  context: SaleRefundContext;
   isSubmitting: boolean;
+  description: string;
+  onDescriptionChange: (value: string) => void;
   onSubmit: () => void;
 }
 
 function FullRefundActions({
-  context,
   isSubmitting,
+  description,
+  onDescriptionChange,
   onSubmit,
 }: FullRefundActionsProps) {
-  const hasDigital = Boolean(context.digital_invoice);
-  const hasElectronic = Boolean(context.electronic_invoice);
-
   return (
-    <div className="border-t border-gray-200 pt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div className="text-sm text-gray-700">
-        <p className="font-semibold mb-1">Acción destructiva</p>
-        <p>
-          Se eliminarán las facturas asociadas a esta venta:
-          {hasDigital && " factura digital"}
-          {hasDigital && hasElectronic && " y"}
-          {hasElectronic && " factura electrónica"}.
-        </p>
+    <div className="border-t border-gray-200 pt-4 space-y-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-1">
+          Descripcion del reembolso <span className="text-red-500">*</span>
+        </label>
+        <textarea
+          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+          rows={3}
+          placeholder="Indique el motivo del reembolso completo..."
+          value={description}
+          onChange={(e) => onDescriptionChange(e.target.value)}
+        />
       </div>
-      <Button
-        type="button"
-        variant="danger"
-        size="lg"
-        loading={isSubmitting}
-        disabled={isSubmitting}
-        onClick={onSubmit}
-      >
-        <IconTrash />
-        Eliminar registros de factura
-      </Button>
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="danger"
+          size="lg"
+          loading={isSubmitting}
+          disabled={isSubmitting || !description.trim()}
+          onClick={onSubmit}
+        >
+          <IconTrash />
+          Registrar reembolso completo
+        </Button>
+      </div>
     </div>
   );
 }

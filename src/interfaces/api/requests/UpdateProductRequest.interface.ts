@@ -5,7 +5,7 @@ export interface UpdateProductRequest {
   price?: number;
   cost_price?: number;
   cabys_code?: string;
-  supplier_id?: string;
+  supplier_id?: string | null;
   giftable?: boolean;
   giftable_from?: number;
   attribute_value_ids?: string[];

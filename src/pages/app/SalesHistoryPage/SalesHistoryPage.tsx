@@ -197,8 +197,11 @@ export function SalesHistoryPage() {
       label: "Estado",
       width: "10%",
       render: (v: boolean, row: SaleListItem) => {
+        if (row.is_refunded) {
+          return <Badge variant="red">Cancelada</Badge>;
+        }
         if (row.return_transaction_id) {
-          return <Badge variant="red">Reembolsada</Badge>;
+          return <Badge variant="yellow">Reembolso parcial</Badge>;
         }
         return (
           <Badge variant={v ? "green" : "yellow"}>

@@ -33,6 +33,7 @@ import type {
 import type { HrAttendancePageLoaderData } from "@/router/loaders/hr.loaders";
 
 import { TurnEditorModal } from "./TurnEditorModal";
+import { ManualClockingModal } from "./ManualClockingModal";
 
 export function HRAttendancePage() {
   const { currentEmployee, branches, employees, turns: initialTurns } =
@@ -73,6 +74,8 @@ export function HRAttendancePage() {
   const [manualClockOutId, setManualClockOutId] = useState<number | null>(null);
   const [manualClockOutDatetime, setManualClockOutDatetime] = useState("");
   const [isSubmittingManualOut, setIsSubmittingManualOut] = useState(false);
+
+  const [manualClockingModalOpen, setManualClockingModalOpen] = useState(false);
 
   const branchName = branches.find(
     (branch) => branch.branch_id === selectedBranchId,
@@ -304,6 +307,44 @@ export function HRAttendancePage() {
       });
     } finally {
       setIsSubmittingManualOut(false);
+    }
+  };
+
+  const handleManualClockingSubmit = async (data: {
+    employeeId: string;
+    clockIn: string;
+    clockOut?: string;
+  }) => {
+    if (!selectedBranchId) return;
+
+    try {
+      const result = await clockingApi.manualClockIn({
+        employeeId: data.employeeId,
+        branchId: selectedBranchId,
+        clockIn: data.clockIn,
+      });
+
+      if (data.clockOut) {
+        await clockingApi.manualClockOut({
+          clockingId: result.clockingId,
+          clockOut: data.clockOut,
+        });
+      }
+
+      await loadBranchRecords(selectedBranchId);
+      setToast({
+        mode: "success",
+        message: "Asistencia manual registrada correctamente",
+      });
+    } catch (error) {
+      setToast({
+        mode: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "No se pudo registrar la asistencia manual",
+      });
+      throw error;
     }
   };
 
@@ -540,13 +581,22 @@ export function HRAttendancePage() {
         </div>
 
         <div className="rounded-2xl border border-gray-300 bg-white p-6">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Registros de clocking
-            </h2>
-            <p className="text-sm text-gray-500">
-              Historial de entradas y salidas generadas automáticamente.
-            </p>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Registros de clocking
+              </h2>
+              <p className="text-sm text-gray-500">
+                Historial de entradas y salidas generadas automáticamente.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => setManualClockingModalOpen(true)}
+            >
+              <IconPlus />
+              Registro manual
+            </Button>
           </div>
 
           <Table
@@ -558,39 +608,7 @@ export function HRAttendancePage() {
         </div>
       </div>
 
-      {/* Manual clock-in section */}
-      <div className="mb-6 rounded-2xl border border-gray-300 bg-white p-6">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Registro manual de asistencia</h2>
-          <p className="text-sm text-gray-500">
-            Ingrese entradas y salidas con fecha y hora específica.
-          </p>
-        </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Select
-            label="Empleado"
-            value={manualClockInEmployeeId}
-            onChange={(e) => setManualClockInEmployeeId(e.target.value)}
-            options={employeeOptions}
-          />
-          <Input
-            label="Fecha y hora de entrada"
-            type="datetime-local"
-            value={manualClockInDatetime}
-            onChange={(e) => setManualClockInDatetime(e.target.value)}
-          />
-          <div className="flex items-end">
-            <Button
-              className="w-full"
-              loading={isSubmittingManualIn}
-              onClick={handleManualClockIn}
-            >
-              Registrar entrada
-            </Button>
-          </div>
-        </div>
-      </div>
 
       <div className="rounded-2xl border border-gray-300 bg-white p-6">
         <div className="mb-4">
@@ -671,6 +689,13 @@ export function HRAttendancePage() {
           setSelectedTurn(null);
         }}
         onSubmit={handleTurnSubmit}
+      />
+
+      <ManualClockingModal
+        isOpen={manualClockingModalOpen}
+        employees={employeeOptions}
+        onClose={() => setManualClockingModalOpen(false)}
+        onSubmit={handleManualClockingSubmit}
       />
 
       <Modal
