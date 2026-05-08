@@ -1,8 +1,11 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useLoaderData, useNavigate, useNavigation } from "react-router-dom";
 
 import { useOnboarding } from "@/context/OnboardingContext";
+
+import { tenantApi } from "@/api/tenant.api";
+import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
 
 import { OnboardingLayout } from "@/components/layout/OnboardingLayout";
 import { Button } from "@/components/ui/Button";
@@ -36,7 +39,7 @@ export function SetupTenantPage() {
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    resolver: zodResolver(setupTenantSchema),
+    resolver: zodResolver(setupTenantSchema) as any,
     defaultValues: {
       tenantName: data.tenantName,
       identificationType: data.identificationType ?? 1,
@@ -65,7 +68,47 @@ export function SetupTenantPage() {
     (r) => String(r.region_id) === selectedRegionId,
   )?.country_code;
 
+  // Sondeos de unicidad. La constraint UNIQUE de la BD sigue siendo la
+  // fuente de verdad final — esto solo evita comprometer el flujo hasta
+  // el último paso.
+  const watchedTenantName = watch("tenantName") ?? "";
+  const watchedIdentification = watch("identification") ?? "";
+
+  const checkTenantName = useCallback(async (value: string) => {
+    const { exists } = await tenantApi.checkOnboardingAvailability({
+      field: "tenant_name",
+      value,
+    });
+    return exists;
+  }, []);
+
+  const checkIdentification = useCallback(async (value: string) => {
+    const { exists } = await tenantApi.checkOnboardingAvailability({
+      field: "tenant_identification",
+      value,
+    });
+    return exists;
+  }, []);
+
+  const tenantNameStatus = useUniqueAvailability(
+    watchedTenantName,
+    checkTenantName,
+    { minLength: 2 },
+  );
+
+  const identificationStatus = useUniqueAvailability(
+    watchedIdentification,
+    checkIdentification,
+    { minLength: 4 },
+  );
+
+  const uniquenessBlocked =
+    tenantNameStatus === "taken" || identificationStatus === "taken";
+  const uniquenessProbing =
+    tenantNameStatus === "checking" || identificationStatus === "checking";
+
   const onSubmit = async (values: FormValues) => {
+    if (uniquenessBlocked || uniquenessProbing) return;
     setStep2({
       tenantName: values.tenantName,
       contactPhone: values.contactPhone,
@@ -134,7 +177,19 @@ export function SetupTenantPage() {
             label="Nombre de la empresa"
             placeholder="Mi Empresa S.A."
             required
-            error={errors.tenantName?.message}
+            error={
+              errors.tenantName?.message ??
+              (tenantNameStatus === "taken"
+                ? "Ya existe una empresa registrada con este nombre."
+                : undefined)
+            }
+            hint={
+              tenantNameStatus === "checking"
+                ? "Verificando disponibilidad…"
+                : tenantNameStatus === "available"
+                  ? "Nombre disponible"
+                  : undefined
+            }
             {...register("tenantName")}
           />
 
@@ -168,17 +223,26 @@ export function SetupTenantPage() {
             }))}
             error={errors.identificationType?.message}
             hint={loadingRegions ? "Cargando regiones..." : undefined}
-            {...register("identificationType", {
-              setValueAs: (value) => Number(value),
-            })}
+            {...register("identificationType")}
           />
 
           <Input
             label="Identificación fiscal"
             placeholder="3140002575"
             required
-            error={errors.identification?.message}
-            hint="Identificación tributaria (máx. 12 caracteres)"
+            error={
+              errors.identification?.message ??
+              (identificationStatus === "taken"
+                ? "Ya existe una empresa registrada con esta identificación."
+                : undefined)
+            }
+            hint={
+              identificationStatus === "checking"
+                ? "Verificando disponibilidad…"
+                : identificationStatus === "available"
+                  ? "Identificación disponible"
+                  : "Identificación tributaria (máx. 12 caracteres)"
+            }
             {...register("identification")}
           />
 
@@ -253,6 +317,14 @@ export function SetupTenantPage() {
               loading={isSubmitting || loadingRegions}
               size="lg"
               className="flex-2"
+              disabled={uniquenessBlocked || uniquenessProbing}
+              title={
+                uniquenessBlocked
+                  ? "Hay datos duplicados que deben corregirse"
+                  : uniquenessProbing
+                    ? "Verificando disponibilidad…"
+                    : undefined
+              }
             >
               Continuar
               <svg

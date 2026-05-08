@@ -1,16 +1,24 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
 import { branchApi } from "@/api/branch.api";
+import { employeeApi } from "@/api/employee.api";
+import { userApi } from "@/api/user.api";
+
+import { contractApi } from "@/api/contract.api";
+import { turnsApi } from "@/api/turns.api";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/Modal";
 
+import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
+
 import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type { NewUserModalProps } from "@/interfaces/components/ui/NewUserModalProps.interface";
 import type { CreateUserRequest } from "@/interfaces/api/requests/CreateUserRequest.interface";
+import type { HrPaymentSchedule, HrTurn } from "@/interfaces/entities/Hr.interface";
 
 import { capitalize } from "@/utils/capitalize";
 import {
@@ -19,6 +27,13 @@ import {
   employeeSchema,
 } from "./newUser.schema";
 import { StepIndicator } from "../../../components/ui/StepIndicator";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const TURN_TYPES = [
+  { value: "1", label: "Rotativo" },
+  { value: "2", label: "Fijo" },
+];
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
@@ -34,10 +49,11 @@ const INITIAL_EMPLOYEE: EmployeeFields = {
   first_name: "",
   last_name: "",
   document_number: "",
+  identification_type_id: 1,
   phone: "",
   employee_email: "",
   branch_id: "",
-  payment_schedule_id: "1",
+  payment_schedule_id: "",
 };
 
 const INITIAL_CONTRACT: ContractFields = {
@@ -47,7 +63,7 @@ const INITIAL_CONTRACT: ContractFields = {
   base_salary: "0",
   duties: "",
   turn_type: "1",
-  turn_id: "1",
+  turn_id: "",
 };
 
 const INITIAL_ACCOUNT: AccountFields = {
@@ -93,22 +109,39 @@ export function NewUserModal({
   const [ctrErrors, setCtrErrors] = useState<ContractErrors>({});
   const [accErrors, setAccErrors] = useState<AccountErrors>({});
 
-  // Branches
+  // Reference data
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [paymentSchedules, setPaymentSchedules] = useState<HrPaymentSchedule[]>([]);
+  const [turns, setTurns] = useState<HrTurn[]>([]);
 
   const availableRoles = roles.filter((r) => r.role_id !== 1);
 
-  // Load branches when modal opens
+  // Load basic reference data when modal opens
   useEffect(() => {
     if (!isOpen || !tenantId) return;
+
     setIsLoadingBranches(true);
-    branchApi
-      .listByTenant(tenantId)
-      .then((res) => setBranches(res.branches))
+    Promise.all([
+      branchApi.listByTenant(tenantId),
+      contractApi.getPaymentSchedules(),
+    ])
+      .then(([branchRes, schedules]) => {
+        setBranches(branchRes.branches);
+        setPaymentSchedules(schedules);
+      })
       .catch(console.error)
       .finally(() => setIsLoadingBranches(false));
   }, [isOpen, tenantId]);
+
+  // Load turns when branch changes
+  useEffect(() => {
+    if (!employee.branch_id) {
+      setTurns([]);
+      return;
+    }
+    turnsApi.listByBranch(employee.branch_id).then(setTurns).catch(console.error);
+  }, [employee.branch_id]);
 
   // Reset on close
   useEffect(() => {
@@ -172,12 +205,122 @@ export function NewUserModal({
     return false;
   };
 
+  // ── Uniqueness probes ─────────────────────────────────────────────────────────
+
+  const checkEmployeeDoc = useCallback(
+    async (value: string) => {
+      const { exists } = await employeeApi.checkAvailability({
+        field: "doc_number",
+        value,
+      });
+      return exists;
+    },
+    [],
+  );
+
+  const checkEmployeePhone = useCallback(
+    async (value: string) => {
+      if (!tenantId) return false;
+      const { exists } = await employeeApi.checkAvailability({
+        field: "phone",
+        value,
+        tenantId,
+      });
+      return exists;
+    },
+    [tenantId],
+  );
+
+  const checkEmployeeEmail = useCallback(
+    async (value: string) => {
+      const [employeeProbe, userProbe] = await Promise.all([
+        employeeApi.checkAvailability({ field: "email", value }),
+        userApi.checkEmailAvailability(value),
+      ]);
+      return employeeProbe.exists || userProbe.exists;
+    },
+    [],
+  );
+
+  const checkAccountEmail = useCallback(
+    async (value: string) => {
+      const { exists } = await userApi.checkEmailAvailability(value);
+      return exists;
+    },
+    [],
+  );
+
+  const docStatus = useUniqueAvailability(
+    employee.document_number,
+    checkEmployeeDoc,
+    {
+      skip: isSystemUser,
+      minLength: 3,
+    },
+  );
+
+  const empPhoneStatus = useUniqueAvailability(
+    employee.phone,
+    checkEmployeePhone,
+    {
+      skip: isSystemUser || !tenantId,
+      minLength: 5,
+    },
+  );
+
+  const empEmailStatus = useUniqueAvailability(
+    employee.employee_email,
+    checkEmployeeEmail,
+    {
+      skip: isSystemUser,
+      minLength: 5,
+      isWellFormed: (value) => EMAIL_REGEX.test(value),
+    },
+  );
+
+  const accountEmailStatus = useUniqueAvailability(
+    account.email,
+    checkAccountEmail,
+    {
+      // System users only have an account email; for employees we already
+      // probe employee_email, which (when it differs) is the unique key on
+      // the users.email column.
+      skip: !account.email,
+      minLength: 5,
+      isWellFormed: (value) => EMAIL_REGEX.test(value),
+    },
+  );
+
+  const employeeStepBlocked = useMemo(() => {
+    if (isSystemUser) return false;
+    return (
+      docStatus === "taken" ||
+      empPhoneStatus === "taken" ||
+      empEmailStatus === "taken"
+    );
+  }, [docStatus, empEmailStatus, empPhoneStatus, isSystemUser]);
+
+  const employeeStepProbing = useMemo(() => {
+    if (isSystemUser) return false;
+    return (
+      docStatus === "checking" ||
+      empPhoneStatus === "checking" ||
+      empEmailStatus === "checking"
+    );
+  }, [docStatus, empEmailStatus, empPhoneStatus, isSystemUser]);
+
+  const accountStepBlocked = accountEmailStatus === "taken";
+  const accountStepProbing = accountEmailStatus === "checking";
+
   // ── Navigation ────────────────────────────────────────────────────────────────
 
   const totalSteps = isSystemUser ? 1 : 3;
 
   const handleNext = () => {
-    if (step === 1 && !isSystemUser && !validateEmployee()) return;
+    if (step === 1 && !isSystemUser) {
+      if (!validateEmployee()) return;
+      if (employeeStepBlocked) return;
+    }
     if (step === 2 && !validateContract()) return;
     setStep((s) => Math.min(s + 1, totalSteps) as 1 | 2 | 3);
   };
@@ -188,6 +331,8 @@ export function NewUserModal({
 
   const handleSubmit = () => {
     if (!validateAccount()) return;
+    if (accountStepBlocked) return;
+    if (!isSystemUser && employeeStepBlocked) return;
 
     const payload: CreateUserRequest = {
       tenant_id: tenantId,
@@ -202,7 +347,8 @@ export function NewUserModal({
         branch_id: employee.branch_id,
         first_name: employee.first_name,
         last_name: employee.last_name,
-        document_number: employee.document_number,
+        doc_number: employee.document_number,
+        identification_type_id: Number(employee.identification_type_id),
         phone: employee.phone,
         email: employee.employee_email,
         payment_schedule_id: Number(employee.payment_schedule_id),
@@ -267,7 +413,19 @@ export function NewUserModal({
           onChange={(e) =>
             setEmployee((p) => ({ ...p, document_number: e.target.value }))
           }
-          error={empErrors.document_number}
+          error={
+            empErrors.document_number ??
+            (docStatus === "taken"
+              ? "Ya existe un empleado con este documento"
+              : undefined)
+          }
+          hint={
+            docStatus === "checking"
+              ? "Verificando disponibilidad…"
+              : docStatus === "available"
+                ? "Documento disponible"
+                : undefined
+          }
           required
         />
         <Input
@@ -277,7 +435,19 @@ export function NewUserModal({
           onChange={(e) =>
             setEmployee((p) => ({ ...p, phone: e.target.value }))
           }
-          error={empErrors.phone}
+          error={
+            empErrors.phone ??
+            (empPhoneStatus === "taken"
+              ? "Ya existe un empleado con este teléfono"
+              : undefined)
+          }
+          hint={
+            empPhoneStatus === "checking"
+              ? "Verificando disponibilidad…"
+              : empPhoneStatus === "available"
+                ? "Teléfono disponible"
+                : undefined
+          }
           required
         />
       </div>
@@ -289,41 +459,57 @@ export function NewUserModal({
         onChange={(e) =>
           setEmployee((p) => ({ ...p, employee_email: e.target.value }))
         }
-        error={empErrors.employee_email}
+        error={
+          empErrors.employee_email ??
+          (empEmailStatus === "taken"
+            ? "Ya existe un empleado o usuario con este email"
+            : undefined)
+        }
+        hint={
+          empEmailStatus === "checking"
+            ? "Verificando disponibilidad…"
+            : empEmailStatus === "available"
+              ? "Email disponible"
+              : undefined
+        }
         required
         autoComplete="email"
       />
       {isLoadingBranches ? (
         <div className="flex items-center gap-2 py-2 text-sm text-gray-500">
           <span className="w-4 h-4 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
-          Cargando sucursales…
+          Cargando datos…
         </div>
       ) : (
-        <Select
-          label="Sucursal"
-          value={employee.branch_id}
-          onChange={(e) =>
-            setEmployee((p) => ({ ...p, branch_id: e.target.value }))
-          }
-          options={branches.map((b) => ({
-            value: b.branch_id,
-            label: b.branch_name,
-          }))}
-          error={empErrors.branch_id}
-          required
-        />
+        <>
+          <Select
+            label="Sucursal"
+            value={employee.branch_id}
+            onChange={(e) =>
+              setEmployee((p) => ({ ...p, branch_id: e.target.value }))
+            }
+            options={branches.map((b) => ({
+              value: b.branch_id,
+              label: b.branch_name,
+            }))}
+            error={empErrors.branch_id}
+            required
+          />
+          <Select
+            label="Jornada de pago"
+            value={employee.payment_schedule_id}
+            onChange={(e) =>
+              setEmployee((p) => ({ ...p, payment_schedule_id: e.target.value }))
+            }
+            options={paymentSchedules.map((s) => ({
+              value: String(s.payment_schedule_id),
+              label: `${s.description} · ${s.daycount} días`,
+            }))}
+            error={empErrors.payment_schedule_id}
+            required
+          />
+        </>
       )}
-      <Input
-        label="ID jornada de pago"
-        type="number"
-        placeholder="1"
-        value={employee.payment_schedule_id}
-        onChange={(e) =>
-          setEmployee((p) => ({ ...p, payment_schedule_id: e.target.value }))
-        }
-        error={empErrors.payment_schedule_id}
-        required
-      />
     </div>
   );
 
@@ -384,26 +570,28 @@ export function NewUserModal({
         required
       />
       <div className="grid grid-cols-2 gap-4">
-        <Input
+        <Select
           label="Tipo de turno"
-          type="number"
-          placeholder="1"
           value={contract.turn_type}
           onChange={(e) =>
             setContract((p) => ({ ...p, turn_type: e.target.value }))
           }
+          options={TURN_TYPES}
           error={ctrErrors.turn_type}
           required
         />
-        <Input
-          label="ID de turno"
-          type="number"
-          placeholder="1"
+        <Select
+          label="Turno"
           value={contract.turn_id}
           onChange={(e) =>
             setContract((p) => ({ ...p, turn_id: e.target.value }))
           }
+          options={turns.map((t) => ({
+            value: String(t.turn_id),
+            label: `${t.entry.slice(0, 5)} - ${t.out.slice(0, 5)}`,
+          }))}
           error={ctrErrors.turn_id}
+          disabled={!employee.branch_id}
           required
         />
       </div>
@@ -418,7 +606,19 @@ export function NewUserModal({
         placeholder="usuario@empresa.com"
         value={account.email}
         onChange={(e) => handleAccountEmailChange(e.target.value)}
-        error={accErrors.email}
+        error={
+          accErrors.email ??
+          (accountEmailStatus === "taken"
+            ? "Ya existe un usuario con este email"
+            : undefined)
+        }
+        hint={
+          accountEmailStatus === "checking"
+            ? "Verificando disponibilidad…"
+            : accountEmailStatus === "available"
+              ? "Email disponible"
+              : undefined
+        }
         required
       />
       {isLoadingRoles ? (
@@ -537,7 +737,15 @@ export function NewUserModal({
         <div className="flex-1" />
 
         {step < totalSteps ? (
-          <Button type="button" variant="primary" onClick={handleNext}>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={handleNext}
+            disabled={
+              (step === 1 &&
+                (employeeStepBlocked || employeeStepProbing))
+            }
+          >
             Siguiente
             <svg
               width="16"
@@ -552,7 +760,16 @@ export function NewUserModal({
             </svg>
           </Button>
         ) : (
-          <Button type="button" variant="primary" onClick={handleSubmit}>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={
+              accountStepBlocked ||
+              accountStepProbing ||
+              (!isSystemUser && (employeeStepBlocked || employeeStepProbing))
+            }
+          >
             Crear Usuario
             <svg
               width="16"

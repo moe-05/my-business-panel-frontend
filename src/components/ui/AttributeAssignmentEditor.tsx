@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AttributeComboBox } from "./AttributeComboBox";
 import { attributeValueApi } from "@/api/attribute.api";
 import type { AttributeValue } from "@/interfaces/entities/Attribute.interface";
+import { Button } from "./Button";
 
 export interface AttributeAssignmentRow {
   /** Always a tenant_attribute_id once selected. */
@@ -72,9 +73,7 @@ export function AttributeAssignmentEditor({
   return (
     <div className="space-y-3">
       {rows.length === 0 && (
-        <p className="text-xs text-gray-500">
-          Aún no hay atributos asignados.
-        </p>
+        <p className="text-xs text-gray-500">Aún no hay atributos asignados.</p>
       )}
 
       {rows.map((row, index) => (
@@ -131,14 +130,13 @@ export function AttributeAssignmentEditor({
         </div>
       ))}
 
-      <button
-        type="button"
+      <Button
         onClick={handleAddRow}
         disabled={disabled}
         className="text-sm text-accent-600 hover:text-accent-700 font-medium"
       >
         + Agregar atributo
-      </button>
+      </Button>
     </div>
   );
 }

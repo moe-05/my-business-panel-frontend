@@ -30,6 +30,20 @@ export interface PromotionRule {
   min_purchase_amount?: number | null;
 }
 
+export type PromotionTargetType = "VARIANT" | "GROUP";
+
+export interface PromotionTarget {
+  promotion_target_id?: string;
+  target_type: PromotionTargetType;
+  target_product_variant_id?: string | null;
+  target_group_id?: string | null;
+}
+
+export interface PromotionTargetInput {
+  target_type: PromotionTargetType;
+  target_id: string;
+}
+
 export interface Promotion {
   promotion_id: string;
   tenant_id?: string;
@@ -38,13 +52,17 @@ export interface Promotion {
   promotion_description?: string | null;
   promotion_type_id?: number;
   type_name: PromotionTypeName;
-  customer_segment_id?: number | null;
-  segment_name?: string | null;
+  is_universal?: boolean;
+  customer_segment_ids?: number[];
+  segment_names?: string[];
   promotion_start_date: string;
   promotion_end_date: string;
   is_active: boolean;
+  is_default?: boolean;
+  is_stackable?: boolean;
   rule?: PromotionRule;
   rules?: PromotionRule[];
+  targets?: PromotionTarget[];
   created_at?: string;
   updated_at?: string;
 }

@@ -13,7 +13,7 @@ export interface HrEmployeeRecord {
   contract_id: string;
   first_name: string;
   last_name: string;
-  document_number: string;
+  doc_number: string;
   phone: string;
   email: string;
   payment_schedule_id: number;
@@ -187,6 +187,17 @@ export interface CreateHrClockInPayload {
   branchId: string;
 }
 
+export interface ManualClockInPayload {
+  employeeId: string;
+  branchId: string;
+  clockIn: string;
+}
+
+export interface ManualClockOutPayload {
+  clockingId: number;
+  clockOut: string;
+}
+
 export interface CreateHrFoulPayload {
   employee_id: string;
   branch_id: string;
@@ -202,6 +213,12 @@ export interface CreateHrSuspentionPayload {
   suspentionEnd: string;
   reason: string;
   branchId: string;
+}
+
+export interface UpdateHrSuspentionPayload {
+  suspentionStart?: string;
+  suspentionEnd?: string;
+  reason?: string;
 }
 
 export interface CreateHrIncapacityPayload {

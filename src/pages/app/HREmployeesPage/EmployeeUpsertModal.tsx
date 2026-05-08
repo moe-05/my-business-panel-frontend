@@ -1,10 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
+
+import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
+
+import { employeeApi } from "@/api/employee.api";
+import { userApi } from "@/api/user.api";
+
+import { identificationTypes } from "@/constants/identification-types";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type { Role } from "@/interfaces/entities/Role.interface";
@@ -38,6 +47,7 @@ const EMPTY_EMPLOYEE: EmployeeFields = {
   first_name: "",
   last_name: "",
   document_number: "",
+  identification_type_id: 1,
   phone: "",
   employee_email: "",
   branch_id: "",
@@ -154,7 +164,10 @@ export function EmployeeUpsertModal({
     setEmployeeData({
       first_name: employee.first_name,
       last_name: employee.last_name,
-      document_number: employee.document_number,
+      document_number: employee.doc_number,
+      identification_type_id:
+        (employee as HrEmployeeRecord & { identification_type_id?: number })
+          .identification_type_id ?? 1,
       phone: employee.phone,
       employee_email: employee.email,
       branch_id: employee.branch_id,
@@ -191,6 +204,103 @@ export function EmployeeUpsertModal({
   }, [branchTurns, contractData.turn_id]);
 
   const availableRoles = roles.filter((role) => role.role_id !== 1);
+
+  // ── Uniqueness probes ─────────────────────────────────────────────────────
+  // Edits exclude the current employee's id so the row's existing values
+  // don't flag themselves.
+  const excludeEmployeeId = !isCreate ? employee?.employee_id : undefined;
+
+  const checkDoc = useCallback(
+    async (value: string) => {
+      const { exists } = await employeeApi.checkAvailability({
+        field: "doc_number",
+        value,
+        excludeId: excludeEmployeeId,
+      });
+      return exists;
+    },
+    [excludeEmployeeId],
+  );
+
+  const checkPhone = useCallback(
+    async (value: string) => {
+      if (!tenantId) return false;
+      const { exists } = await employeeApi.checkAvailability({
+        field: "phone",
+        value,
+        tenantId,
+        excludeId: excludeEmployeeId,
+      });
+      return exists;
+    },
+    [tenantId, excludeEmployeeId],
+  );
+
+  const checkEmployeeEmail = useCallback(
+    async (value: string) => {
+      const [employeeProbe, userProbe] = await Promise.all([
+        employeeApi.checkAvailability({
+          field: "email",
+          value,
+          excludeId: excludeEmployeeId,
+        }),
+        // Account email collides with users.email globally; in edit mode we
+        // can't easily exclude the linked user, so skip the user probe then.
+        isCreate
+          ? userApi.checkEmailAvailability(value)
+          : Promise.resolve({ exists: false }),
+      ]);
+      return employeeProbe.exists || userProbe.exists;
+    },
+    [excludeEmployeeId, isCreate],
+  );
+
+  const checkAccountEmail = useCallback(async (value: string) => {
+    const { exists } = await userApi.checkEmailAvailability(value);
+    return exists;
+  }, []);
+
+  const docStatus = useUniqueAvailability(
+    employeeData.document_number,
+    checkDoc,
+    { minLength: 3 },
+  );
+
+  const phoneStatus = useUniqueAvailability(employeeData.phone, checkPhone, {
+    skip: !tenantId,
+    minLength: 5,
+  });
+
+  const employeeEmailStatus = useUniqueAvailability(
+    employeeData.employee_email,
+    checkEmployeeEmail,
+    {
+      minLength: 5,
+      isWellFormed: (value) => EMAIL_REGEX.test(value),
+    },
+  );
+
+  const accountEmailStatus = useUniqueAvailability(
+    accountData.email,
+    checkAccountEmail,
+    {
+      skip: !isCreate || !accountData.email,
+      minLength: 5,
+      isWellFormed: (value) => EMAIL_REGEX.test(value),
+    },
+  );
+
+  const uniquenessBlocked =
+    docStatus === "taken" ||
+    phoneStatus === "taken" ||
+    employeeEmailStatus === "taken" ||
+    accountEmailStatus === "taken";
+
+  const uniquenessProbing =
+    docStatus === "checking" ||
+    phoneStatus === "checking" ||
+    employeeEmailStatus === "checking" ||
+    accountEmailStatus === "checking";
 
   const validateEmployee = () => {
     const result = employeeSchema.safeParse(employeeData);
@@ -236,6 +346,10 @@ export function EmployeeUpsertModal({
       return;
     }
 
+    if (uniquenessBlocked || uniquenessProbing) {
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -250,7 +364,8 @@ export function EmployeeUpsertModal({
             branch_id: employeeData.branch_id,
             first_name: employeeData.first_name,
             last_name: employeeData.last_name,
-            document_number: employeeData.document_number,
+            doc_number: employeeData.document_number,
+            identification_type_id: Number(employeeData.identification_type_id),
             phone: employeeData.phone,
             email: employeeData.employee_email,
             payment_schedule_id: Number(employeeData.payment_schedule_id),
@@ -270,7 +385,8 @@ export function EmployeeUpsertModal({
           employee: {
             first_name: employeeData.first_name,
             last_name: employeeData.last_name,
-            document_number: employeeData.document_number,
+            doc_number: employeeData.document_number,
+            identification_type_id: Number(employeeData.identification_type_id),
             phone: employeeData.phone,
             email: employeeData.employee_email,
             payment_schedule_id: Number(employeeData.payment_schedule_id),
@@ -335,6 +451,22 @@ export function EmployeeUpsertModal({
               error={employeeErrors.last_name}
               required
             />
+            <Select
+              label="Tipo de documento"
+              value={String(employeeData.identification_type_id)}
+              onChange={(event) =>
+                setEmployeeData((prev) => ({
+                  ...prev,
+                  identification_type_id: Number(event.target.value),
+                }))
+              }
+              options={identificationTypes.map((type) => ({
+                value: String(type.value),
+                label: type.label,
+              }))}
+              error={employeeErrors.identification_type_id}
+              required
+            />
             <Input
               label="Documento"
               value={employeeData.document_number}
@@ -344,7 +476,19 @@ export function EmployeeUpsertModal({
                   document_number: event.target.value,
                 }))
               }
-              error={employeeErrors.document_number}
+              error={
+                employeeErrors.document_number ??
+                (docStatus === "taken"
+                  ? "Ya existe un empleado con este documento"
+                  : undefined)
+              }
+              hint={
+                docStatus === "checking"
+                  ? "Verificando disponibilidad…"
+                  : docStatus === "available"
+                    ? "Documento disponible"
+                    : undefined
+              }
               required
             />
             <Input
@@ -356,7 +500,19 @@ export function EmployeeUpsertModal({
                   phone: event.target.value,
                 }))
               }
-              error={employeeErrors.phone}
+              error={
+                employeeErrors.phone ??
+                (phoneStatus === "taken"
+                  ? "Ya existe un empleado con este teléfono"
+                  : undefined)
+              }
+              hint={
+                phoneStatus === "checking"
+                  ? "Verificando disponibilidad…"
+                  : phoneStatus === "available"
+                    ? "Teléfono disponible"
+                    : undefined
+              }
               required
             />
             <Input
@@ -374,7 +530,19 @@ export function EmployeeUpsertModal({
                   setAccountData((prev) => ({ ...prev, email: nextEmail }));
                 }
               }}
-              error={employeeErrors.employee_email}
+              error={
+                employeeErrors.employee_email ??
+                (employeeEmailStatus === "taken"
+                  ? "Ya existe un empleado o usuario con este email"
+                  : undefined)
+              }
+              hint={
+                employeeEmailStatus === "checking"
+                  ? "Verificando disponibilidad…"
+                  : employeeEmailStatus === "available"
+                    ? "Email disponible"
+                    : undefined
+              }
               required
             />
             <Select
@@ -549,7 +717,19 @@ export function EmployeeUpsertModal({
                     email: event.target.value,
                   }))
                 }
-                error={accountErrors.email}
+                error={
+                  accountErrors.email ??
+                  (accountEmailStatus === "taken"
+                    ? "Ya existe un usuario con este email"
+                    : undefined)
+                }
+                hint={
+                  accountEmailStatus === "checking"
+                    ? "Verificando disponibilidad…"
+                    : accountEmailStatus === "available"
+                      ? "Email disponible"
+                      : undefined
+                }
                 required
               />
               <Select
@@ -607,7 +787,19 @@ export function EmployeeUpsertModal({
           >
             Cancelar
           </Button>
-          <Button type="button" onClick={handleSubmit} loading={isSubmitting}>
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            loading={isSubmitting}
+            disabled={uniquenessBlocked || uniquenessProbing}
+            title={
+              uniquenessBlocked
+                ? "Hay campos duplicados que deben corregirse"
+                : uniquenessProbing
+                  ? "Verificando disponibilidad…"
+                  : undefined
+            }
+          >
             {isCreate ? "Crear empleado" : "Guardar cambios"}
           </Button>
         </div>

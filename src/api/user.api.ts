@@ -168,6 +168,28 @@ export const userApi = {
     }
   },
 
+  async checkEmailAvailability(
+    email: string,
+    excludeId?: string,
+  ): Promise<{ exists: boolean }> {
+    const search = new URLSearchParams({ email });
+    if (excludeId) search.set("exclude_id", excludeId);
+
+    const response = await fetch(
+      `${url}/user/availability?${search.toString()}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+
+    if (!response.ok) return { exists: false };
+
+    const json: ApiResponse<{ exists: boolean }> = await response.json();
+    return json.data ?? { exists: false };
+  },
+
   async getRoles(): Promise<Role[]> {
     try {
       const response = await fetch(`${url}/user/roles`, {

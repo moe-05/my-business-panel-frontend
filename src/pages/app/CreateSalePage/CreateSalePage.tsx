@@ -25,25 +25,51 @@ import {
 } from "@/assets/icons";
 
 import { createCustomer } from "@/router/actions/customer.actions";
-import { createFullSale } from "@/router/actions/sale.actions";
+import {
+  createFullSale,
+  getDigitalInvoiceForSale,
+} from "@/router/actions/sale.actions";
 import {
   getCashRegistersByBranch,
   getOpenCashSessionsByBranch,
 } from "@/router/actions/cashRegister.actions";
 
+import { customerApi } from "@/api/customer.api";
+import { employeeApi } from "@/api/employee.api";
+import { exchangeRateApi } from "@/api/exchangeRate.api";
+import { productApi } from "@/api/product.api";
+import { warehouseApi } from "@/api/warehouse.api";
+import { promotionApi } from "@/api/promotion.api";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
+import {
+  calculatePromotionDiscount,
+  isPromotionWithinDate,
+  promotionAppliesToItem,
+} from "@/utils/promotion";
+
 import { identificationTypes } from "@/constants/identification-types";
 import { paymentMethods, currencies } from "@/constants/payment-methods";
 
+import type { Promotion } from "@/interfaces/entities/Promotion.interface";
+import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
+import type { CustomerDetail } from "@/interfaces/entities/CustomerDetail.interface";
+
 import type { CreateSalePageLoaderData } from "@/router/loaders/sale.loaders";
 import type { Customer } from "@/interfaces/entities/Customer.interface";
-import type { CashRegister } from "@/interfaces/entities/CashRegister.interface";
+import type {
+  CashRegister,
+  CashRegisterSession,
+} from "@/interfaces/entities/CashRegister.interface";
 import type { CreateSaleRequest } from "@/interfaces/api/requests/CreateSaleRequest.interface";
 import type {
   SaleItemPayload,
   CreateSaleResult,
+  DigitalInvoiceInfo,
 } from "@/interfaces/entities/Sale.interface";
 import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
+import type { Warehouse } from "@/interfaces/entities/Warehouse.interface";
 
 import {
   customerLookupSchema,
@@ -54,28 +80,41 @@ import {
   type SaleItemForm,
 } from "./create-sale.schema";
 
-import { SaleResultModal } from "./SaleResultModal";
+import { SaleResultModal, type SaleReceiptItem } from "./SaleResultModal";
 import { getCustomerByDocNumber } from "@/router/loaders/customer.loaders";
 import {
   ApplyPromotionModal,
   type AppliedPromotion,
 } from "./ApplyPromotionModal";
 import { QuickCashRegisterModal } from "./QuickCashRegisterModal";
+import { RoyaltyPanel } from "./RoyaltyPanel";
 
 interface CartItem {
   id: string;
   product_variant_id: string;
   variant_name: string;
   sku?: string;
+  group_ids?: string[];
   quantity: number;
   unit_price: number;
   total_price: number;
 }
 
+interface PaymentSplit {
+  id: string;
+  methodId: number;
+  amount: string;
+  currencyId: number;
+}
+
 const TAX_RATE = 0.13;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CRC_CURRENCY_ID = 1;
 
 const formatAmount = (value: number, symbol: string) =>
   `${symbol} ${value.toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
+
+const round2 = (value: number) => Number(value.toFixed(2));
 
 const blankCustomer = (): InlineCustomerForm => ({
   first_name: "",
@@ -105,18 +144,37 @@ export function CreateSalePage() {
 
   const [branchId, setBranchId] = useState(defaultBranchId);
   const [saleCondition, setSaleCondition] = useState(defaultCondition);
-  const [currencyId, setCurrencyId] = useState<number>(defaultCurrency.value);
-  const [paymentMethodId, setPaymentMethodId] = useState<number>(
-    defaultPaymentMethod.value,
-  );
+  const currencyId = defaultCurrency.value;
+  const [isPartialPayment, setIsPartialPayment] = useState(false);
+  const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([
+    {
+      id: "split-1",
+      methodId: defaultPaymentMethod.value,
+      amount: "",
+      currencyId: defaultCurrency.value,
+    },
+  ]);
   const [hasElectronicInvoice, setHasElectronicInvoice] = useState(false);
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
   const [cashRegisterId, setCashRegisterId] = useState("");
+  const [openSessions, setOpenSessions] = useState<CashRegisterSession[]>([]);
   const [isLoadingCashRegisters, setIsLoadingCashRegisters] = useState(false);
+  const [adMessage, setAdMessage] = useState("");
+  const [dueDate, setDueDate] = useState("");
 
   const [step, setStep] = useState<"lookup" | "items">("lookup");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [showInlineCreate, setShowInlineCreate] = useState(false);
+  // Walk-in / counter sale: no customer attached. The DB columns
+  // (sale.tenant_customer_id and customer_payment.tenant_customer_id) are
+  // nullable, so we send null for those rows.
+  const [isWalkInSale, setIsWalkInSale] = useState(false);
+  const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(
+    null,
+  );
+  const [usePoints, setUsePoints] = useState(false);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  const [apartadoPayment, setApartadoPayment] = useState<string>("");
 
   const [items, setItems] = useState<CartItem[]>([]);
   const [lastItemAmount, setLastItemAmount] = useState(0);
@@ -127,6 +185,27 @@ export function CreateSalePage() {
     useState<AppliedPromotion | null>(null);
   const [isCashRegisterModalOpen, setIsCashRegisterModalOpen] = useState(false);
 
+  const [, setWarehouses] = useState<Warehouse[]>([]);
+  const [branchWarehouseId, setBranchWarehouseId] = useState<string>("");
+
+  // Default promotions: pre-applied to every new sale while active. Loaded once
+  // for the current tenant and re-evaluated against the cart.
+  const [defaultPromotions, setDefaultPromotions] = useState<Promotion[]>([]);
+
+  // Exchange rate (CRC <-> USD): fetched from the server on mount, then
+  // overridable locally for the current cash-session lifetime. Per spec, the
+  // override does not persist to the database — closing the session loses it.
+  const [serverExchangeRate, setServerExchangeRate] =
+    useState<ExchangeRate | null>(null);
+  // Exchange rates for each payment split: keyed by split.id
+  const [exchangeRatesForSplits, setExchangeRatesForSplits] = useState<
+    Record<string, ExchangeRate | null>
+  >({});
+
+  // Seller display: full name from the employee record falls back to email.
+  const [sellerDisplayName, setSellerDisplayName] = useState<string>("");
+
+  const [isLookingUp, setIsLookingUp] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<{
     mode: ToastMode;
@@ -139,11 +218,23 @@ export function CreateSalePage() {
     total: number;
     eInvoiceWarning?: string;
     hadElectronicInvoice: boolean;
+    items: SaleReceiptItem[];
+    digitalInvoice: DigitalInvoiceInfo | null;
+    paymentSplits: PaymentSplit[];
+    currencySymbol: string;
+    pointsRedeemed: number;
+    pointsRate: number;
   }>({
     open: false,
     saleId: null,
     total: 0,
     hadElectronicInvoice: false,
+    items: [],
+    digitalInvoice: null,
+    paymentSplits: [],
+    currencySymbol: "₡",
+    pointsRedeemed: 0,
+    pointsRate: 0,
   });
 
   const lookupForm = useForm<CustomerLookupForm>({
@@ -151,10 +242,92 @@ export function CreateSalePage() {
     defaultValues: { document_number: "" },
   });
 
+  const docNumberValue = lookupForm.watch("document_number") ?? "";
+  const debouncedDocNumber = useDebounce(docNumberValue, 400);
+
   const inlineCustomerForm = useForm<InlineCustomerForm>({
     resolver: zodResolver(inlineCustomerSchema),
     defaultValues: blankCustomer(),
   });
+
+  // Live uniqueness probes for the inline-creation flow. We only fire them
+  // while the inline section is open and a tenant is known.
+  const inlineDoc = inlineCustomerForm.watch("document_number") ?? "";
+  const inlineEmail = inlineCustomerForm.watch("email") ?? "";
+  const inlinePhone = inlineCustomerForm.watch("phone") ?? "";
+
+  const checkInlineDoc = useCallback(
+    async (value: string) => {
+      if (!tenantId) return false;
+      const { exists } = await customerApi.checkAvailability({
+        tenantId,
+        field: "document_number",
+        value,
+      });
+      return exists;
+    },
+    [tenantId],
+  );
+
+  const checkInlineEmail = useCallback(
+    async (value: string) => {
+      if (!tenantId) return false;
+      const { exists } = await customerApi.checkAvailability({
+        tenantId,
+        field: "email",
+        value,
+      });
+      return exists;
+    },
+    [tenantId],
+  );
+
+  const checkInlinePhone = useCallback(
+    async (value: string) => {
+      if (!tenantId) return false;
+      const { exists } = await customerApi.checkAvailability({
+        tenantId,
+        field: "phone",
+        value,
+      });
+      return exists;
+    },
+    [tenantId],
+  );
+
+  const inlineDocStatus = useUniqueAvailability(inlineDoc, checkInlineDoc, {
+    skip: !showInlineCreate || !tenantId,
+    minLength: 3,
+  });
+
+  const inlineEmailStatus = useUniqueAvailability(
+    inlineEmail,
+    checkInlineEmail,
+    {
+      skip: !showInlineCreate || !tenantId || !inlineEmail,
+      minLength: 5,
+      isWellFormed: (value) => EMAIL_REGEX.test(value),
+    },
+  );
+
+  const inlinePhoneStatus = useUniqueAvailability(
+    inlinePhone,
+    checkInlinePhone,
+    {
+      skip: !showInlineCreate || !tenantId || !inlinePhone,
+      minLength: 5,
+    },
+  );
+
+  const inlineUniquenessBlocked =
+    inlineDocStatus === "taken" ||
+    inlineEmailStatus === "taken" ||
+    inlinePhoneStatus === "taken";
+
+  const inlineUniquenessProbing =
+    inlineDocStatus === "checking" ||
+    inlineEmailStatus === "checking" ||
+    inlinePhoneStatus === "checking";
 
   const itemForm = useForm<SaleItemForm>({
     resolver: zodResolver(saleItemSchema),
@@ -165,13 +338,71 @@ export function CreateSalePage() {
     },
   });
 
+  // Re-evaluate active default promos against the current cart. Each item gets
+  // the maximum discount from any matching default promo (one per item, not
+  // cumulative — additive cumulation across multiple defaults is not supported
+  // by the rule engine).
+  const defaultPromoDiscount = useMemo(() => {
+    if (defaultPromotions.length === 0 || items.length === 0) {
+      return {
+        total: 0,
+        perItem: {} as Record<string, number>,
+        source: null as Promotion | null,
+      };
+    }
+    const grossForRule = items.reduce((acc, i) => acc + i.total_price, 0);
+    const perItem: Record<string, number> = {};
+    let total = 0;
+    let appliedSource: Promotion | null = null;
+
+    for (const item of items) {
+      let bestDiscount = 0;
+      for (const promo of defaultPromotions) {
+        if (!promotionAppliesToItem(promo, item)) continue;
+        if (!promo.rule || !promo.type_name) continue;
+        const result = calculatePromotionDiscount({
+          type: promo.type_name,
+          rule: promo.rule,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total_purchase_amount: grossForRule,
+        });
+        if (result.success && result.discount_amount > bestDiscount) {
+          bestDiscount = Math.min(result.discount_amount, item.total_price);
+          if (!appliedSource) appliedSource = promo;
+        }
+      }
+      if (bestDiscount > 0) {
+        perItem[item.id] = Number(bestDiscount.toFixed(2));
+        total += bestDiscount;
+      }
+    }
+
+    return {
+      total: Number(total.toFixed(2)),
+      perItem,
+      source: appliedSource,
+    };
+  }, [defaultPromotions, items]);
+
+  // Any active default that disallows stacking blocks the cashier from adding
+  // a manual promotion on top.
+  const hasNonStackableDefault = useMemo(
+    () => defaultPromotions.some((p) => p.is_stackable === false),
+    [defaultPromotions],
+  );
+
   const grossSubtotal = useMemo(
     () => items.reduce((acc, item) => acc + item.total_price, 0),
     [items],
   );
-  const discountAmount = useMemo(
+  const manualDiscount = useMemo(
     () => Number((appliedPromotion?.totalDiscount ?? 0).toFixed(2)),
     [appliedPromotion],
+  );
+  const discountAmount = useMemo(
+    () => Number((manualDiscount + defaultPromoDiscount.total).toFixed(2)),
+    [manualDiscount, defaultPromoDiscount.total],
   );
   const subtotal = useMemo(
     () => Number(Math.max(grossSubtotal - discountAmount, 0).toFixed(2)),
@@ -188,6 +419,64 @@ export function CreateSalePage() {
 
   const currencySymbol =
     currencies.find((c) => c.value === currencyId)?.symbol ?? "₡";
+
+  // Effective rate: cashier override wins if it parses to a positive number;
+  // otherwise the server rate is used.
+  const effectiveExchangeRate = useMemo(() => {
+    const serverRate = Number(serverExchangeRate?.rate ?? 0);
+    return Number.isFinite(serverRate) && serverRate > 0 ? serverRate : 0;
+  }, [serverExchangeRate]);
+
+  const convertCrcToSaleCurrency = useCallback(
+    (amount: number) => {
+      if (currencyId === CRC_CURRENCY_ID) return round2(amount);
+      if (effectiveExchangeRate <= 0) return round2(amount);
+      return round2(amount / effectiveExchangeRate);
+    },
+    [currencyId, effectiveExchangeRate],
+  );
+
+  const convertSaleCurrencyToCrc = useCallback(
+    (amount: number) => {
+      if (currencyId === CRC_CURRENCY_ID) return round2(amount);
+      if (effectiveExchangeRate <= 0) return null;
+      return round2(amount * effectiveExchangeRate);
+    },
+    [currencyId, effectiveExchangeRate],
+  );
+
+  const grossSubtotalDisplay = useMemo(
+    () => convertCrcToSaleCurrency(grossSubtotal),
+    [convertCrcToSaleCurrency, grossSubtotal],
+  );
+  const discountAmountDisplay = useMemo(
+    () => convertCrcToSaleCurrency(discountAmount),
+    [convertCrcToSaleCurrency, discountAmount],
+  );
+  const subtotalDisplay = useMemo(
+    () => convertCrcToSaleCurrency(subtotal),
+    [convertCrcToSaleCurrency, subtotal],
+  );
+  const taxAmountDisplay = useMemo(
+    () => convertCrcToSaleCurrency(taxAmount),
+    [convertCrcToSaleCurrency, taxAmount],
+  );
+  const totalAmountDisplay = useMemo(
+    () => convertCrcToSaleCurrency(totalAmount),
+    [convertCrcToSaleCurrency, totalAmount],
+  );
+  const totalInDollars = useMemo(() => {
+    if (effectiveExchangeRate <= 0) return null;
+    return round2(totalAmount / effectiveExchangeRate);
+  }, [effectiveExchangeRate, totalAmount]);
+
+  // Total expressed in CRC. Only meaningful when the sale currency is USD —
+  // for CRC sales this just equals the total. For other currencies we leave
+  // it null since we don't have a rate.
+  const totalInColones = useMemo(() => {
+    if (currencyId === CRC_CURRENCY_ID) return totalAmount;
+    return convertSaleCurrencyToCrc(totalAmountDisplay);
+  }, [convertSaleCurrencyToCrc, currencyId, totalAmount, totalAmountDisplay]);
 
   const refreshOpenCashRegisters = useCallback(async () => {
     if (!branchId) {
@@ -209,6 +498,7 @@ export function CreateSalePage() {
         openRegisterIds.has(register.cash_register_id),
       );
 
+      setOpenSessions(openSessions);
       setCashRegisters(openRegisters);
       setCashRegisterId((prev) =>
         openRegisters.some((register) => register.cash_register_id === prev)
@@ -216,6 +506,7 @@ export function CreateSalePage() {
           : (openRegisters[0]?.cash_register_id ?? ""),
       );
     } catch (err) {
+      setOpenSessions([]);
       setCashRegisters([]);
       setCashRegisterId("");
       setToast({
@@ -234,36 +525,340 @@ export function CreateSalePage() {
     refreshOpenCashRegisters();
   }, [refreshOpenCashRegisters]);
 
-  const handleLookup = async (data: CustomerLookupForm) => {
-    try {
-      const found = await getCustomerByDocNumber(data.document_number.trim());
-      if (found && (found as Customer).document_number) {
-        setCustomer(found);
-        setShowInlineCreate(false);
-        setStep("items");
-        setToast({
-          mode: "success",
-          message: `Cliente encontrado: ${found.first_name} ${found.last_name}`,
-        });
-        return;
-      }
-      throw new Error("not found");
-    } catch {
-      inlineCustomerForm.reset({
-        ...blankCustomer(),
-        document_number: data.document_number.trim(),
+  useEffect(() => {
+    let cancelled = false;
+    if (!tenantId) return;
+    warehouseApi
+      .listByTenant()
+      .then((rows) => {
+        if (cancelled) return;
+        setWarehouses(rows);
+        const w = rows.find((r) => r.branch_id === branchId && r.is_branch);
+        setBranchWarehouseId(w?.warehouse_id ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) setWarehouses([]);
       });
-      setShowInlineCreate(true);
-      setToast({
-        mode: "info",
-        message: "Cliente no encontrado. Complete los datos para crearlo.",
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, branchId]);
+
+  // Load active default promotions for this tenant. Filtered client-side by
+  // date as a defence in depth — the backend already filters by date too.
+  useEffect(() => {
+    if (!tenantId) return;
+    let cancelled = false;
+    promotionApi
+      .getActiveDefaults(tenantId)
+      .then((rows) => {
+        if (cancelled) return;
+        setDefaultPromotions(
+          rows.filter(
+            (p) =>
+              p.is_active &&
+              isPromotionWithinDate(
+                p.promotion_start_date,
+                p.promotion_end_date,
+              ),
+          ),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setDefaultPromotions([]);
       });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  // Load latest exchange rate (USD -> CRC). Failing silently is fine — the
+  // panel just shows "no hay tasa registrada" and the cashier can type one.
+  useEffect(() => {
+    if (currencyId === CRC_CURRENCY_ID) {
+      setServerExchangeRate(null);
+      return;
     }
-  };
+
+    let cancelled = false;
+    exchangeRateApi
+      .getLatest(currencyId, CRC_CURRENCY_ID)
+      .then((rate) => {
+        if (!cancelled) setServerExchangeRate(rate ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setServerExchangeRate(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currencyId]);
+
+
+  // Load exchange rates for each payment split when their currency changes
+  // We load rates to convert each split's currency to CRC (as a pivot)
+  useEffect(() => {
+    let cancelled = false;
+    const loadRatesForSplits = async () => {
+      const rates: Record<string, ExchangeRate | null> = {};
+      for (const split of paymentSplits) {
+        if (split.currencyId === CRC_CURRENCY_ID) {
+          rates[split.id] = null; // CRC doesn't need conversion to itself
+        } else {
+          try {
+            const rate = await exchangeRateApi.getLatest(
+              split.currencyId,
+              CRC_CURRENCY_ID,
+            );
+            rates[split.id] = rate ?? null;
+          } catch {
+            rates[split.id] = null;
+          }
+        }
+      }
+      if (!cancelled) setExchangeRatesForSplits(rates);
+    };
+    loadRatesForSplits();
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentSplits.map((s) => `${s.id}:${s.currencyId}`).join("|")]);
+
+  // Fetch customer loyalty detail when a customer is selected
+  useEffect(() => {
+    if (!customer?.customer_id) {
+      setCustomerDetail(null);
+      setUsePoints(false);
+      setPointsToRedeem(0);
+      return;
+    }
+    let cancelled = false;
+    customerApi
+      .getDetail(customer.customer_id)
+      .then((detail) => {
+        if (!cancelled) setCustomerDetail(detail);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomerDetail(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customer?.customer_id]);
+
+  // Derived loyalty values
+  const availablePoints = customerDetail?.loyalty_score ?? 0;
+  const pointsRate = customerDetail?.points_redeemed_per_currency_unit ?? 0;
+  const loyaltyActive = !!(
+    customerDetail?.loyalty_program_active &&
+    pointsRate > 0 &&
+    availablePoints > 0
+  );
+  // Max monetary value coverable by available points (in CRC)
+  const maxPointsCrcValue = loyaltyActive
+    ? Math.floor(availablePoints / pointsRate)
+    : 0;
+  // Points actually redeemed = monetary coverage * pointsRate (in CRC)
+  const actualPointsRedeemed =
+    usePoints && loyaltyActive && pointsRate > 0
+      ? Math.min(pointsToRedeem, availablePoints)
+      : 0;
+  const pointsCoveredCrc =
+    actualPointsRedeemed > 0
+      ? Math.floor(actualPointsRedeemed / pointsRate)
+      : 0;
+  const pointsCoveredDisplay = convertCrcToSaleCurrency(
+    Math.min(pointsCoveredCrc, totalAmount),
+  );
+  const remainderDisplay = Math.max(
+    round2(totalAmountDisplay - pointsCoveredDisplay),
+    0,
+  );
+
+  // Payment splits derived values
+  // Convert each split to sale currency, then sum
+  const splitTotalInSaleCurrency = useMemo(() => {
+    return paymentSplits.reduce((sum, s) => {
+      const amount = Number(parseFloat(s.amount) || 0);
+      if (amount === 0) return sum;
+
+      // If split currency matches sale currency, add directly
+      if (s.currencyId === currencyId) {
+        return round2(sum + amount);
+      }
+
+      // Convert split to CRC first
+      let amountInCrc = amount;
+      if (s.currencyId !== CRC_CURRENCY_ID) {
+        const rateToCrc = exchangeRatesForSplits[s.id];
+        if (!rateToCrc) return sum; // No rate available, skip this split
+        amountInCrc = round2(amount * Number(rateToCrc.rate));
+      }
+
+      // Now convert from CRC to sale currency if needed
+      if (currencyId === CRC_CURRENCY_ID) {
+        return round2(sum + amountInCrc);
+      }
+
+      // Sale currency is not CRC, so convert CRC to sale currency
+      if (!serverExchangeRate || !effectiveExchangeRate) return sum;
+      const amountInSaleCurrency = round2(amountInCrc / effectiveExchangeRate);
+      return round2(sum + amountInSaleCurrency);
+    }, 0);
+  }, [
+    paymentSplits,
+    currencyId,
+    exchangeRatesForSplits,
+    serverExchangeRate,
+    effectiveExchangeRate,
+  ]);
+
+  const isApartado = saleCondition === "04";
+
+  const cashRegisterSessionId = useMemo(
+    () =>
+      openSessions.find((s) => s.cash_register_id === cashRegisterId)
+        ?.cash_register_session_id ?? "",
+    [openSessions, cashRegisterId],
+  );
+  const apartadoAmount = isApartado ? parseFloat(apartadoPayment) || 0 : 0;
+  const apartadoAmountDisplay = convertCrcToSaleCurrency(apartadoAmount);
+  const apartadoBalance = isApartado
+    ? round2(totalAmountDisplay - apartadoAmountDisplay)
+    : 0;
+
+  const targetPayment = isApartado
+    ? apartadoAmountDisplay
+    : usePoints && actualPointsRedeemed > 0
+      ? remainderDisplay
+      : totalAmountDisplay;
+  const paymentBalance = round2(targetPayment - splitTotalInSaleCurrency);
+
+  // Calculate which payment currencies are being used
+  const paymentCurrenciesUsed = useMemo(() => {
+    if (!isPartialPayment) return [];
+    return Array.from(new Set(paymentSplits.map((s) => s.currencyId)));
+  }, [isPartialPayment, paymentSplits]);
+
+  // Resolve seller name. Try the employee record first; fall back to email.
+  useEffect(() => {
+    const userId = user?.user_id;
+    const fallback = user?.email ?? "";
+    if (!userId) {
+      setSellerDisplayName(fallback);
+      return;
+    }
+    let cancelled = false;
+    employeeApi
+      .getByUserId(userId)
+      .then((emp) => {
+        if (cancelled) return;
+        const fullName =
+          emp?.first_name || emp?.last_name
+            ? `${emp.first_name ?? ""} ${emp.last_name ?? ""}`.trim()
+            : fallback;
+        setSellerDisplayName(fullName);
+      })
+      .catch(() => {
+        if (!cancelled) setSellerDisplayName(fallback);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.user_id, user?.email]);
+
+  useEffect(() => {
+    if (!isPartialPayment) {
+      setPaymentSplits((p) => [{ ...p[0], amount: String(totalAmountDisplay) }]);
+    }
+  }, [isPartialPayment, totalAmountDisplay]);
+
+  useEffect(() => {
+    if (isPartialPayment) {
+      setPaymentSplits(
+        paymentMethods
+          .filter((m) => !(m.code === "loyalty_points" && isWalkInSale))
+          .map((m) => ({
+            id: `split-${m.value}`,
+            methodId: m.value,
+            amount: "",
+            currencyId: CRC_CURRENCY_ID,
+          })),
+      );
+    }
+  }, [isPartialPayment]);
+
+  useEffect(() => {
+    const trimmed = debouncedDocNumber.trim();
+    if (trimmed.length < 3) {
+      setShowInlineCreate(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLookingUp(true);
+
+    getCustomerByDocNumber(trimmed)
+      .then((found) => {
+        if (cancelled) return;
+        if (found && (found as Customer).document_number) {
+          setCustomer(found);
+          setShowInlineCreate(false);
+          setStep("items");
+          setToast({
+            mode: "success",
+            message: `Cliente encontrado: ${found.first_name} ${found.last_name}`,
+          });
+        } else {
+          inlineCustomerForm.reset({
+            ...blankCustomer(),
+            document_number: trimmed,
+          });
+          setShowInlineCreate(true);
+          setToast({
+            mode: "info",
+            message: "Cliente no encontrado. Complete los datos para crearlo.",
+          });
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        inlineCustomerForm.reset({
+          ...blankCustomer(),
+          document_number: trimmed,
+        });
+        setShowInlineCreate(true);
+        setToast({
+          mode: "info",
+          message: "Cliente no encontrado. Complete los datos para crearlo.",
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setIsLookingUp(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedDocNumber]);
 
   const handleInlineCreate = async (data: InlineCustomerForm) => {
     if (!tenantId) {
       setToast({ mode: "error", message: "No se identificó el tenant" });
+      return;
+    }
+    if (inlineUniquenessBlocked) {
+      setToast({
+        mode: "error",
+        message: "Hay datos del cliente que ya están registrados",
+      });
+      return;
+    }
+    if (inlineUniquenessProbing) {
+      setToast({
+        mode: "info",
+        message: "Verificando disponibilidad… intenta de nuevo en un momento",
+      });
       return;
     }
     try {
@@ -271,7 +866,7 @@ export function CreateSalePage() {
         tenant_id: tenantId,
         first_name: data.first_name,
         last_name: data.last_name,
-        identification_type: Number(data.document_type_id),
+        document_type_id: Number(data.document_type_id),
         document_number: data.document_number,
         email: data.email || undefined,
         phone: data.phone || undefined,
@@ -293,20 +888,41 @@ export function CreateSalePage() {
       setToast({ mode: "error", message: "Producto inválido" });
       return;
     }
-    const total = Number((data.quantity * data.unit_price).toFixed(2));
-    const newItem: CartItem = {
-      id: `${selectedVariant.product_variant_id}-${Date.now()}`,
-      product_variant_id: selectedVariant.product_variant_id,
-      variant_name: selectedVariant.variant_name,
-      sku: selectedVariant.sku,
-      quantity: data.quantity,
-      unit_price: data.unit_price,
-      total_price: total,
-    };
-    setItems((prev) => [...prev, newItem]);
-    setLastItemAmount(total);
-    setAppliedPromotion(null);
 
+    const existingIndex = items.findIndex(
+      (i) => i.product_variant_id === selectedVariant.product_variant_id,
+    );
+
+    if (existingIndex >= 0) {
+      setItems((prev) =>
+        prev.map((item, idx) => {
+          if (idx !== existingIndex) return item;
+          const newQty = item.quantity + data.quantity;
+          return {
+            ...item,
+            quantity: newQty,
+            total_price: Number((newQty * item.unit_price).toFixed(2)),
+          };
+        }),
+      );
+      setLastItemAmount(Number((data.quantity * data.unit_price).toFixed(2)));
+    } else {
+      const total = Number((data.quantity * data.unit_price).toFixed(2));
+      const newItem: CartItem = {
+        id: `${selectedVariant.product_variant_id}-${Date.now()}`,
+        product_variant_id: selectedVariant.product_variant_id,
+        variant_name: selectedVariant.variant_name,
+        sku: selectedVariant.sku,
+        group_ids: selectedVariant.group_ids ?? [],
+        quantity: data.quantity,
+        unit_price: data.unit_price,
+        total_price: total,
+      };
+      setItems((prev) => [...prev, newItem]);
+      setLastItemAmount(total);
+    }
+
+    setAppliedPromotion(null);
     setSelectedVariant(null);
     itemForm.reset({
       product_variant_id: "",
@@ -333,8 +949,22 @@ export function CreateSalePage() {
     setToast({ mode: "info", message: "Promoción removida" });
   };
 
-  const handleVariantSelect = (selection: ProductVariantSelection) => {
-    setSelectedVariant(selection);
+  const handleVariantSelect = async (selection: ProductVariantSelection) => {
+    let groupIds: string[] = [];
+
+    try {
+      const detail = await productApi.getByIdWithAttributes(
+        tenantId,
+        selection.product_variant_id,
+      );
+      groupIds = (detail.groups ?? []).map(
+        (group) => group.tenant_product_group_id,
+      );
+    } catch {
+      groupIds = [];
+    }
+
+    setSelectedVariant({ ...selection, group_ids: groupIds });
     itemForm.setValue("product_variant_id", selection.product_variant_id, {
       shouldValidate: true,
     });
@@ -352,7 +982,13 @@ export function CreateSalePage() {
   // ─── Submit ─────────────────────────────────────────────────────────────────
 
   const handleSubmitSale = async () => {
-    if (!customer || !branchId || !cashRegisterId || items.length === 0) {
+    const hasCustomerOrWalkIn = Boolean(customer) || isWalkInSale;
+    if (
+      !hasCustomerOrWalkIn ||
+      !branchId ||
+      !cashRegisterId ||
+      items.length === 0
+    ) {
       setToast({
         mode: "error",
         message: "Complete los datos antes de procesar la venta",
@@ -360,76 +996,165 @@ export function CreateSalePage() {
       return;
     }
 
+    if (usePoints && !customer) {
+      setToast({
+        mode: "error",
+        message: "Debe asociar un cliente para usar puntos de fidelidad.",
+      });
+      return;
+    }
+
+    if (isApartado) {
+      const abono = parseFloat(apartadoPayment) || 0;
+      if (abono <= 0) {
+        setToast({
+          mode: "error",
+          message: "Ingrese el monto inicial de abono (debe ser mayor a 0).",
+        });
+        return;
+      }
+      if (abono >= totalAmount) {
+        setToast({
+          mode: "error",
+          message: "El abono inicial debe ser menor al total de la venta.",
+        });
+        return;
+      }
+    }
+
+    if (paymentBalance > 0.01) {
+      setToast({
+        mode: "error",
+        message: `Monto insuficiente. Falta: ${formatAmount(paymentBalance, currencySymbol)}`,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
-    const customerId = customer.customer_id;
+    const customerId = customer?.customer_id ?? null;
     const now = new Date().toISOString();
 
     const itemsPayload: SaleItemPayload[] = items.map((item) => {
-      const itemDiscount = appliedPromotion?.perItemDiscount[item.id] ?? 0;
+      const manualPart = appliedPromotion?.perItemDiscount[item.id] ?? 0;
+      const defaultPart = defaultPromoDiscount.perItem[item.id] ?? 0;
+      const itemDiscount = Number((manualPart + defaultPart).toFixed(2));
       const hasDiscount = itemDiscount > 0;
-      const netUnitPrice = hasDiscount
-        ? Number(
-            Math.max(
-              (item.total_price - itemDiscount) / item.quantity,
-              0,
-            ).toFixed(2),
-          )
+      const netUnitPriceCrc = hasDiscount
+        ? round2(Math.max((item.total_price - itemDiscount) / item.quantity, 0))
         : item.unit_price;
-      const netTotal = hasDiscount
-        ? Number(Math.max(item.total_price - itemDiscount, 0).toFixed(2))
+      const netTotalCrc = hasDiscount
+        ? round2(Math.max(item.total_price - itemDiscount, 0))
         : item.total_price;
+      // Manual promo wins for the recorded promotion_id; fall back to the
+      // first default promo that contributed if no manual was applied.
+      const promotionId =
+        manualPart > 0
+          ? appliedPromotion?.promotionId
+          : defaultPart > 0
+            ? defaultPromoDiscount.source?.promotion_id
+            : undefined;
       return {
         tenant_id: tenantId,
         product_variant_id: item.product_variant_id,
         quantity: item.quantity,
-        unit_price: netUnitPrice,
-        total_price: netTotal,
+        unit_price: convertCrcToSaleCurrency(netUnitPriceCrc),
+        total_price: convertCrcToSaleCurrency(netTotalCrc),
         sale_price_type: hasDiscount ? "PROMO" : "NORMAL",
-        promotion_id: hasDiscount ? appliedPromotion?.promotionId : undefined,
-        original_price: hasDiscount ? item.unit_price : undefined,
-        discount_applied: hasDiscount ? Number(itemDiscount.toFixed(2)) : 0,
+        promotion_id: promotionId,
+        original_price: hasDiscount
+          ? convertCrcToSaleCurrency(item.unit_price)
+          : undefined,
+        discount_applied: hasDiscount
+          ? convertCrcToSaleCurrency(itemDiscount)
+          : 0,
       };
     });
+
+    const amountPaid = splitTotalInSaleCurrency;
+    const changeAmount =
+      paymentBalance < -0.01 ? round2(Math.abs(paymentBalance)) : 0;
 
     const payload: CreateSaleRequest = {
       tenant_id: tenantId,
       branch_id: branchId,
       cash_register_id: cashRegisterId,
+      cash_register_session_id: cashRegisterSessionId || undefined,
       currency_id: currencyId,
       tenant_customer_id: customerId,
       sale_condition: saleCondition,
       sale_date: now,
-      subtotal_amount: Number(subtotal.toFixed(2)),
-      tax_amount: Number(taxAmount.toFixed(2)),
-      total_amount: Number(totalAmount.toFixed(2)),
-      is_completed: true,
+      subtotal_amount: subtotalDisplay,
+      tax_amount: taxAmountDisplay,
+      total_amount: totalAmountDisplay,
+      is_completed: !isApartado,
       has_electronic_invoice: hasElectronicInvoice,
+      seller_user_id: user?.user_id,
+      due_date:
+        isApartado && dueDate ? dueDate : new Date().toISOString().slice(0, 10),
+      ad_message: adMessage.trim() || undefined,
+      amount_paid: amountPaid,
+      change_amount: changeAmount,
       items: itemsPayload,
-      payments: [
-        {
-          tenant_customer_id: customerId,
-          payment_method_id: paymentMethodId,
-          is_points_redemption: false,
-          points_redeemed: 0,
-          points_to_currency_rate: 0,
-          payment_amount: Number(totalAmount.toFixed(2)),
-          payment_date: now,
-          currency_id: currencyId,
-          verified: true,
-        },
-      ],
+      payments: (() => {
+        const rows = [];
+        if (usePoints && actualPointsRedeemed > 0 && pointsCoveredDisplay > 0) {
+          rows.push({
+            tenant_customer_id: customerId ?? null,
+            payment_method_id:
+              paymentSplits[0]?.methodId ?? defaultPaymentMethod.value,
+            is_points_redemption: true,
+            points_redeemed: actualPointsRedeemed,
+            points_to_currency_rate: pointsRate,
+            payment_amount: pointsCoveredDisplay,
+            payment_date: now,
+            currency_id: currencyId,
+            verified: true,
+          });
+        }
+        for (const split of paymentSplits) {
+          const amount = parseFloat(split.amount) || 0;
+          if (amount > 0) {
+            rows.push({
+              tenant_customer_id: customerId ?? null,
+              payment_method_id: split.methodId,
+              is_points_redemption: false,
+              points_redeemed: 0,
+              points_to_currency_rate: 0,
+              payment_amount: amount,
+              payment_date: now,
+              currency_id: split.currencyId,
+              verified: true,
+            });
+          }
+        }
+        return rows;
+      })(),
     };
 
     try {
-      console.log("Payload: ", payload);
       const result: CreateSaleResult = await createFullSale(payload);
+      const [digitalInvoice] = await Promise.all([
+        getDigitalInvoiceForSale(result.saleId),
+      ]);
       setResultModal({
         open: true,
         saleId: result.saleId ?? null,
-        total: totalAmount,
+        total: totalAmountDisplay,
         eInvoiceWarning: result.eInvoiceWarning,
         hadElectronicInvoice: hasElectronicInvoice,
+        digitalInvoice: digitalInvoice ?? null,
+        items: items.map((item) => ({
+          variant_name: item.variant_name,
+          sku: item.sku,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total_price: item.total_price,
+        })),
+        paymentSplits: paymentSplits,
+        currencySymbol: currencySymbol,
+        pointsRedeemed: actualPointsRedeemed,
+        pointsRate: pointsRate,
       });
     } catch (err) {
       setToast({
@@ -446,10 +1171,22 @@ export function CreateSalePage() {
     setStep("lookup");
     setCustomer(null);
     setShowInlineCreate(false);
+    setIsWalkInSale(false);
     setItems([]);
     setLastItemAmount(0);
     setHasElectronicInvoice(false);
     setAppliedPromotion(null);
+    setApartadoPayment("");
+    setAdMessage("");
+    setDueDate("");
+    setPaymentSplits([
+      {
+        id: "split-1",
+        methodId: defaultPaymentMethod.value,
+        amount: "",
+        currencyId: defaultCurrency.value,
+      },
+    ]);
     lookupForm.reset({ document_number: "" });
     inlineCustomerForm.reset(blankCustomer());
     setSelectedVariant(null);
@@ -460,6 +1197,62 @@ export function CreateSalePage() {
     });
   };
 
+  const startWalkInSale = () => {
+    setIsWalkInSale(true);
+    setShowInlineCreate(false);
+    setStep("items");
+    setToast({
+      mode: "info",
+      message:
+        "Venta de mostrador (sin cliente). Los puntos de fidelidad no aplican.",
+    });
+  };
+
+  const addPaymentSplit = () => {
+    setPaymentSplits((prev) => [
+      ...prev,
+      {
+        id: `split-${Date.now()}`,
+        methodId: defaultPaymentMethod.value,
+        amount: "",
+        currencyId: currencyId,
+      },
+    ]);
+  };
+
+  const removePaymentSplit = (id: string) => {
+    setPaymentSplits((prev) =>
+      prev.length > 1 ? prev.filter((s) => s.id !== id) : prev,
+    );
+  };
+
+  const updatePaymentSplit = (
+    id: string,
+    field: keyof PaymentSplit,
+    value: string | number,
+  ) => {
+    setPaymentSplits((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
+    );
+  };
+
+  const fillRemainder = (id: string) => {
+    const others = paymentSplits
+      .filter((s) => s.id !== id)
+      .reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+    const fill = round2(Math.max(targetPayment - others, 0));
+    updatePaymentSplit(id, "amount", String(fill));
+  };
+
+  const convertSplitCurrencyToCrc = (splitId: string, amount: number) => {
+    const split = paymentSplits.find((s) => s.id === splitId);
+    if (!split) return null;
+    if (split.currencyId === CRC_CURRENCY_ID) return round2(amount);
+    const rate = exchangeRatesForSplits[splitId];
+    if (!rate) return null;
+    return round2(amount * Number(rate.rate));
+  };
+
   const branchOptions = branches.map((b) => ({
     value: b.branch_id,
     label: b.branch_name,
@@ -468,14 +1261,18 @@ export function CreateSalePage() {
     value: c.condition_code,
     label: `${c.condition_code} — ${c.condition_desc}`,
   }));
-  const paymentOptions = paymentMethods.map((m) => ({
-    value: String(m.value),
-    label: m.label,
-  }));
-  const currencyOptions = currencies.map((c) => ({
-    value: String(c.value),
-    label: c.label,
-  }));
+  const paymentOptions = paymentMethods
+    .filter((m) => {
+      // Loyalty points require a customer association
+      if (m.code === "loyalty_points" && isWalkInSale) {
+        return false;
+      }
+      return true;
+    })
+    .map((m) => ({
+      value: String(m.value),
+      label: m.label,
+    }));
   const cashRegisterOptions = cashRegisters.map((register) => ({
     value: register.cash_register_id,
     label: register.register_name || register.cash_register_id,
@@ -494,14 +1291,20 @@ export function CreateSalePage() {
       key: "unit_price",
       label: "Precio",
       width: "15%",
-      render: (v: number) => formatAmount(v, currencySymbol),
+      render: (_: number, row: CartItem) =>
+        formatAmount(convertCrcToSaleCurrency(row.unit_price), currencySymbol),
     },
     {
       key: "total_price",
       label: "Subtotal",
       width: "15%",
-      render: (v: number) => (
-        <span className="font-medium">{formatAmount(v, currencySymbol)}</span>
+      render: (_: number, row: CartItem) => (
+        <span className="font-medium">
+          {formatAmount(
+            convertCrcToSaleCurrency(row.total_price),
+            currencySymbol,
+          )}
+        </span>
       ),
     },
     {
@@ -533,18 +1336,29 @@ export function CreateSalePage() {
         />
       )}
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Crear nueva venta
-        </h1>
-        <p className="text-gray-600">
-          Procese pagos de productos y servicios para clientes en tienda.
-        </p>
+      <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Crear nueva venta
+          </h1>
+          <p className="text-gray-600">
+            Procese pagos de productos y servicios para clientes en tienda.
+          </p>
+        </div>
+        {sellerDisplayName && (
+          <div className="inline-flex items-center gap-2 self-start rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm shadow-sm">
+            <IconUser />
+            <span className="text-gray-500">Vendedor:</span>
+            <span className="font-semibold text-gray-900">
+              {sellerDisplayName}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Sale config row ───────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <Select
             label="Sucursal"
             value={branchId}
@@ -562,7 +1376,7 @@ export function CreateSalePage() {
                 type="button"
                 onClick={() => setIsCashRegisterModalOpen(true)}
                 disabled={!branchId}
-                className="text-xs font-medium text-accent-700 hover:text-accent-800 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
+                className="text-xs cursor-pointer font-medium text-accent-700 hover:text-accent-800 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
               >
                 Abrir / cerrar cajas
               </button>
@@ -588,36 +1402,12 @@ export function CreateSalePage() {
               required
             />
           </div>
-          <Select
-            label="Condición de venta"
-            value={saleCondition}
-            onChange={(e) => setSaleCondition(e.target.value)}
-            options={conditionOptions}
-            required
-          />
-          <Select
-            label="Moneda"
-            value={String(currencyId)}
-            onChange={(e) => setCurrencyId(Number(e.target.value))}
-            options={currencyOptions}
-            required
-          />
-          <Select
-            label="Método de pago"
-            value={String(paymentMethodId)}
-            onChange={(e) => setPaymentMethodId(Number(e.target.value))}
-            options={paymentOptions}
-            required
-          />
         </div>
       </div>
 
       {/* ── Step 1: customer lookup ───────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
-          <span className="w-8 h-8 rounded-full bg-accent-100 text-accent-700 flex items-center justify-center font-semibold">
-            1
-          </span>
           <h2 className="text-lg font-semibold text-gray-900">
             Datos del cliente
           </h2>
@@ -626,26 +1416,53 @@ export function CreateSalePage() {
               Listo
             </Badge>
           )}
+          {isWalkInSale && step === "items" && (
+            <Badge variant="yellow" className="ml-2">
+              Venta de mostrador
+            </Badge>
+          )}
         </div>
 
-        {!customer && (
-          <form
-            onSubmit={lookupForm.handleSubmit(handleLookup)}
-            className="flex flex-col md:flex-row md:items-end gap-3"
-          >
+        {!customer && !isWalkInSale && (
+          <div className="flex flex-col md:flex-row md:items-end gap-3">
             <div className="flex-1">
               <Input
                 label="Número de documento"
                 placeholder="Ej: 105550987"
                 {...lookupForm.register("document_number")}
                 error={lookupForm.formState.errors.document_number?.message}
+                hint={isLookingUp ? "Buscando cliente…" : undefined}
                 required
               />
             </div>
-            <Button type="submit" variant="primary">
-              Buscar cliente
+            {!isApartado && (
+              <Button type="button" variant="ghost" onClick={startWalkInSale}>
+                Continuar sin cliente
+              </Button>
+            )}
+          </div>
+        )}
+
+        {isWalkInSale && !customer && (
+          <div className="mt-2 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <IconUser />
+            <div className="flex-1">
+              <p className="font-semibold text-amber-900">Venta de mostrador</p>
+              <p className="text-xs text-amber-700">
+                No se asociará ningún cliente a esta venta.
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setIsWalkInSale(false);
+                setStep("lookup");
+              }}
+            >
+              Cambiar
             </Button>
-          </form>
+          </div>
         )}
 
         {showInlineCreate && !customer && (
@@ -684,7 +1501,17 @@ export function CreateSalePage() {
               label="Número de documento"
               {...inlineCustomerForm.register("document_number")}
               error={
-                inlineCustomerForm.formState.errors.document_number?.message
+                inlineCustomerForm.formState.errors.document_number?.message ??
+                (inlineDocStatus === "taken"
+                  ? "Ya existe un cliente con este documento"
+                  : undefined)
+              }
+              hint={
+                inlineDocStatus === "checking"
+                  ? "Verificando disponibilidad…"
+                  : inlineDocStatus === "available"
+                    ? "Documento disponible"
+                    : undefined
               }
               required
             />
@@ -692,9 +1519,36 @@ export function CreateSalePage() {
               label="Email"
               type="email"
               {...inlineCustomerForm.register("email")}
-              error={inlineCustomerForm.formState.errors.email?.message}
+              error={
+                inlineCustomerForm.formState.errors.email?.message ??
+                (inlineEmailStatus === "taken"
+                  ? "Ya existe un cliente con este email"
+                  : undefined)
+              }
+              hint={
+                inlineEmailStatus === "checking"
+                  ? "Verificando disponibilidad…"
+                  : inlineEmailStatus === "available"
+                    ? "Email disponible"
+                    : undefined
+              }
             />
-            <Input label="Teléfono" {...inlineCustomerForm.register("phone")} />
+            <Input
+              label="Teléfono"
+              {...inlineCustomerForm.register("phone")}
+              error={
+                inlinePhoneStatus === "taken"
+                  ? "Ya existe un cliente con este teléfono"
+                  : undefined
+              }
+              hint={
+                inlinePhoneStatus === "checking"
+                  ? "Verificando disponibilidad…"
+                  : inlinePhoneStatus === "available"
+                    ? "Teléfono disponible"
+                    : undefined
+              }
+            />
             <div className="md:col-span-2 flex justify-end gap-2 pt-2">
               <Button
                 type="button"
@@ -703,7 +1557,18 @@ export function CreateSalePage() {
               >
                 Cancelar
               </Button>
-              <Button type="submit" variant="primary">
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={inlineUniquenessBlocked || inlineUniquenessProbing}
+                title={
+                  inlineUniquenessBlocked
+                    ? "Hay datos duplicados que deben corregirse"
+                    : inlineUniquenessProbing
+                      ? "Verificando disponibilidad…"
+                      : undefined
+                }
+              >
                 <IconPlus />
                 Crear cliente y continuar
               </Button>
@@ -746,48 +1611,73 @@ export function CreateSalePage() {
         }`}
       >
         <div className="flex items-center gap-2 mb-4">
-          <span className="w-8 h-8 rounded-full bg-accent-100 text-accent-700 flex items-center justify-center font-semibold">
-            2
-          </span>
           <h2 className="text-lg font-semibold text-gray-900">
             Productos y servicios
           </h2>
         </div>
 
-        <form
-          onSubmit={itemForm.handleSubmit(handleAddItem)}
-          className="grid grid-cols-1 md:grid-cols-12 gap-3"
-        >
-          <div className="md:col-span-6">
-            <ProductVariantComboBox
-              tenantId={tenantId}
-              label="Producto"
-              value={itemForm.watch("product_variant_id")}
-              displayValue={
-                selectedVariant ? buildVariantLabel(selectedVariant) : ""
+        <div className="flex flex-col md:flex-row md:items-end gap-3">
+          <form
+            onSubmit={itemForm.handleSubmit(handleAddItem)}
+            className="flex-1 grid grid-cols-1 md:grid-cols-9 gap-3"
+          >
+            <div className="md:col-span-6">
+              <ProductVariantComboBox
+                tenantId={tenantId}
+                warehouseId={branchWarehouseId}
+                manualSkuEnabled
+                label="Producto"
+                value={itemForm.watch("product_variant_id")}
+                displayValue={
+                  selectedVariant ? buildVariantLabel(selectedVariant) : ""
+                }
+                onChange={handleVariantSelect}
+                onClear={handleVariantClear}
+                error={itemForm.formState.errors.product_variant_id?.message}
+                hideOutOfStock={true}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Input
+                label="Cantidad"
+                type="number"
+                min={1}
+                {...itemForm.register("quantity", { valueAsNumber: true })}
+                error={itemForm.formState.errors.quantity?.message}
+                required
+              />
+            </div>
+            <div className="md:col-span-1 flex items-end">
+              <Button type="submit" variant="primary" fullWidth>
+                <IconPlus />
+              </Button>
+            </div>
+          </form>
+          <div className="w-full md:w-52 shrink-0">
+            <Select
+              label="Condición de venta"
+              value={saleCondition}
+              onChange={(e) => setSaleCondition(e.target.value)}
+              options={conditionOptions}
+              required
+            />
+          </div>
+          <div className="flex items-end shrink-0">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsPromotionModalOpen(true)}
+              disabled={items.length === 0 || hasNonStackableDefault}
+              title={
+                hasNonStackableDefault
+                  ? "Hay una promoción default activa que no permite acumular más"
+                  : "Agregar promoción"
               }
-              onChange={handleVariantSelect}
-              onClear={handleVariantClear}
-              error={itemForm.formState.errors.product_variant_id?.message}
-              required
-            />
-          </div>
-          <div className="md:col-span-2">
-            <Input
-              label="Cantidad"
-              type="number"
-              min={1}
-              {...itemForm.register("quantity", { valueAsNumber: true })}
-              error={itemForm.formState.errors.quantity?.message}
-              required
-            />
-          </div>
-          <div className="md:col-span-1 flex items-end">
-            <Button type="submit" variant="primary" fullWidth>
-              <IconPlus />
+            >
+              <IconTrendingUp />
             </Button>
           </div>
-        </form>
+        </div>
 
         <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div className="text-sm text-gray-600">
@@ -795,21 +1685,37 @@ export function CreateSalePage() {
               <span>
                 Último producto agregado:{" "}
                 <span className="font-semibold text-gray-900">
-                  {formatAmount(lastItemAmount, currencySymbol)}
+                  {formatAmount(
+                    convertCrcToSaleCurrency(lastItemAmount),
+                    currencySymbol,
+                  )}
                 </span>
               </span>
             )}
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => setIsPromotionModalOpen(true)}
-            disabled={items.length === 0}
-          >
-            <IconTrendingUp />
-            Agregar promoción
-          </Button>
         </div>
+
+        {hasNonStackableDefault && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            Una promoción default activa no permite acumular promociones
+            adicionales. No es posible agregar otra encima.
+          </div>
+        )}
+
+        {defaultPromoDiscount.total > 0 && defaultPromoDiscount.source && (
+          <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
+              Promoción default aplicada
+            </p>
+            <p className="mt-1 text-sm font-medium text-blue-900">
+              {defaultPromoDiscount.source.promotion_name}
+              <span className="ml-2 text-xs font-normal text-blue-700">
+                Descuento: -
+                {formatAmount(defaultPromoDiscount.total, currencySymbol)}
+              </span>
+            </p>
+          </div>
+        )}
 
         {appliedPromotion && (
           <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
@@ -823,7 +1729,7 @@ export function CreateSalePage() {
               <p className="text-xs text-emerald-700 mt-0.5">
                 Descuento total:{" "}
                 <span className="font-semibold">
-                  -{formatAmount(discountAmount, currencySymbol)}
+                  -{formatAmount(discountAmountDisplay, currencySymbol)}
                 </span>
               </p>
             </div>
@@ -839,14 +1745,44 @@ export function CreateSalePage() {
           </div>
         )}
 
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="mt-4">
+          <RoyaltyPanel
+            customer={isWalkInSale ? null : customer}
+            tenantId={tenantId}
+            totalAmount={totalAmount}
+            onAddItems={(royaltyItems) => {
+              setItems((prev) => [
+                ...prev,
+                ...royaltyItems.filter(
+                  (ri) =>
+                    !prev.some(
+                      (ex) =>
+                        ex.product_variant_id === ri.product_variant_id &&
+                        ex.unit_price === 0,
+                    ),
+                ),
+              ]);
+            }}
+          />
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
             <p className="text-xs uppercase tracking-wider text-gray-500">
               Subtotal bruto
             </p>
             <p className="text-2xl font-bold text-gray-900 mt-1">
-              {formatAmount(grossSubtotal, currencySymbol)}
+              {formatAmount(grossSubtotalDisplay, currencySymbol)}
             </p>
+            {currencyId === CRC_CURRENCY_ID && totalInDollars !== null && (
+              <p className="text-xs text-gray-500 mt-1">
+                ≈{" "}
+                {formatAmount(
+                  round2(grossSubtotal / effectiveExchangeRate),
+                  "$",
+                )}
+              </p>
+            )}
           </div>
           <div
             className={`border rounded-xl p-4 ${
@@ -867,24 +1803,62 @@ export function CreateSalePage() {
                 discountAmount > 0 ? "text-amber-900" : "text-gray-900"
               }`}
             >
-              -{formatAmount(discountAmount, currencySymbol)}
+              -{formatAmount(discountAmountDisplay, currencySymbol)}
             </p>
+            {currencyId === CRC_CURRENCY_ID && totalInDollars !== null && (
+              <p className="text-xs text-amber-700 mt-1">
+                ≈ -
+                {formatAmount(
+                  round2(discountAmount / effectiveExchangeRate),
+                  "$",
+                )}
+              </p>
+            )}
           </div>
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
             <p className="text-xs uppercase tracking-wider text-gray-500">
               Subtotal con descuento
             </p>
             <p className="text-2xl font-bold text-gray-900 mt-1">
-              {formatAmount(subtotal, currencySymbol)}
+              {formatAmount(subtotalDisplay, currencySymbol)}
             </p>
+            {currencyId === CRC_CURRENCY_ID && totalInDollars !== null && (
+              <p className="text-xs text-gray-500 mt-1">
+                ≈ {formatAmount(round2(subtotal / effectiveExchangeRate), "$")}
+              </p>
+            )}
           </div>
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
             <p className="text-xs uppercase tracking-wider text-emerald-700">
               Total con IVA ({(TAX_RATE * 100).toFixed(0)}%)
             </p>
             <p className="text-2xl font-bold text-emerald-900 mt-1">
-              {formatAmount(totalAmount, currencySymbol)}
+              {formatAmount(totalAmountDisplay, currencySymbol)}
             </p>
+            {currencyId === CRC_CURRENCY_ID && totalInDollars !== null && (
+              <p className="text-xs text-emerald-700 mt-1">
+                ≈ {formatAmount(totalInDollars, "$")}
+              </p>
+            )}
+            {currencyId !== CRC_CURRENCY_ID && totalInColones !== null && (
+              <p className="text-xs text-emerald-700 mt-1">
+                ≈ {formatAmount(totalInColones, "₡")} ·
+                <span className="ml-1 text-emerald-600">
+                  tasa{" "}
+                  {effectiveExchangeRate.toLocaleString("es-CR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 6,
+                  })}
+                </span>
+              </p>
+            )}
+            {currencyId !== CRC_CURRENCY_ID &&
+              totalInColones === null &&
+              effectiveExchangeRate === 0 && (
+                <p className="text-xs text-amber-700 mt-1">
+                  Configure una tasa para ver el equivalente en colones.
+                </p>
+              )}
           </div>
         </div>
 
@@ -897,41 +1871,518 @@ export function CreateSalePage() {
         </div>
       </div>
 
-      {/* ── Submit row ────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-300 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={hasElectronicInvoice}
-            onChange={(e) => setHasElectronicInvoice(e.target.checked)}
-            className="w-5 h-5 rounded border-gray-300 text-accent-600 focus:ring-accent-400"
-          />
-          <span className="text-sm font-medium text-gray-700">
-            Generar factura electrónica
-          </span>
-        </label>
+      {/* ── Loyalty points panel ─────────────────────────────────────────── */}
+      {(() => {
+        if (!loyaltyActive || step !== "items") return null;
+        const pointsNeededForTotal =
+          loyaltyActive && pointsRate > 0
+            ? round2(totalAmount * pointsRate)
+            : 0;
+        const hasEnoughPointsForTotal =
+          pointsNeededForTotal > 0 && pointsNeededForTotal <= availablePoints;
+        return (
+          <div className="bg-white rounded-2xl border border-purple-200 p-6 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Puntos de fidelidad
+              </h2>
+            </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">
-            {items.length} producto{items.length !== 1 ? "s" : ""} ·{" "}
-            {formatAmount(totalAmount, currencySymbol)}
-          </span>
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={handleSubmitSale}
-            loading={isSubmitting}
-            disabled={
-              !customer ||
-              items.length === 0 ||
-              !branchId ||
-              !cashRegisterId ||
-              isSubmitting
-            }
+            <div className="flex flex-col md:flex-row md:items-center gap-6">
+              <div className="flex-1 grid grid-cols-2 gap-4">
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
+                  <p className="text-xs uppercase tracking-wider text-purple-600">
+                    Puntos disponibles
+                  </p>
+                  <p className="text-2xl font-bold text-purple-900 mt-0.5">
+                    {availablePoints.toLocaleString("es-CR")}
+                  </p>
+                  <p className="text-xs text-purple-700 mt-0.5">
+                    Equivalen a{" "}
+                    {formatAmount(
+                      convertCrcToSaleCurrency(maxPointsCrcValue),
+                      currencySymbol,
+                    )}
+                  </p>
+                </div>
+                {usePoints && pointsCoveredDisplay > 0 && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                    <p className="text-xs uppercase tracking-wider text-emerald-600">
+                      Cubierto por puntos
+                    </p>
+                    <p className="text-2xl font-bold text-emerald-900 mt-0.5">
+                      {formatAmount(pointsCoveredDisplay, currencySymbol)}
+                    </p>
+                    <p className="text-xs text-emerald-700 mt-0.5">
+                      Restante: {formatAmount(remainderDisplay, currencySymbol)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3 min-w-55">
+                {hasEnoughPointsForTotal ? (
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={usePoints}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setUsePoints(checked);
+
+                        if (checked) {
+                          // Points needed for the total amount
+                          const pointsNeeded = round2(totalAmount * pointsRate);
+                          // Convert points to currency for the payment split
+                          const amountInCurrency =
+                            pointsRate > 0
+                              ? round2(pointsNeeded / pointsRate)
+                              : 0;
+
+                          // Reset payment splits to a single split with loyalty points
+                          setPaymentSplits([
+                            {
+                              id: "split-1",
+                              methodId: 5, // Loyalty points method
+                              amount: String(amountInCurrency),
+                              currencyId: CRC_CURRENCY_ID,
+                            },
+                          ]);
+
+                          // Disable partial payment
+                          setIsPartialPayment(false);
+                          setPointsToRedeem(pointsNeeded);
+                        } else {
+                          // Reset to default payment method
+                          setPaymentSplits([
+                            {
+                              id: "split-1",
+                              methodId: defaultPaymentMethod.value,
+                              amount: "",
+                              currencyId: currencyId,
+                            },
+                          ]);
+                          setPointsToRedeem(0);
+                        }
+                      }}
+                      className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-400"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      Usar puntos para pagar
+                    </span>
+                  </label>
+                ) : (
+                  <div className="rounded-lg bg-gray-100 border border-gray-200 p-3">
+                    <p className="text-xs text-gray-600">
+                      Puntos insuficientes para pagar la compra completa. Puedes
+                      usar puntos en pago por partes.
+                    </p>
+                  </div>
+                )}
+                {usePoints && hasEnoughPointsForTotal && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Puntos a canjear (máx.{" "}
+                        {availablePoints.toLocaleString("es-CR")})
+                      </label>
+                      {pointsToRedeem > 0 && pointsRate > 0 ? (
+                        <span className="text-xs text-gray-600">
+                          ≈{" "}
+                          {formatAmount(
+                            round2(pointsToRedeem / pointsRate),
+                            "₡",
+                          )}
+                        </span>
+                      ) : null}
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={availablePoints}
+                      value={pointsToRedeem}
+                      onChange={(e) => {
+                        const val = Math.min(
+                          Math.max(0, Number(e.target.value)),
+                          availablePoints,
+                        );
+                        setPointsToRedeem(val);
+                        // Convert points to currency for the payment split
+                        const amountInCurrency =
+                          pointsRate > 0 ? round2(val / pointsRate) : 0;
+                        // Update payment split with converted amount
+                        updatePaymentSplit(
+                          paymentSplits[0].id,
+                          "amount",
+                          String(amountInCurrency),
+                        );
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Apartado (layaway) abono panel ──────────────────────────────── */}
+      {isApartado && step === "items" && (
+        <div className="bg-amber-50 rounded-2xl border border-amber-200 p-6 mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-8 h-8 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center font-semibold text-sm">
+              A
+            </span>
+            <h2 className="text-lg font-semibold text-amber-900">
+              Apartado — Abono inicial
+            </h2>
+          </div>
+          <p className="text-sm text-amber-800 mb-4">
+            El cliente paga un abono hoy. La mercancía queda reservada y el
+            saldo restante se liquida en un pago futuro.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label={`Monto de abono (${currencySymbol})`}
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="0.00"
+              value={apartadoPayment}
+              onChange={(e) => setApartadoPayment(e.target.value)}
+              hint="Debe ser mayor a 0 y menor al total de la venta"
+              required
+            />
+            <Input
+              label="Fecha límite de pago"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              min={new Date().toISOString().slice(0, 10)}
+              hint="Fecha en que el cliente debe liquidar el saldo"
+              required
+            />
+            <div className="bg-white rounded-xl border border-amber-200 p-4 md:col-span-2">
+              <p className="text-xs uppercase tracking-wider text-amber-700">
+                Saldo pendiente
+              </p>
+              <p className="text-2xl font-bold text-amber-900 mt-1">
+                {formatAmount(Math.max(apartadoBalance, 0), currencySymbol)}
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Total: {formatAmount(totalAmountDisplay, currencySymbol)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Payment splits panel ─────────────────────────────────────────── */}
+      {step === "items" && (
+        <div className="bg-white rounded-2xl border border-gray-300 p-6 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-full bg-accent-100 text-accent-700 flex items-center justify-center font-semibold">
+                3
+              </span>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Métodos de pago
+              </h2>
+            </div>
+          </div>
+
+          {/* Partial payment checkbox */}
+          <label className="flex items-center gap-3 cursor-pointer mb-6 p-3 rounded-lg bg-gray-50 border border-gray-200">
+            <input
+              type="checkbox"
+              checked={isPartialPayment}
+              onChange={(e) => setIsPartialPayment(e.target.checked)}
+              disabled={usePoints}
+              className="w-4 h-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            <span
+              className={`text-sm font-medium ${usePoints ? "text-gray-500" : "text-gray-700"}`}
+            >
+              Pago por partes
+            </span>
+          </label>
+
+          {usePoints ? (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-purple-700 mt-1">
+                    Se pagará todo el total con puntos de fidelidad
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-purple-600">Puntos a usar</p>
+                  <p className="text-2xl font-bold text-purple-900">
+                    {pointsToRedeem.toLocaleString("es-CR")}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {isPartialPayment && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={addPaymentSplit}
+                  className="ml-auto"
+                >
+                  <IconPlus /> Agregar método
+                </Button>
+              )}
+              {paymentSplits.map((split, idx) => (
+                <div
+                  key={split.id}
+                  className="flex flex-col md:flex-row md:items-end gap-3"
+                >
+                  <div className="flex-1">
+                    <Select
+                      label={idx === 0 ? "Método de pago" : undefined}
+                      value={String(split.methodId)}
+                      onChange={(e) =>
+                        updatePaymentSplit(
+                          split.id,
+                          "methodId",
+                          Number(e.target.value),
+                        )
+                      }
+                      options={paymentOptions}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    {idx === 0 && (
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700">
+                          {Number(split.methodId) === 5
+                            ? "Puntos a canjear"
+                            : "Monto"}
+                        </label>
+                        {Number(split.methodId) === 5 &&
+                        split.amount &&
+                        pointsRate > 0 ? (
+                          <span className="text-xs text-gray-600">
+                            {(() => {
+                              const pointsValue = parseFloat(split.amount);
+                              const crcEquiv = round2(pointsValue / pointsRate);
+                              return `≈ ${formatAmount(crcEquiv, "₡")}`;
+                            })()}
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+                    <Input
+                      required
+                      label={
+                        idx !== 0
+                          ? Number(split.methodId) === 5
+                            ? "Puntos a canjear"
+                            : "Monto"
+                          : undefined
+                      }
+                      type="number"
+                      min={0}
+                      max={
+                        Number(split.methodId) === 5
+                          ? availablePoints
+                          : undefined
+                      }
+                      step={Number(split.methodId) === 5 ? "1" : "0.01"}
+                      placeholder={Number(split.methodId) === 5 ? "0" : "0.00"}
+                      value={
+                        !isPartialPayment &&
+                        idx === 0 &&
+                        Number(split.methodId) !== 5
+                          ? String(totalAmountDisplay)
+                          : Number(split.methodId) === 5 &&
+                              split.amount &&
+                              pointsRate > 0
+                            ? String(
+                                Math.round(
+                                  parseFloat(split.amount) * pointsRate,
+                                ),
+                              )
+                            : split.amount
+                      }
+                      onChange={(e) => {
+                        const newValue = e.target.value;
+                        if (isPartialPayment) {
+                          // If using points, convert to currency before saving
+                          if (Number(split.methodId) === 5 && pointsRate > 0) {
+                            const pointsValue = parseFloat(newValue) || 0;
+                            const amountInCurrency = round2(
+                              pointsValue / pointsRate,
+                            );
+                            updatePaymentSplit(
+                              split.id,
+                              "amount",
+                              String(amountInCurrency),
+                            );
+                          } else {
+                            updatePaymentSplit(split.id, "amount", newValue);
+                          }
+                        } else if (Number(split.methodId) === 5) {
+                          // Convert points to currency before saving
+                          if (pointsRate > 0) {
+                            const pointsValue = parseFloat(newValue) || 0;
+                            const amountInCurrency = round2(
+                              pointsValue / pointsRate,
+                            );
+                            updatePaymentSplit(
+                              split.id,
+                              "amount",
+                              String(amountInCurrency),
+                            );
+                          }
+                        }
+                      }}
+                      disabled={
+                        !isPartialPayment && Number(split.methodId) !== 5
+                      }
+                    />
+                    {Number(split.methodId) === 5 &&
+                    split.amount &&
+                    pointsRate > 0 &&
+                    idx !== 0 ? (
+                      <div className="mt-1.5 text-xs text-gray-600">
+                        {(() => {
+                          const pointsValue = Math.round(
+                            parseFloat(split.amount) * pointsRate,
+                          );
+                          return `${pointsValue.toLocaleString("es-CR")} puntos`;
+                        })()}
+                      </div>
+                    ) : split.currencyId !== CRC_CURRENCY_ID &&
+                      split.amount &&
+                      Number(split.methodId) !== 5 ? (
+                      <div className="mt-1.5 text-xs text-gray-500">
+                        {(() => {
+                          const equiv = convertSplitCurrencyToCrc(
+                            split.id,
+                            parseFloat(split.amount),
+                          );
+                          if (equiv !== null) {
+                            return `≈ ₡${equiv.toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
+                          }
+                          return "Tasa no disponible";
+                        })()}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className={`flex gap-2 ${idx === 0 ? "mb-0" : ""}`}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => fillRemainder(split.id)}
+                      title="Completar con el monto pendiente"
+                    >
+                      ↓
+                    </Button>
+                    {paymentSplits.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        onClick={() => removePaymentSplit(split.id)}
+                      >
+                        <IconTrash />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div
+            className={`mt-4 flex flex-col gap-2 rounded-xl p-3 text-sm font-medium ${
+              paymentBalance > 0.01
+                ? "bg-amber-50 border border-amber-200 text-amber-800"
+                : paymentBalance < -0.01
+                  ? "bg-blue-50 border border-blue-200 text-blue-800"
+                  : "bg-emerald-50 border border-emerald-200 text-emerald-800"
+            }`}
           >
-            <IconShoppingCart />
-            Procesar venta
-          </Button>
+            <div className="flex items-center justify-between">
+              <span>
+                Total ingresado:{" "}
+                {formatAmount(splitTotalInSaleCurrency, currencySymbol)} /{" "}
+                {formatAmount(targetPayment, currencySymbol)}
+              </span>
+              {paymentBalance > 0.01 && (
+                <span>
+                  Pendiente:{" "}
+                  {formatAmount(Math.abs(paymentBalance), currencySymbol)}
+                </span>
+              )}
+              {paymentBalance < -0.01 && (
+                <span>
+                  Vuelto:{" "}
+                  {formatAmount(Math.abs(paymentBalance), currencySymbol)}
+                </span>
+              )}
+              {Math.abs(paymentBalance) < 0.01 && <span>Pagos cuadrados</span>}
+            </div>
+
+            {isPartialPayment && paymentCurrenciesUsed.length > 1 && (
+              <div className="text-xs border-t border-current opacity-60 pt-1">
+                Pago con múltiples monedas - el saldo pendiente se muestra en la
+                moneda de la compra ({currencySymbol})
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Submit row ────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-300 p-6 flex flex-col gap-4">
+        <Input
+          label="Mensaje en factura (opcional)"
+          placeholder="Ej: Gracias por su compra. Válida hasta el 30/05/2026."
+          value={adMessage}
+          onChange={(e) => setAdMessage(e.target.value)}
+          hint="El cajero puede incluir un mensaje que aparecerá en la factura digital."
+        />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hasElectronicInvoice}
+              onChange={(e) => setHasElectronicInvoice(e.target.checked)}
+              className="w-5 h-5 rounded border-gray-300 text-accent-600 focus:ring-accent-400"
+            />
+            <span className="text-sm font-medium text-gray-700">
+              Generar factura electrónica
+            </span>
+          </label>
+
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">
+              {items.length} producto{items.length !== 1 ? "s" : ""} ·{" "}
+              {formatAmount(totalAmountDisplay, currencySymbol)}
+            </span>
+            <Button
+              variant="primary"
+              onClick={handleSubmitSale}
+              loading={isSubmitting}
+              disabled={
+                (!customer && !isWalkInSale) ||
+                items.length === 0 ||
+                !branchId ||
+                !cashRegisterId ||
+                isSubmitting
+              }
+            >
+              <IconShoppingCart />
+              Procesar venta
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -939,9 +2390,14 @@ export function CreateSalePage() {
         isOpen={resultModal.open}
         saleId={resultModal.saleId}
         totalAmount={resultModal.total}
-        currencySymbol={currencySymbol}
+        currencySymbol={resultModal.currencySymbol}
         hasElectronicInvoice={resultModal.hadElectronicInvoice}
         eInvoiceWarning={resultModal.eInvoiceWarning}
+        items={resultModal.items}
+        digitalInvoice={resultModal.digitalInvoice}
+        paymentSplits={resultModal.paymentSplits}
+        pointsRedeemed={resultModal.pointsRedeemed}
+        pointsRate={resultModal.pointsRate}
         onClose={() => setResultModal((prev) => ({ ...prev, open: false }))}
         onNewSale={resetForNewSale}
       />
@@ -965,9 +2421,7 @@ export function CreateSalePage() {
       <QuickCashRegisterModal
         isOpen={isCashRegisterModalOpen}
         branchId={branchId}
-        branchName={
-          branches.find((b) => b.branch_id === branchId)?.branch_name
-        }
+        branchName={branches.find((b) => b.branch_id === branchId)?.branch_name}
         onClose={() => setIsCashRegisterModalOpen(false)}
         onSessionsChanged={refreshOpenCashRegisters}
       />

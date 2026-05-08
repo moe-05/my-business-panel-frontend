@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { warehouseApi } from "@/api/warehouse.api";
+import { productGroupApi } from "@/api/productGroup.api";
+import { productCompositionApi } from "@/api/productComposition.api";
+import { useDebounce } from "@/hooks/useDebounce";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -10,10 +13,13 @@ import { Select } from "@/components/ui/Select";
 import type { Warehouse } from "@/interfaces/entities/Warehouse.interface";
 import type { InventoryItem } from "@/interfaces/entities/InventoryItem.interface";
 import type { InventoryTransferProductInput } from "@/interfaces/api/requests/CreateInventoryTransferRequest.interface";
+import type { TenantProductGroup } from "@/interfaces/entities/ProductGroup.interface";
+import type { CompositionComponent } from "@/interfaces/entities/ProductComposition.interface";
 
 interface TransferModalProps {
   isOpen: boolean;
   warehouses: Warehouse[];
+  tenantId: string | null;
   isSubmitting: boolean;
   onClose: () => void;
   onSubmit: (payload: {
@@ -32,6 +38,7 @@ interface DraftLine {
   sku: string | null;
   amount: number;
   available: number;
+  from_composite_id?: string;
 }
 
 type DateMode = "now" | "custom";
@@ -40,6 +47,20 @@ interface DateField {
   mode: DateMode;
   value: string;
 }
+
+interface DisplayItemRow {
+  type: "item";
+  item: InventoryItem;
+}
+
+interface DisplayComponentRow {
+  type: "component";
+  component: CompositionComponent;
+  parentId: string;
+  desagrupado?: InventoryItem;
+}
+
+type DisplayRow = DisplayItemRow | DisplayComponentRow;
 
 const nowIsoLocal = () => {
   const d = new Date();
@@ -50,6 +71,7 @@ const nowIsoLocal = () => {
 export function TransferModal({
   isOpen,
   warehouses,
+  tenantId,
   isSubmitting,
   onClose,
   onSubmit,
@@ -61,6 +83,19 @@ export function TransferModal({
   const [draft, setDraft] = useState<Record<string, DraftLine>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [skuSearch, setSkuSearch] = useState("");
+  const debouncedSkuSearch = useDebounce(skuSearch, 400);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("");
+  const [groups, setGroups] = useState<TenantProductGroup[]>([]);
+
+  const [expandedLotes, setExpandedLotes] = useState<Set<string>>(new Set());
+  const [compositionCache, setCompositionCache] = useState<
+    Record<string, CompositionComponent[]>
+  >({});
+  const [loadingCompositions, setLoadingCompositions] = useState<Set<string>>(
+    new Set(),
+  );
 
   const [departure, setDeparture] = useState<DateField>({
     mode: "now",
@@ -78,6 +113,11 @@ export function TransferModal({
     setDestInventory([]);
     setDraft({});
     setError(null);
+    setSkuSearch("");
+    setSelectedGroupId("");
+    setExpandedLotes(new Set());
+    setCompositionCache({});
+    setLoadingCompositions(new Set());
     setDeparture({ mode: "now", value: nowIsoLocal() });
     setArrival({ mode: "now", value: nowIsoLocal() });
   };
@@ -87,23 +127,35 @@ export function TransferModal({
   }, [isOpen]);
 
   useEffect(() => {
+    if (!tenantId) return;
+    productGroupApi.listByTenant(tenantId).then(setGroups).catch(() => {});
+  }, [tenantId]);
+
+  // Clear draft and expanded state when origin warehouse changes
+  useEffect(() => {
+    setDraft({});
+    setExpandedLotes(new Set());
+    setCompositionCache({});
+  }, [originId]);
+
+  useEffect(() => {
     if (!originId) {
       setOriginInventory([]);
-      setDraft({});
       return;
     }
     let cancelled = false;
     setIsLoading(true);
     warehouseApi
-      .listInventory(originId)
+      .listInventory(
+        originId,
+        debouncedSkuSearch || undefined,
+        selectedGroupId || undefined,
+      )
       .then((data) => {
-        if (cancelled) return;
-        setOriginInventory(data);
-        setDraft({});
+        if (!cancelled) setOriginInventory(data);
       })
       .catch(() => {
-        if (cancelled) return;
-        setOriginInventory([]);
+        if (!cancelled) setOriginInventory([]);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -111,7 +163,7 @@ export function TransferModal({
     return () => {
       cancelled = true;
     };
-  }, [originId]);
+  }, [originId, debouncedSkuSearch, selectedGroupId]);
 
   useEffect(() => {
     if (!destinationId) {
@@ -131,6 +183,75 @@ export function TransferModal({
       cancelled = true;
     };
   }, [destinationId]);
+
+  const toggleLoteExpand = async (item: InventoryItem) => {
+    const id = item.product_variant_id;
+    const next = new Set(expandedLotes);
+
+    if (next.has(id)) {
+      next.delete(id);
+      setExpandedLotes(next);
+      return;
+    }
+
+    next.add(id);
+    setExpandedLotes(next);
+
+    if (!compositionCache[id] && tenantId) {
+      setLoadingCompositions((prev) => new Set(prev).add(id));
+      try {
+        const comps = await productCompositionApi.byParent(tenantId, id);
+        setCompositionCache((prev) => ({ ...prev, [id]: comps }));
+      } catch {
+        setCompositionCache((prev) => ({ ...prev, [id]: [] }));
+      } finally {
+        setLoadingCompositions((prev) => {
+          const s = new Set(prev);
+          s.delete(id);
+          return s;
+        });
+      }
+    }
+  };
+
+  const inventoryByVariantId = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    for (const item of originInventory) {
+      map.set(item.product_variant_id, item);
+    }
+    return map;
+  }, [originInventory]);
+
+  const displayRows = useMemo((): DisplayRow[] => {
+    const claimedIds = new Set<string>();
+    for (const loteId of expandedLotes) {
+      const comps = compositionCache[loteId] ?? [];
+      for (const c of comps) {
+        claimedIds.add(c.child_product_variant_id);
+      }
+    }
+
+    const rows: DisplayRow[] = [];
+    for (const item of originInventory) {
+      if (claimedIds.has(item.product_variant_id)) continue;
+      rows.push({ type: "item", item });
+
+      if (item.is_composite && expandedLotes.has(item.product_variant_id)) {
+        const comps = compositionCache[item.product_variant_id] ?? [];
+        for (const comp of comps) {
+          rows.push({
+            type: "component",
+            component: comp,
+            parentId: item.product_variant_id,
+            desagrupado: inventoryByVariantId.get(
+              comp.child_product_variant_id,
+            ),
+          });
+        }
+      }
+    }
+    return rows;
+  }, [originInventory, expandedLotes, compositionCache, inventoryByVariantId]);
 
   const projectedDestination = useMemo(() => {
     const byVariant = new Map<string, InventoryItem & { _added?: number }>();
@@ -181,6 +302,39 @@ export function TransferModal({
     });
   };
 
+  const handleComponentAmountChange = (
+    comp: CompositionComponent,
+    desagrupado: InventoryItem | undefined,
+    parentItem: InventoryItem,
+    raw: string,
+  ) => {
+    const amount = Math.max(0, Math.floor(Number(raw) || 0));
+    const id = comp.child_product_variant_id;
+
+    setDraft((prev) => {
+      const next = { ...prev };
+      if (amount === 0) {
+        delete next[id];
+        return next;
+      }
+      const desagregadoStock = desagrupado?.stock ?? 0;
+      const maxFromComposite = parentItem.stock * Number(comp.quantity);
+      const maxTotal = desagregadoStock + maxFromComposite;
+      const clamped = Math.min(amount, maxTotal);
+
+      next[id] = {
+        product_variant_id: id,
+        product_name: comp.child_variant_name ?? "",
+        variant_name: comp.child_variant_name ?? "",
+        sku: comp.child_sku ?? null,
+        amount: clamped,
+        available: maxTotal,
+        from_composite_id: parentItem.product_variant_id,
+      };
+      return next;
+    });
+  };
+
   const resolveDate = (field: DateField): string | null => {
     if (field.mode === "now") return new Date().toISOString();
     return field.value ? new Date(field.value).toISOString() : null;
@@ -212,6 +366,7 @@ export function TransferModal({
       products: products.map((p) => ({
         product_id: p.product_variant_id,
         amount: p.amount,
+        from_composite_id: p.from_composite_id,
       })),
     });
   };
@@ -253,7 +408,6 @@ export function TransferModal({
           />
         </div>
 
-        {/* Date fields */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <DateFieldInput
             label="Fecha de salida"
@@ -274,6 +428,35 @@ export function TransferModal({
                 Inventario origen
               </p>
             </div>
+
+            {originId && (
+              <div className="px-3 py-2 border-b border-gray-100 flex gap-2">
+                <Input
+                  placeholder="Buscar SKU o nombre..."
+                  value={skuSearch}
+                  onChange={(e) => setSkuSearch(e.target.value)}
+                  className="flex-1 text-xs"
+                />
+                {groups.length > 0 && (
+                  <select
+                    value={selectedGroupId}
+                    onChange={(e) => setSelectedGroupId(e.target.value)}
+                    className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-accent-500 shrink-0"
+                  >
+                    <option value="">Todos</option>
+                    {groups.map((g) => (
+                      <option
+                        key={g.tenant_product_group_id}
+                        value={g.tenant_product_group_id}
+                      >
+                        {g.group_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
             <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
               {isLoading && (
                 <div className="flex items-center justify-center py-10">
@@ -288,33 +471,143 @@ export function TransferModal({
                 </p>
               )}
               {!isLoading &&
-                originInventory.map((item) => {
-                  const value = draft[item.product_variant_id]?.amount ?? 0;
+                displayRows.map((row, idx) => {
+                  if (row.type === "item") {
+                    const { item } = row;
+                    const value = draft[item.product_variant_id]?.amount ?? 0;
+                    const isExpanded = expandedLotes.has(
+                      item.product_variant_id,
+                    );
+                    const isLoadingComp = loadingCompositions.has(
+                      item.product_variant_id,
+                    );
+
+                    return (
+                      <div
+                        key={item.inventory_id}
+                        className="px-4 py-3 flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {item.product_name} — {item.variant_name}
+                            </p>
+                            {item.is_composite && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 border border-purple-200 shrink-0">
+                                Lote
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            SKU {item.sku ?? "—"} · stock{" "}
+                            <span className="font-mono">{item.stock}</span>
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Input
+                            type="number"
+                            min={0}
+                            max={item.stock}
+                            value={value === 0 ? "" : String(value)}
+                            onChange={(e) =>
+                              handleAmountChange(item, e.target.value)
+                            }
+                            placeholder="0"
+                            className="w-20 text-right"
+                          />
+                          {item.is_composite && (
+                            <button
+                              type="button"
+                              onClick={() => toggleLoteExpand(item)}
+                              disabled={isLoadingComp}
+                              className="p-1 text-gray-400 hover:text-purple-600 transition-colors disabled:opacity-50"
+                              title={
+                                isExpanded
+                                  ? "Colapsar"
+                                  : "Ver componentes del lote"
+                              }
+                            >
+                              {isLoadingComp ? (
+                                <div className="w-4 h-4 border-2 border-gray-200 border-t-purple-500 rounded-full animate-spin" />
+                              ) : (
+                                <svg
+                                  className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 9l-7 7-7-7"
+                                  />
+                                </svg>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const { component, parentId, desagrupado } = row;
+                  const parentItem = inventoryByVariantId.get(parentId);
+                  const compValue =
+                    draft[component.child_product_variant_id]?.amount ?? 0;
+                  const desagregadoStock = desagrupado?.stock ?? 0;
+                  const maxFromComposite =
+                    (parentItem?.stock ?? 0) * Number(component.quantity);
+                  const maxTotal = desagregadoStock + maxFromComposite;
+
                   return (
                     <div
-                      key={item.inventory_id}
-                      className="px-4 py-3 flex items-center justify-between gap-3"
+                      key={`${idx}-comp-${component.child_product_variant_id}`}
+                      className="pl-8 pr-4 py-2.5 flex items-center justify-between gap-3 border-l-2 border-purple-200 bg-purple-50/30"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {item.product_name} — {item.variant_name}
+                        <p className="text-xs font-medium text-gray-800 truncate">
+                          {component.child_variant_name ??
+                            component.child_product_variant_id}
                         </p>
-                        <p className="text-xs text-gray-500">
-                          SKU {item.sku ?? "—"} · stock{" "}
-                          <span className="font-mono">{item.stock}</span>
+                        <p className="text-[11px] text-gray-500">
+                          SKU {component.child_sku ?? "—"}
+                          {desagregadoStock > 0 ? (
+                            <span className="ml-2 text-purple-700 font-medium">
+                              · {desagregadoStock} desagrupados
+                            </span>
+                          ) : (
+                            <span className="ml-2 text-gray-400">· en lote</span>
+                          )}
+                          {maxTotal > 0 && (
+                            <span className="ml-1 text-gray-400">
+                              ({maxTotal} disponibles)
+                            </span>
+                          )}
                         </p>
                       </div>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={item.stock}
-                        value={value === 0 ? "" : String(value)}
-                        onChange={(e) =>
-                          handleAmountChange(item, e.target.value)
-                        }
-                        placeholder="0"
-                        className="w-20 text-right"
-                      />
+                      {maxTotal > 0 && parentItem ? (
+                        <Input
+                          type="number"
+                          min={0}
+                          max={maxTotal}
+                          value={compValue === 0 ? "" : String(compValue)}
+                          onChange={(e) =>
+                            handleComponentAmountChange(
+                              component,
+                              desagrupado,
+                              parentItem,
+                              e.target.value,
+                            )
+                          }
+                          placeholder="0"
+                          className="w-20 text-right shrink-0"
+                        />
+                      ) : (
+                        <span className="text-xs text-gray-400 w-20 text-right shrink-0">
+                          Sin stock
+                        </span>
+                      )}
                     </div>
                   );
                 })}

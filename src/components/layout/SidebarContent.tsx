@@ -11,6 +11,7 @@ import {
   IconMapPin,
   IconPackage,
   IconSettings,
+  IconShield,
   IconShoppingCart,
   IconTrendingUp,
   IconUser,
@@ -37,6 +38,7 @@ function getIconByName(iconName: string): ReactNode {
     building: <IconBuilding />,
     "map-pin": <IconMapPin />,
     contact: <IconContact />,
+    shield: <IconShield />,
   };
 
   return iconMap[iconName] || <IconGrid />;
@@ -63,11 +65,14 @@ export function SidebarContent({
   const initials = userEmail.slice(0, 2).toUpperCase();
 
   const handleLogoClick = () => {
-    const generalModule = Object.values(MODULES).find(
-      (module) => module.id === "general",
+    const firstAllowedModule = Object.values(MODULES).find((module) =>
+      isAllowedForRole(module.rolesAllowed, roleId),
     );
-    if (generalModule) {
-      navigate(generalModule.path);
+    if (firstAllowedModule) {
+      const firstSubmodule = firstAllowedModule.submodules.find((s) =>
+        isAllowedForRole(s.rolesAllowed, roleId),
+      );
+      navigate(firstSubmodule?.path ?? firstAllowedModule.path);
       onNavClick?.();
     }
   };

@@ -15,8 +15,10 @@ export interface SaleListItem {
   currency_code: string;
   symbol: string;
   has_electronic_invoice?: boolean;
+  is_refunded?: boolean;
   tenant_customer_id?: string;
   created_at?: string;
+  return_transaction_id?: string | null;
 }
 
 export interface SaleItemPayload {
@@ -32,7 +34,8 @@ export interface SaleItemPayload {
 }
 
 export interface SalePaymentPayload {
-  tenant_customer_id: string;
+  /** Optional: walk-in / anonymous sales record payments without a customer. */
+  tenant_customer_id?: string | null;
   payment_method_id: number;
   is_points_redemption: boolean;
   points_redeemed: number;
@@ -49,14 +52,30 @@ export interface CreateSaleResult {
 }
 
 export interface DigitalInvoiceInfo {
-  tenant_name: string;
-  first_name: string;
-  last_name: string;
-  document_number: string;
-  email: string;
+  digital_sale_invoice_id: string;
   subtotal_amount: number;
+  tax_amount: number;
   total_amount: number;
+  amount_paid: number;
+  change_amount: number;
+  points_accumulated: number;
+  ad_message: string | null;
+  due_date: string | null;
   invoiced_at: string;
+  /** Null for walk-in/anonymous sales */
+  first_name: string | null;
+  last_name: string | null;
+  document_number: string | null;
+  email: string | null;
+  tenant_name: string | null;
+}
+
+export interface SaleItemDetail {
+  product_name: string;
+  sku: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
 }
 
 export interface ElectronicInvoiceInfo {

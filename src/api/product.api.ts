@@ -6,8 +6,44 @@ import type { UpdateProductRequest } from "@/interfaces/api/requests/UpdateProdu
 import type { Product } from "@/interfaces/entities/Product.interface";
 import type { ProductsListResponse } from "@/interfaces/api/responses/ProductsListResponse.interface";
 
+export interface BulkProductInput {
+  tenant_id: string;
+  sku: string;
+  variant_name: string;
+  cabys_code?: string | null;
+  unit_price: number;
+  cost_price?: number;
+  attribute_value_ids?: string[];
+  group_ids?: string[];
+  supplier_id?: string;
+}
+
 export const productApi = {
-  async create(data: CreateProductRequest): Promise<{ product_variant_id: string }> {
+  async createBulk(
+    products: BulkProductInput[],
+  ): Promise<Array<{ product_variant_id: string }>> {
+    const response = await fetch(`${url}/product`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ products }),
+    });
+
+    const json = await response.json();
+    if (!response.ok) {
+      const msg = Array.isArray(json.message)
+        ? json.message[0]
+        : (json.message ?? `Error ${response.status}`);
+      throw new Error(msg);
+    }
+
+    const created = json.data?.product ?? [];
+    return created as Array<{ product_variant_id: string }>;
+  },
+
+  async create(
+    data: CreateProductRequest,
+  ): Promise<{ product_variant_id: string }> {
     try {
       const response = await fetch(`${url}/product`, {
         method: "POST",
@@ -21,6 +57,8 @@ export const productApi = {
               variant_name: data.product_name,
               cabys_code: data.cabys_code ?? null,
               unit_price: data.price,
+              cost_price: data.cost_price ?? 0,
+              supplier_id: data.supplier_id ?? null,
               attribute_value_ids: data.attribute_value_ids ?? [],
               group_ids: data.group_ids ?? [],
             },
@@ -112,6 +150,24 @@ export const productApi = {
     }
   },
 
+  async getBySku(sku: string): Promise<Product | null> {
+    try {
+      const response = await fetch(
+        `${url}/product/sku/${encodeURIComponent(sku)}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        },
+      );
+      const json = await response.json();
+      if (!response.ok) return null;
+      return json.data ?? null;
+    } catch (error) {
+      return null;
+    }
+  },
+
   async getByIdWithAttributes(
     tenantId: string,
     productId: string,
@@ -150,7 +206,10 @@ export const productApi = {
     return json.data ?? json;
   },
 
-  async update(productId: string, data: UpdateProductRequest): Promise<Product> {
+  async update(
+    productId: string,
+    data: UpdateProductRequest,
+  ): Promise<Product> {
     try {
       const response = await fetch(`${url}/product/${productId}`, {
         method: "PATCH",
@@ -190,10 +249,24 @@ export const productApi = {
     query: string,
     page = 1,
     limit = 100,
+    groupIds?: string[],
+    attributeValueIds?: string[],
+    noSupplier?: boolean,
   ): Promise<ProductsListResponse> {
     try {
+      const params = new URLSearchParams({
+        q: query,
+        page: String(page),
+        limit: String(limit),
+      });
+      if (groupIds && groupIds.length > 0)
+        params.set("group_ids", groupIds.join(","));
+      if (attributeValueIds && attributeValueIds.length > 0)
+        params.set("attribute_value_ids", attributeValueIds.join(","));
+      if (noSupplier) params.set("no_supplier", "true");
+
       const response = await fetch(
-        `${url}/product/${tenantId}/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
+        `${url}/product/${tenantId}/search?${params.toString()}`,
         {
           method: "GET",
           headers: { "Content-Type": "application/json" },
@@ -233,6 +306,40 @@ export const productApi = {
         error instanceof Error
           ? error.message
           : "Error al filtrar productos por categoría",
+      );
+    }
+  },
+
+  async getComposition(
+    tenantId: string,
+    productId: string,
+  ): Promise<
+    Array<{
+      parent_product_variant_id: string;
+      child_product_variant_id: string;
+      quantity: number;
+      child_sku?: string;
+      child_variant_name?: string;
+    }>
+  > {
+    try {
+      const response = await fetch(
+        `${url}/product-composition/${tenantId}/parent/${productId}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        },
+      );
+
+      const json: ApiResponse<any> = await response.json();
+      if (!response.ok) {
+        throw new Error("Error al obtener componentes del producto");
+      }
+      return json.data ?? [];
+    } catch (error) {
+      throw new Error(
+        error instanceof Error ? error.message : "Error al obtener composición",
       );
     }
   },

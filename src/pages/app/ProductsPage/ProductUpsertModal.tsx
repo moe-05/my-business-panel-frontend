@@ -12,16 +12,13 @@ import {
   type AttributeAssignmentRow,
 } from "@/components/ui/AttributeAssignmentEditor";
 import { GroupAssignmentEditor } from "@/components/ui/GroupAssignmentEditor";
-import {
-  CompositionEditor,
-  type CompositionEditorRow,
-} from "@/components/ui/CompositionEditor";
 
 import { productApi } from "@/api/product.api";
-import { productCompositionApi } from "@/api/productComposition.api";
 import { productVariantGroupApi } from "@/api/productGroup.api";
+import { purchaseApi } from "@/api/purchase.api";
 
 import type { Product } from "@/interfaces/entities/Product.interface";
+import type { Supplier } from "@/interfaces/entities/Purchase.interface";
 import type { Tenant } from "@/interfaces/entities/Tenant.interface";
 import type { CreateProductRequest } from "@/interfaces/api/requests/CreateProductRequest.interface";
 import type { UpdateProductRequest } from "@/interfaces/api/requests/UpdateProductRequest.interface";
@@ -34,6 +31,7 @@ import {
 type ProductWithVariant = Product & {
   variant_name?: string;
   unit_price?: number;
+  cost_price?: number;
   product_variant_id?: string;
   is_composite?: boolean;
 };
@@ -46,10 +44,12 @@ interface ProductUpsertModalProps {
   tenants: Tenant[];
   isSuperAdmin: boolean;
   onClose: () => void;
-  /** Returns the new product_variant_id so the modal can wire composition. */
   onCreate: (data: CreateProductRequest) => Promise<string | null>;
-  /** Returns void; modal handles its own follow-up calls if needed. */
-  onUpdate: (productId: string, data: UpdateProductRequest) => Promise<void>;
+  onUpdate: (
+    productId: string,
+    data: UpdateProductRequest,
+    meta?: { supplier_name?: string },
+  ) => Promise<void>;
 }
 
 export function ProductUpsertModal({
@@ -70,12 +70,9 @@ export function ProductUpsertModal({
     [],
   );
   const [groupIds, setGroupIds] = useState<string[]>([]);
-  const [isComposite, setIsComposite] = useState<boolean>(
-    product?.is_composite === true,
-  );
-  const [composition, setComposition] = useState<CompositionEditorRow[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   const {
     register,
@@ -93,9 +90,20 @@ export function ProductUpsertModal({
             sku: product.sku,
             product_name: product.variant_name ?? product.product_name ?? "",
             description: product.description ?? "",
-            category_id: product.category_id ?? "",
-            category_name: product.category?.category_name ?? "",
+            category_id: product.category_id ?? product.cabys_code ?? "",
+            category_name:
+              product.category?.category_name ?? product.cabys_code ?? "",
             price: String(product.unit_price ?? product.price ?? ""),
+            cost_price:
+              product.cost_price !== undefined && product.cost_price !== null
+                ? String(product.cost_price)
+                : "",
+            supplier_id: product.supplier_id ?? "",
+            giftable: product.giftable ?? false,
+            giftable_from:
+              product.giftable_from != null
+                ? String(product.giftable_from)
+                : "",
             tenant_id: "",
           }
         : {
@@ -105,19 +113,22 @@ export function ProductUpsertModal({
             category_id: "",
             category_name: "",
             price: "",
+            cost_price: "",
+            supplier_id: "",
+            giftable: false,
+            giftable_from: "",
             tenant_id: "",
           },
   });
 
   const categoryName = watch("category_name") ?? "";
+  const isGiftable = watch("giftable") ?? false;
 
   // Reset modal-local state whenever it opens or the product changes.
   useEffect(() => {
     if (!isOpen) return;
     setAttributeRows([]);
     setGroupIds([]);
-    setIsComposite(product?.is_composite === true);
-    setComposition([]);
     setSaveError(null);
     reset(
       isEditing && product
@@ -125,9 +136,20 @@ export function ProductUpsertModal({
             sku: product.sku,
             product_name: product.variant_name ?? product.product_name ?? "",
             description: product.description ?? "",
-            category_id: product.category_id ?? "",
-            category_name: product.category?.category_name ?? "",
+            category_id: product.category_id ?? product.cabys_code ?? "",
+            category_name:
+              product.category?.category_name ?? product.cabys_code ?? "",
             price: String(product.unit_price ?? product.price ?? ""),
+            cost_price:
+              product.cost_price !== undefined && product.cost_price !== null
+                ? String(product.cost_price)
+                : "",
+            supplier_id: product.supplier_id ?? "",
+            giftable: product.giftable ?? false,
+            giftable_from:
+              product.giftable_from != null
+                ? String(product.giftable_from)
+                : "",
             tenant_id: "",
           }
         : {
@@ -137,13 +159,22 @@ export function ProductUpsertModal({
             category_id: "",
             category_name: "",
             price: "",
+            cost_price: "",
+            supplier_id: "",
+            giftable: false,
+            giftable_from: "",
             tenant_id: "",
           },
     );
+
+    purchaseApi
+      .listSuppliers()
+      .then(setSuppliers)
+      .catch(() => {});
   }, [isOpen, product, isEditing, reset]);
 
-  // Edit mode: fetch the full state (attributes, groups, composition) so the
-  // sub-sections open already populated with what's in the database.
+  // Edit mode: fetch the full state (attributes, groups) so the sub-sections
+  // open already populated with what's in the database.
   useEffect(() => {
     if (!isOpen || !isEditing || !product) return;
     const productId = product.product_variant_id ?? product.product_id;
@@ -187,25 +218,6 @@ export function ProductUpsertModal({
         setGroupIds(
           (detail.groups ?? []).map((g) => g.tenant_product_group_id),
         );
-
-        setIsComposite(detail.is_composite === true);
-
-        if (detail.is_composite === true) {
-          const comps = await productCompositionApi.byParent(
-            tenantId,
-            productId,
-          );
-          if (cancelled) return;
-          setComposition(
-            comps.map((c) => ({
-              child_product_variant_id: c.child_product_variant_id,
-              child_display_name:
-                (c.child_variant_name ?? "—") +
-                (c.child_sku ? ` (${c.child_sku})` : ""),
-              quantity: Number(c.quantity),
-            })),
-          );
-        }
       } catch (err) {
         if (!cancelled) {
           setSaveError(
@@ -232,6 +244,18 @@ export function ProductUpsertModal({
   const onSubmit = async (data: ProductUpsertFormData) => {
     setSaveError(null);
     const price = parseFloat(data.price);
+    const costPrice =
+      data.cost_price && data.cost_price !== ""
+        ? parseFloat(data.cost_price)
+        : undefined;
+    const supplierId =
+      data.supplier_id && data.supplier_id !== ""
+        ? data.supplier_id
+        : undefined;
+    const giftableFrom =
+      data.giftable && data.giftable_from && data.giftable_from !== ""
+        ? parseFloat(data.giftable_from)
+        : undefined;
     const tenantId = isSuperAdmin
       ? data.tenant_id || currentTenantId
       : currentTenantId;
@@ -244,15 +268,48 @@ export function ProductUpsertModal({
 
       if (isEditing && product) {
         const productId = product.product_variant_id ?? product.product_id;
-        await onUpdate(productId, {
-          product_name: data.product_name,
-          description: data.description || undefined,
-          category_id: data.category_id,
-          price,
-          attribute_value_ids,
-          group_ids: groupIds,
-        });
+        // In edit mode, an empty supplier_id must be sent as null so the
+        // backend sets the field to NULL (undefined would leave it unchanged).
+        const editSupplierId: string | null =
+          data.supplier_id && data.supplier_id !== ""
+            ? data.supplier_id
+            : null;
+        const supplierName = editSupplierId
+          ? (suppliers.find((s) => s.supplier_id === editSupplierId)
+              ?.supplier_name ?? undefined)
+          : undefined;
+        await onUpdate(
+          productId,
+          {
+            product_name: data.product_name,
+            description: data.description || undefined,
+            category_id: data.category_id,
+            price,
+            cost_price: costPrice,
+            supplier_id: editSupplierId,
+            giftable: data.giftable ?? false,
+            giftable_from: giftableFrom,
+            attribute_value_ids,
+            group_ids: groupIds,
+          },
+          { supplier_name: supplierName },
+        );
         variantId = productId;
+
+        // Propagate supplier change to child products when editing a composite.
+        if (product.is_composite) {
+          const composition = await productApi.getComposition(
+            product.tenant_id,
+            productId,
+          );
+          await Promise.all(
+            composition.map((child) =>
+              productApi.update(child.child_product_variant_id, {
+                supplier_id: editSupplierId,
+              }),
+            ),
+          );
+        }
       } else {
         variantId = await onCreate({
           tenant_id: tenantId,
@@ -261,47 +318,18 @@ export function ProductUpsertModal({
           description: data.description || undefined,
           category_id: data.category_id,
           price,
+          cost_price: costPrice,
+          supplier_id: supplierId,
+          giftable: data.giftable ?? false,
+          giftable_from: giftableFrom,
           cabys_code: data.category_id,
           attribute_value_ids,
           group_ids: groupIds,
         });
       }
 
-      // Composition save (if applicable). Editing path also re-syncs groups in
-      // case the backend update did not include them yet.
       if (variantId && isEditing) {
         await productVariantGroupApi.replace(tenantId, variantId, groupIds);
-      }
-
-      if (variantId && isComposite && composition.length > 0) {
-        const components = composition
-          .filter(
-            (c) =>
-              c.child_product_variant_id &&
-              c.child_product_variant_id !== variantId &&
-              c.quantity > 0,
-          )
-          .map((c) => ({
-            child_product_variant_id: c.child_product_variant_id,
-            quantity: c.quantity,
-          }));
-
-        if (components.length === 0) {
-          throw new Error(
-            "Un compuesto necesita al menos un componente válido (cantidad > 0).",
-          );
-        }
-
-        await productCompositionApi.replace({
-          tenant_id: tenantId,
-          parent_product_variant_id: variantId,
-          components,
-        });
-      } else if (variantId && !isComposite && isEditing) {
-        // Editing: user un-toggled composite → clear any composition.
-        await productCompositionApi
-          .clear(tenantId, variantId)
-          .catch(() => undefined);
       }
 
       onClose();
@@ -371,6 +399,19 @@ export function ProductUpsertModal({
             />
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Costo unitario"
+              type="number"
+              placeholder="Ej: 12000.00"
+              step="0.01"
+              min="0"
+              hint="Costo de adquisición. Se actualiza al recibir compras."
+              error={errors.cost_price?.message}
+              {...register("cost_price")}
+            />
+          </div>
+
           <Input
             label="Nombre del Producto"
             placeholder="Ej: Laptop Dell XPS 13"
@@ -403,6 +444,59 @@ export function ProductUpsertModal({
               />
             )}
           />
+
+          <Controller
+            name="supplier_id"
+            control={control}
+            render={({ field }) => (
+              <Select
+                label="Proveedor"
+                value={field.value ?? ""}
+                onChange={field.onChange}
+                name={field.name}
+                options={[
+                  { value: "", label: "Sin proveedor" },
+                  ...suppliers.map((s) => ({
+                    value: s.supplier_id,
+                    label: s.supplier_name,
+                  })),
+                ]}
+              />
+            )}
+          />
+
+          <div className="flex items-center gap-3">
+            <Controller
+              name="giftable"
+              control={control}
+              render={({ field }) => (
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    checked={field.value ?? false}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                  />
+                  <span className="text-sm text-gray-700 font-medium">
+                    Aplica como producto regalable
+                  </span>
+                </label>
+              )}
+            />
+          </div>
+
+          {isGiftable && (
+            <Input
+              label="Monto mínimo de compra para ser regalable (₡)"
+              type="number"
+              placeholder="Ej: 50000.00"
+              step="0.01"
+              min="0"
+              hint="Si se deja vacío, no hay monto mínimo."
+              error={errors.giftable_from?.message}
+              {...register("giftable_from")}
+            />
+          )}
         </section>
 
         {/* ─── Group assignment ─────────────────────── */}
@@ -435,8 +529,8 @@ export function ProductUpsertModal({
           <header>
             <h3 className="text-sm font-semibold text-gray-900">Atributos</h3>
             <p className="text-xs text-gray-500">
-              Color, talla, material, etc. Los atributos se buscan/crean
-              inline contra el catálogo del tenant + globales.
+              Color, talla, material, etc. Los atributos se buscan/crean inline
+              contra el catálogo del tenant + globales.
             </p>
           </header>
           {targetTenantId ? (
@@ -450,52 +544,6 @@ export function ProductUpsertModal({
             <p className="text-xs text-gray-500">
               Seleccione una empresa primero.
             </p>
-          )}
-        </section>
-
-        {/* ─── Composition / Lote ───────────────────── */}
-        <section className="space-y-2">
-          <header className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900">
-                Es un lote / compuesto
-              </h3>
-              <p className="text-xs text-gray-500">
-                Activa para definir un producto que se desglosa en otros (ej.
-                six-pack → 6 botellas, lote → 12 camisas).
-              </p>
-            </div>
-            <label className="inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isComposite}
-                disabled={isSaving}
-                onChange={(e) => setIsComposite(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="relative w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-accent-500 transition-colors">
-                <div
-                  className={[
-                    "absolute top-0.5 left-0.5 bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform",
-                    isComposite ? "translate-x-4" : "",
-                  ].join(" ")}
-                />
-              </div>
-            </label>
-          </header>
-
-          {isComposite && (
-            <CompositionEditor
-              tenantId={targetTenantId}
-              parentVariantId={
-                isEditing
-                  ? (product?.product_variant_id ?? product?.product_id)
-                  : undefined
-              }
-              rows={composition}
-              onChange={setComposition}
-              disabled={isSaving || !targetTenantId}
-            />
           )}
         </section>
 
@@ -513,12 +561,7 @@ export function ProductUpsertModal({
           >
             Cancelar
           </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            fullWidth
-            disabled={isSaving}
-          >
+          <Button type="submit" variant="primary" fullWidth disabled={isSaving}>
             {isSaving
               ? "Guardando..."
               : isEditing

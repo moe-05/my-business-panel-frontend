@@ -1,10 +1,15 @@
+import { useCallback, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+
+import { customerApi } from "@/api/customer.api";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/Modal";
+
+import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
 
 import { identificationTypes } from "@/constants/identification-types";
 import { defaultCustomerSegments } from "@/constants/default-customer-segments";
@@ -32,6 +37,8 @@ interface CustomerUpsertModalProps {
   onUpdate: (customerId: string, data: UpdateCustomerRequest) => void;
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function CustomerUpsertModal({
   mode,
   isOpen,
@@ -51,6 +58,7 @@ export function CustomerUpsertModal({
     register,
     handleSubmit,
     control,
+    watch,
     formState: { errors },
   } = useForm<CustomerUpsertFormData>({
     resolver: zodResolver(buildCustomerUpsertSchema(requireTenant)) as any,
@@ -59,7 +67,7 @@ export function CustomerUpsertModal({
         ? {
             first_name: customer.first_name,
             last_name: customer.last_name,
-            identification_type: customer.identification_type,
+            document_type_id: customer.identification_type,
             document_number: customer.document_number,
             birthdate: customer.birthdate ?? "",
             economic_activity: customer.econ_activity ?? "",
@@ -75,7 +83,7 @@ export function CustomerUpsertModal({
         : {
             first_name: "",
             last_name: "",
-            identification_type: 1,
+            document_type_id: 1,
             document_number: "",
             birthdate: "",
             economic_activity: "",
@@ -90,8 +98,134 @@ export function CustomerUpsertModal({
           },
   });
 
+  // The tenant scope of the unique probes: edit mode locks the customer's
+  // tenant; create mode follows the form selector for superadmins (which can
+  // be empty until they pick one).
+  const watchedTenantId = watch("tenant_id");
+  const probeTenantId = isEditing
+    ? customer?.tenant_id ?? currentTenantId
+    : isSuperAdmin
+      ? watchedTenantId || ""
+      : currentTenantId;
+
+  const watchedDoc = watch("document_number") ?? "";
+  const watchedEmail = watch("email") ?? "";
+  const watchedPhone = watch("phone") ?? "";
+
+  const excludeId = isEditing ? customer?.customer_id : undefined;
+
+  const checkDoc = useCallback(
+    async (value: string) => {
+      if (!probeTenantId) return false;
+      const { exists } = await customerApi.checkAvailability({
+        tenantId: probeTenantId,
+        field: "document_number",
+        value,
+        excludeId,
+      });
+      return exists;
+    },
+    [probeTenantId, excludeId],
+  );
+
+  const checkEmail = useCallback(
+    async (value: string) => {
+      if (!probeTenantId) return false;
+      const { exists } = await customerApi.checkAvailability({
+        tenantId: probeTenantId,
+        field: "email",
+        value,
+        excludeId,
+      });
+      return exists;
+    },
+    [probeTenantId, excludeId],
+  );
+
+  const checkPhone = useCallback(
+    async (value: string) => {
+      if (!probeTenantId) return false;
+      const { exists } = await customerApi.checkAvailability({
+        tenantId: probeTenantId,
+        field: "phone",
+        value,
+        excludeId,
+      });
+      return exists;
+    },
+    [probeTenantId, excludeId],
+  );
+
+  const docStatus = useUniqueAvailability(watchedDoc, checkDoc, {
+    skip: isEditing || !probeTenantId,
+    minLength: 3,
+  });
+
+  const emailStatus = useUniqueAvailability(watchedEmail, checkEmail, {
+    skip: !probeTenantId || !watchedEmail,
+    minLength: 5,
+    isWellFormed: (value) => EMAIL_REGEX.test(value),
+  });
+
+  const phoneStatus = useUniqueAvailability(watchedPhone, checkPhone, {
+    skip: !probeTenantId || !watchedPhone,
+    minLength: 5,
+  });
+
+  const docHint = useMemo(() => {
+    if (isEditing) {
+      return "No se puede cambiar el documento de un cliente existente";
+    }
+    if (docStatus === "checking") return "Verificando disponibilidad…";
+    if (docStatus === "available") return "Documento disponible";
+    return undefined;
+  }, [docStatus, isEditing]);
+
+  const emailHint = useMemo(() => {
+    if (!watchedEmail) return undefined;
+    if (emailStatus === "checking") return "Verificando disponibilidad…";
+    if (emailStatus === "available") return "Email disponible";
+    return undefined;
+  }, [emailStatus, watchedEmail]);
+
+  const phoneHint = useMemo(() => {
+    if (!watchedPhone) return undefined;
+    if (phoneStatus === "checking") return "Verificando disponibilidad…";
+    if (phoneStatus === "available") return "Teléfono disponible";
+    return undefined;
+  }, [phoneStatus, watchedPhone]);
+
+  const docError =
+    errors.document_number?.message ??
+    (docStatus === "taken"
+      ? "Ya existe un cliente con este documento"
+      : undefined);
+
+  const emailError =
+    errors.email?.message ??
+    (emailStatus === "taken"
+      ? "Ya existe un cliente con este email"
+      : undefined);
+
+  const phoneError =
+    phoneStatus === "taken"
+      ? "Ya existe un cliente con este teléfono"
+      : undefined;
+
+  const hasUniquenessConflict =
+    docStatus === "taken" ||
+    emailStatus === "taken" ||
+    phoneStatus === "taken";
+
+  const isProbing =
+    docStatus === "checking" ||
+    emailStatus === "checking" ||
+    phoneStatus === "checking";
+
   const onSubmit = (data: CustomerUpsertFormData) => {
-    const segmentId = data.segment_id ? Number(data.segment_id) : undefined;
+    if (hasUniquenessConflict) return;
+
+    const segmentId = data.segment_id ? Number(data.segment_id) : null;
 
     if (isEditing && customer) {
       onUpdate(customer.customer_id, {
@@ -110,7 +244,7 @@ export function CustomerUpsertModal({
         tenant_id: isSuperAdmin ? (data.tenant_id || "") : currentTenantId,
         first_name: data.first_name,
         last_name: data.last_name,
-        identification_type: data.identification_type,
+        document_type_id: data.document_type_id,
         document_number: data.document_number,
         birthdate: data.birthdate || undefined,
         economic_activity: data.economic_activity || undefined,
@@ -177,16 +311,19 @@ export function CustomerUpsertModal({
 
         <div className="grid grid-cols-2 gap-4">
           <Controller
-            name="identification_type"
+            name="document_type_id"
             control={control}
             render={({ field }) => (
               <Select
                 label="Tipo de Documento"
-                value={field.value}
-                onChange={(val) => field.onChange(Number(val))}
+                value={String(field.value ?? "")}
+                onChange={(e) => field.onChange(Number(e.target.value))}
                 name={field.name}
-                options={identificationTypes}
-                error={errors.identification_type?.message}
+                options={identificationTypes.map((t) => ({
+                  value: String(t.value),
+                  label: t.label,
+                }))}
+                error={errors.document_type_id?.message}
                 disabled={isEditing}
                 required
               />
@@ -195,14 +332,10 @@ export function CustomerUpsertModal({
           <Input
             label="Número de Documento"
             placeholder="Ej: 123456789"
-            error={errors.document_number?.message}
+            error={docError}
             disabled={isEditing}
             required
-            hint={
-              isEditing
-                ? "No se puede cambiar el documento de un cliente existente"
-                : undefined
-            }
+            hint={docHint}
             {...register("document_number")}
           />
         </div>
@@ -227,13 +360,16 @@ export function CustomerUpsertModal({
           label="Email"
           type="email"
           placeholder="cliente@ejemplo.com"
-          error={errors.email?.message}
+          error={emailError}
+          hint={emailHint}
           {...register("email")}
         />
 
         <Input
           label="Teléfono"
           placeholder="+506 2234 5678"
+          error={phoneError}
+          hint={phoneHint}
           {...register("phone")}
         />
 
@@ -283,7 +419,12 @@ export function CustomerUpsertModal({
           <Button type="button" variant="ghost" fullWidth onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" variant="primary" fullWidth>
+          <Button
+            type="submit"
+            variant="primary"
+            fullWidth
+            disabled={hasUniquenessConflict || isProbing}
+          >
             {isEditing ? "Guardar Cambios" : "Crear Cliente"}
           </Button>
         </div>

@@ -6,7 +6,6 @@ import {
   getAllCustomers,
   getCustomersByTenant,
   searchCustomers,
-  getCustomersBySegment,
   CUSTOMERS_PAGE_LIMIT,
   type CustomersPageLoaderData,
 } from "@/router/loaders/customer.loaders";
@@ -36,6 +35,7 @@ import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface"
 
 import { CustomerDetailModal } from "./CustomerDetailModal";
 import { CustomerUpsertModal } from "./CustomerUpsertModal";
+import { QuickSegmentChangeModal } from "./QuickSegmentChangeModal";
 
 type CustomerWithTenant = Customer & { tenant_name?: string };
 
@@ -76,6 +76,7 @@ export function CustomersPage() {
 
   // Modals
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
+  const [isQuickSegmentOpen, setIsQuickSegmentOpen] = useState(false);
   const [upsertModal, setUpsertModal] = useState<UpsertModalState>({
     open: false,
     mode: "create",
@@ -83,6 +84,12 @@ export function CustomersPage() {
 
   // Re-fetch on search/filter/page changes (skip initial render — data from loader)
   const isFirstRender = useRef(true);
+
+  // Reset to first page when query or segment changes
+  useEffect(() => {
+    if (isFirstRender.current) return;
+    setPage(1);
+  }, [query, segment]);
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -105,19 +112,14 @@ export function CustomersPage() {
             query,
             page,
             CUSTOMERS_PAGE_LIMIT,
-          );
-        } else if (segment) {
-          result = await getCustomersBySegment(
-            tenantId,
             segment,
-            page,
-            CUSTOMERS_PAGE_LIMIT,
           );
         } else {
           result = await getCustomersByTenant(
             tenantId,
             page,
             CUSTOMERS_PAGE_LIMIT,
+            segment,
           );
         }
 
@@ -143,7 +145,7 @@ export function CustomersPage() {
       tenant_id: data.tenant_id,
       first_name: data.first_name,
       last_name: data.last_name,
-      identification_type: data.identification_type,
+      identification_type: data.document_type_id,
       document_number: data.document_number,
       birthdate: data.birthdate,
       econ_activity: data.economic_activity,
@@ -153,7 +155,7 @@ export function CustomersPage() {
       city: data.city,
       province: data.province,
       postal_code: data.postal_code,
-      segment_id: data.segment_id,
+      segment_id: data.segment_id ?? undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -183,7 +185,7 @@ export function CustomersPage() {
     const original = customers.find((c) => c.customer_id === customerId);
 
     setCustomers((prev) =>
-      prev.map((c) => (c.customer_id === customerId ? { ...c, ...data } : c)),
+      prev.map((c) => (c.customer_id === customerId ? { ...c, ...data, segment_id: data.segment_id ?? undefined } : c)),
     );
 
     void updateCustomer(customerId, data)
@@ -392,15 +394,26 @@ export function CustomersPage() {
               {total} cliente{total !== 1 ? "s" : ""}
             </span>
             {canManage && (
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => setUpsertModal({ open: true, mode: "create" })}
-                className="w-full lg:w-auto"
-              >
-                <IconPlus />
-                Nuevo Cliente
-              </Button>
+              <>
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setIsQuickSegmentOpen(true)}
+                  className="w-full lg:w-auto"
+                  title="Buscar un cliente y cambiar rápidamente su segmento"
+                >
+                  Cambiar segmento
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => setUpsertModal({ open: true, mode: "create" })}
+                  className="w-full lg:w-auto"
+                >
+                  <IconPlus />
+                  Nuevo Cliente
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -444,6 +457,17 @@ export function CustomersPage() {
         onClose={() => setUpsertModal((prev) => ({ ...prev, open: false }))}
         onCreate={handleCreate}
         onUpdate={handleUpdate}
+      />
+
+      <QuickSegmentChangeModal
+        isOpen={isQuickSegmentOpen}
+        tenantId={currentUser?.tenant.tenant_id ?? ""}
+        onClose={() => setIsQuickSegmentOpen(false)}
+        onSuccess={() => {
+          setQuery("");
+          setSegment("");
+          setPage(1);
+        }}
       />
     </div>
   );

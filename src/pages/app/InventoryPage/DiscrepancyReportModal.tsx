@@ -5,17 +5,17 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 
-import type { InventoryItem } from "@/interfaces/entities/InventoryItem.interface";
+import type { AggregatedInventoryItem } from "@/interfaces/entities/InventoryItem.interface";
 
 export interface DiscrepancyFormState {
-  inventory_id: string;
+  product_variant_id: string;
   physical_quantity: string;
   discrepancy_reason: string;
 }
 
 interface DiscrepancyReportModalProps {
   isOpen: boolean;
-  inventory: InventoryItem[];
+  inventory: AggregatedInventoryItem[];
   warehouseName: string;
   isSubmitting: boolean;
   onClose: () => void;
@@ -37,7 +37,7 @@ export function DiscrepancyReportModal({
   onSubmit,
 }: DiscrepancyReportModalProps) {
   const [formData, setFormData] = useState<DiscrepancyFormState>({
-    inventory_id: "",
+    product_variant_id: "",
     physical_quantity: "",
     discrepancy_reason: "",
   });
@@ -46,7 +46,7 @@ export function DiscrepancyReportModal({
   useEffect(() => {
     if (isOpen) {
       setFormData({
-        inventory_id: "",
+        product_variant_id: "",
         physical_quantity: "",
         discrepancy_reason: "",
       });
@@ -55,7 +55,7 @@ export function DiscrepancyReportModal({
   }, [isOpen]);
 
   const selectedItem = inventory.find(
-    (i) => i.inventory_id === formData.inventory_id,
+    (i) => i.product_variant_id === formData.product_variant_id,
   );
 
   const physical = Number(formData.physical_quantity);
@@ -80,7 +80,7 @@ export function DiscrepancyReportModal({
     }
 
     await onSubmit({
-      inventory_id: selectedItem.inventory_id,
+      inventory_id: selectedItem.product_variant_id,
       product_variant_id: selectedItem.product_variant_id,
       stored_quantity: stored,
       physical_quantity: physical,
@@ -98,12 +98,12 @@ export function DiscrepancyReportModal({
       <form onSubmit={handleSubmit} className="space-y-4">
         <Select
           label="Producto en inventario"
-          value={formData.inventory_id}
+          value={formData.product_variant_id}
           onChange={(e) =>
-            setFormData((p) => ({ ...p, inventory_id: e.target.value }))
+            setFormData((p) => ({ ...p, product_variant_id: e.target.value }))
           }
           options={inventory.map((i) => ({
-            value: i.inventory_id,
+            value: i.product_variant_id,
             label: `${i.product_name} — ${i.variant_name}${i.sku ? ` (${i.sku})` : ""}`,
           }))}
           placeholder="Seleccionar producto"

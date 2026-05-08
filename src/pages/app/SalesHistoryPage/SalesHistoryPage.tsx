@@ -36,8 +36,6 @@ export function SalesHistoryPage() {
     useLoaderData() as SalesHistoryPageLoaderData;
   const { user } = useAuth();
 
-  console.log(initialSales);
-
   const roleId = user?.role.role_id ?? 1;
   const canView = roleId === 2 || roleId === 3;
 
@@ -198,11 +196,19 @@ export function SalesHistoryPage() {
       key: "is_completed",
       label: "Estado",
       width: "10%",
-      render: (v: boolean) => (
-        <Badge variant={v ? "green" : "yellow"}>
-          {v ? "Completada" : "Pendiente"}
-        </Badge>
-      ),
+      render: (v: boolean, row: SaleListItem) => {
+        if (row.is_refunded) {
+          return <Badge variant="red">Cancelada</Badge>;
+        }
+        if (row.return_transaction_id) {
+          return <Badge variant="yellow">Reembolso parcial</Badge>;
+        }
+        return (
+          <Badge variant={v ? "green" : "yellow"}>
+            {v ? "Completada" : "Pendiente"}
+          </Badge>
+        );
+      },
     },
     {
       key: "has_electronic_invoice",

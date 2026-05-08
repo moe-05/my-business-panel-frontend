@@ -31,9 +31,14 @@ export function ProductDetailModal({
   const pv = product as Product & {
     variant_name?: string;
     unit_price?: number;
+    cost_price?: number;
     product_variant_id?: string;
     is_active?: boolean;
+    is_composite?: boolean;
     tenant_name?: string;
+    supplier_name?: string;
+    giftable?: boolean;
+    giftable_from?: number;
   };
 
   return (
@@ -47,13 +52,25 @@ export function ProductDetailModal({
             {field("SKU", pv.sku)}
             {field("Nombre", pv.variant_name || pv.product_name)}
             {field(
-              "Precio Unitario",
+              "Tipo",
+              pv.is_composite ? "Lote / Compuesto" : "Producto simple",
+            )}
+            {field("Proveedor", pv.supplier_name)}
+            {field(
+              "Costo unitario",
+              pv.cost_price != null
+                ? `₡${Number(pv.cost_price).toLocaleString("es-CR")}`
+                : null,
+            )}
+            {field(
+              "Precio de venta",
               pv.unit_price != null
                 ? `₡${Number(pv.unit_price).toLocaleString("es-CR")}`
                 : pv.price != null
                   ? `₡${Number(pv.price).toLocaleString("es-CR")}`
                   : null,
             )}
+
             {field("Código CABYS", pv.cabys_code)}
             {field("Estado", pv.is_active)}
             {field("ID", pv.product_variant_id || pv.product_id)}
@@ -75,12 +92,37 @@ export function ProductDetailModal({
           </div>
         )}
 
+        {pv.giftable != null && (
+          <div className="border-t border-gray-100 pt-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+              Regalabilidad
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              {field("Aplica como regalo", pv.giftable ? "Sí" : "No")}
+              {pv.giftable &&
+                field(
+                  "Monto mínimo para regalo",
+                  pv.giftable_from != null
+                    ? `₡${Number(pv.giftable_from).toLocaleString("es-CR")}`
+                    : "Sin mínimo",
+                )}
+            </div>
+          </div>
+        )}
+
         <div className="border-t border-gray-100 pt-4">
           <div className="grid grid-cols-2 gap-4">
-            {field("Creado", new Date(pv.created_at).toLocaleString("es-CR"))}
+            {field(
+              "Creado",
+              pv.created_at
+                ? new Date(pv.created_at).toLocaleString("es-CR")
+                : "—",
+            )}
             {field(
               "Actualizado",
-              new Date(pv.updated_at).toLocaleString("es-CR"),
+              pv.updated_at
+                ? new Date(pv.updated_at).toLocaleString("es-CR")
+                : "—",
             )}
           </div>
         </div>

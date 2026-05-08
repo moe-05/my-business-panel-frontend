@@ -4,6 +4,7 @@ import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
 import type {
   CashRegister,
   CashRegisterSession,
+  SessionGroupSale,
 } from "@/interfaces/entities/CashRegister.interface";
 
 interface ListWrapper<T> {
@@ -19,6 +20,7 @@ export const cashRegisterApi = {
     branchId: string,
     registerName: string,
     isActive = true,
+    cashRegisterKey?: string | null,
   ): Promise<CashRegister> {
     try {
       const response = await fetch(`${url}/cash-register`, {
@@ -29,6 +31,7 @@ export const cashRegisterApi = {
           branch_id: branchId,
           register_name: registerName,
           is_active: isActive,
+          cash_register_key: cashRegisterKey ?? null,
         }),
       });
 
@@ -68,6 +71,66 @@ export const cashRegisterApi = {
           ? error.message
           : "Error al listar cajas registradoras",
       );
+    }
+  },
+
+  async listPaginated(filters?: {
+    branchId?: string;
+    isActive?: boolean;
+    page?: number;
+    limit?: number;
+  }): Promise<{ results: CashRegister[]; total: number; page: number; limit: number }> {
+    const params = new URLSearchParams();
+    if (filters?.branchId) params.set("branch_id", filters.branchId);
+    if (filters?.isActive !== undefined)
+      params.set("is_active", String(filters.isActive));
+    if (filters?.page) params.set("page", String(filters.page));
+    if (filters?.limit) params.set("limit", String(filters.limit));
+    const query = params.toString();
+    const response = await fetch(
+      `${url}/cash-register/all/paginated${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+    const json = await response.json();
+    if (!response.ok) {
+      throw new Error(json?.message ?? "Error al listar cajas");
+    }
+    return (json as ApiResponse<{ results: CashRegister[]; total: number; page: number; limit: number }>).data ?? json;
+  },
+
+  async update(
+    cashRegisterId: string,
+    data: { register_name?: string; is_active?: boolean; cash_register_key?: string | null },
+  ): Promise<CashRegister> {
+    const response = await fetch(`${url}/cash-register/${cashRegisterId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ cash_register_id: cashRegisterId, ...data }),
+    });
+    const json = await response.json();
+    if (!response.ok) {
+      const message = Array.isArray(json?.message)
+        ? json.message.join(", ")
+        : (json?.message ?? "Error al actualizar caja");
+      throw new Error(message);
+    }
+    return (json as ApiResponse<{ updated: CashRegister }>).data.updated;
+  },
+
+  async remove(cashRegisterId: string): Promise<void> {
+    const response = await fetch(`${url}/cash-register/${cashRegisterId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    if (!response.ok) {
+      const json = await response.json().catch(() => ({})) as { message?: string };
+      throw new Error(json?.message ?? "Error al eliminar caja registradora");
     }
   },
 
@@ -125,6 +188,7 @@ export const cashRegisterApi = {
     cashRegisterId: string,
     openingAmount: number,
     openedAt?: string,
+    cashRegisterKey?: string,
   ): Promise<CashRegisterSession> {
     try {
       const response = await fetch(`${url}/cash-register/start`, {
@@ -135,6 +199,7 @@ export const cashRegisterApi = {
           cash_register_id: cashRegisterId,
           opening_amount: openingAmount,
           opened_at: openedAt ?? new Date().toISOString(),
+          ...(cashRegisterKey ? { cash_register_key: cashRegisterKey } : {}),
         }),
       });
       const json = await response.json();
@@ -157,6 +222,7 @@ export const cashRegisterApi = {
     sessionId: string,
     closingAmount: number,
     closedAt?: string,
+    cashRegisterKey?: string,
   ): Promise<CashRegisterSession> {
     try {
       const response = await fetch(`${url}/cash-register/close`, {
@@ -167,6 +233,7 @@ export const cashRegisterApi = {
           cash_register_session_id: sessionId,
           closing_amount: closingAmount,
           closed_at: closedAt ?? new Date().toISOString(),
+          ...(cashRegisterKey ? { cash_register_key: cashRegisterKey } : {}),
         }),
       });
       const json = await response.json();
@@ -182,5 +249,15 @@ export const cashRegisterApi = {
         error instanceof Error ? error.message : "Error al cerrar sesión",
       );
     }
+  },
+
+  async getSessionReport(sessionId: string): Promise<SessionGroupSale[]> {
+    const res = await fetch(
+      `${url}/cash-register/sessions/${sessionId}/report`,
+      { credentials: "include" },
+    );
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.message ?? "Error al cargar reporte");
+    return (body as ApiResponse<SessionGroupSale[]>).data;
   },
 };

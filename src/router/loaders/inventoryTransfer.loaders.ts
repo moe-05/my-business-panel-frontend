@@ -1,24 +1,17 @@
+﻿import { authApi } from "@/api/auth.api";
 import { warehouseApi } from "@/api/warehouse.api";
-import { authApi } from "@/api/auth.api";
 
-import type { Warehouse } from "@/interfaces/entities/Warehouse.interface";
-import type { InventoryTransfer } from "@/interfaces/entities/InventoryTransfer.interface";
+export async function getMovementsPageData() {
+  const currentUser = await authApi.getCurrentUser();
+  const tenantId = currentUser?.tenant?.tenant_id ?? null;
 
-export interface MovementsPageLoaderData {
-  transfers: InventoryTransfer[];
-  warehouses: Warehouse[];
-  tenantId: string | null;
+  const [transfers, warehouses, requests] = await Promise.all([
+    warehouseApi.listTransfers(),
+    warehouseApi.listByTenant(),
+    warehouseApi.listTransferRequests()
+  ]);
+  return { transfers, warehouses, requests, tenantId };
 }
 
-export const getMovementsPageData =
-  async (): Promise<MovementsPageLoaderData> => {
-    const currentUser = await authApi.getCurrentUser();
-    const tenantId = currentUser?.tenant?.tenant_id ?? null;
+export type MovementsPageLoaderData = Awaited<ReturnType<typeof getMovementsPageData>>;
 
-    const [transfers, warehouses] = await Promise.all([
-      warehouseApi.listTransfers().catch(() => [] as InventoryTransfer[]),
-      warehouseApi.listByTenant().catch(() => [] as Warehouse[]),
-    ]);
-
-    return { transfers, warehouses, tenantId };
-  };

@@ -13,8 +13,6 @@ export const getSaleRefundContext = async (
 
 export const processFullRefund = async (
   saleId: string,
-): Promise<{
-  message: string;
-  digital_deleted: string | null;
-  electronic_deleted: string | null;
-}> => returnsApi.deleteFullRefund(saleId);
+  description: string,
+): Promise<{ message: string; return_transaction_id: string }> =>
+  returnsApi.processFullRefund(saleId, description);

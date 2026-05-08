@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 
 import { authApi } from "@/api/auth.api";
@@ -7,8 +7,6 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
-
-import type { LoginHistoryResponse } from "@/interfaces/api/responses/LoginHistoryResponse.interface";
 
 import { capitalize } from "@/utils/capitalize";
 import { IconShield } from "@/assets/icons/IconShield";
@@ -38,28 +36,6 @@ export function ProfilePage() {
   const [passwordErrors, setPasswordErrors] = useState<PasswordFormErrors>({});
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
-
-  // Login history state
-  const [loginHistory, setLoginHistory] = useState<LoginHistoryResponse[]>([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-
-  // Load login history on mount
-  useEffect(() => {
-    const loadHistory = async () => {
-      setIsLoadingHistory(true);
-      try {
-        const history = await authApi.getLoginHistory();
-        setLoginHistory(Array.isArray(history) ? history : []);
-      } catch (error) {
-        console.error("Error loading login history:", error);
-        setLoginHistory([]);
-      } finally {
-        setIsLoadingHistory(false);
-      }
-    };
-
-    loadHistory();
-  }, []);
 
   // Validate password form
   const validatePasswordForm = (): boolean => {
@@ -252,7 +228,7 @@ export function ProfilePage() {
           </div>
         </div>
 
-        {/* Right Column - Tenant & Login History */}
+        {/* Right Column - Tenant Info */}
         <div className="lg:col-span-2 space-y-6">
           {/* Tenant Info */}
           <div className="bg-white rounded-2xl border border-gray-300 p-6">
@@ -295,55 +271,6 @@ export function ProfilePage() {
                 <p className="text-sm font-medium text-gray-900">{createdAt}</p>
               </div>
             </div>
-          </div>
-
-          {/* Login History */}
-          <div className="bg-white rounded-2xl border border-gray-300 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
-              Historial de Sesiones
-            </h3>
-
-            {isLoadingHistory ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="w-6 h-6 border-3 border-accent-200 border-t-accent-500 rounded-full animate-spin" />
-              </div>
-            ) : loginHistory.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-8">
-                No hay historial de sesiones disponible
-              </p>
-            ) : (
-              <div className="space-y-3 max-h-80 overflow-y-auto">
-                {loginHistory.map((session) => (
-                  <div
-                    key={session.login_id}
-                    className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          {new Date(session.login_time).toLocaleString("es-CR")}
-                        </p>
-                        {session.device_type && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            Dispositivo: {session.device_type}
-                          </p>
-                        )}
-                        {session.ip_address && (
-                          <p className="text-xs text-gray-500">
-                            IP: {session.ip_address}
-                          </p>
-                        )}
-                      </div>
-                      <Badge
-                        variant={session.logout_time ? "secondary" : "success"}
-                      >
-                        {session.logout_time ? "Cerrada" : "Activa"}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>

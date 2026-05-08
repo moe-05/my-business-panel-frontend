@@ -4,7 +4,6 @@ export const MARGIN_TYPES = [
   { id: 1, name: "spending_based", label: "Basado en Gasto" },
   { id: 2, name: "seniority_based", label: "Basado en Antigüedad" },
   { id: 3, name: "frequency_based", label: "Basado en Frecuencia" },
-  { id: 4, name: "free_selection", label: "Selección Libre" },
 ] as const;
 
 export type MarginTypeName = (typeof MARGIN_TYPES)[number]["name"];
@@ -36,12 +35,6 @@ export const THRESHOLD_FIELD_CONFIG: Record<
     isInteger: true,
     description: "Número de compras por mes para alcanzar este segmento",
   },
-  4: {
-    field: "spending_threshold",
-    label: "Límite de Monto Libre (₡)",
-    isInteger: false,
-    description: "Límite de valor que el cliente puede seleccionar gratis",
-  },
 };
 
 export const marginSchema = z
@@ -58,7 +51,7 @@ export const marginSchema = z
     const type = Number(data.customer_segment_margin_type);
     if (!type) return;
 
-    if (type === 1 || type === 4) {
+    if (type === 1) {
       const val = Number(data.spending_threshold);
       if (!Number.isFinite(val) || val <= 0) {
         ctx.addIssue({

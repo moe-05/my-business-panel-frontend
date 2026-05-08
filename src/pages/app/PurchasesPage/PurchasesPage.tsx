@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { ProductVariantComboBox, type ProductVariantSelection } from "@/components/ui/ProductVariantComboBox";
 import { Select } from "@/components/ui/Select";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table } from "@/components/ui/Table";
@@ -29,9 +30,9 @@ import { PurchaseOrderDetailPanel } from "@/pages/app/SupplyChain/PurchaseOrderD
 import type {
   CreatePurchaseOrderRequest,
   CreatePurchaseOrderItemRequest,
+  CreatePurchasePaymentRequest,
 } from "@/interfaces/api/requests/PurchaseModuleRequests.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
-import type { Product } from "@/interfaces/entities/Product.interface";
 import type {
   PurchaseMatching,
   PurchaseOrder,
@@ -52,6 +53,8 @@ interface PurchaseItemFormRow {
   product_variant_id: string;
   quantity_ordered: string;
   unit_price: string;
+  variant_name?: string;
+  sku?: string;
 }
 
 interface PurchaseFormState {
@@ -90,7 +93,6 @@ export function PurchasesPage() {
     orders: initialOrders,
     suppliers,
     warehouses,
-    products,
     catalogs,
     currentTenantName,
     isSuperuser,
@@ -107,12 +109,10 @@ export function PurchasesPage() {
   const [formData, setFormData] = useState<PurchaseFormState>(emptyForm);
   const [formErrors, setFormErrors] = useState<PurchaseFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<PurchaseOrderDetail | null>(
-    null,
-  );
-  const [selectedMatching, setSelectedMatching] = useState<PurchaseMatching | null>(
-    null,
-  );
+  const [selectedOrder, setSelectedOrder] =
+    useState<PurchaseOrderDetail | null>(null);
+  const [selectedMatching, setSelectedMatching] =
+    useState<PurchaseMatching | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [toast, setToast] = useState<{
@@ -169,26 +169,6 @@ export function PurchasesPage() {
   const warehouseOptions = warehouses.map((warehouse) => ({
     value: warehouse.warehouse_id,
     label: warehouse.warehouse_name,
-  }));
-
-  const getProductVariantId = (product: Product) =>
-    (product as Product & { product_variant_id?: string }).product_variant_id ??
-    product.product_id;
-
-  const getProductLabel = (product: Product) =>
-    `${product.sku} · ${
-      (product as Product & { variant_name?: string }).variant_name ??
-      product.product_name
-    }`;
-
-  const getProductPrice = (product: Product) =>
-    Number(
-      (product as Product & { unit_price?: number }).unit_price ?? product.price,
-    );
-
-  const productOptions = products.map((product) => ({
-    value: getProductVariantId(product),
-    label: getProductLabel(product),
   }));
 
   const resetCreateModal = () => {
@@ -316,24 +296,70 @@ export function PurchasesPage() {
   const handleItemChange = (
     index: number,
     field: keyof PurchaseItemFormRow,
-    value: string,
+    value: string | number,
   ) => {
     setFormData((prev) => {
       const items = prev.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item,
+        itemIndex === index ? { ...item, [field]: String(value) } : item,
       );
-
-      if (field === "product_variant_id") {
-        const matchedProduct = products.find(
-          (product) => getProductVariantId(product) === value,
-        );
-
-        if (matchedProduct) {
-          items[index].unit_price = String(getProductPrice(matchedProduct));
-        }
-      }
-
       return { ...prev, items };
+    });
+  };
+
+  const handleProductSelect = (
+    index: number,
+    selection: ProductVariantSelection,
+  ) => {
+    setFormData((prev) => {
+      const items = prev.items.map((item, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...item,
+              product_variant_id: selection.product_variant_id,
+              variant_name: selection.variant_name,
+              sku: selection.sku,
+              unit_price: String(selection.unit_price),
+            }
+          : item,
+      );
+      return { ...prev, items };
+    });
+  };
+
+  const handleProductClear = (index: number) => {
+    setFormData((prev) => {
+      const items = prev.items.map((item, itemIndex) =>
+        itemIndex === index
+          ? { ...emptyItem }
+          : item,
+      );
+      return { ...prev, items };
+    });
+  };
+
+  const handleRegisterPayment = async (
+    payload: CreatePurchasePaymentRequest,
+  ) => {
+    const result = await purchaseApi.registerPayment(payload);
+    // Refresh the open detail and the row in the table.
+    setSelectedOrder(result.order);
+    updateOrderRow(result.order);
+    setToast({
+      mode: "success",
+      message: "Abono registrado correctamente",
+    });
+  };
+
+  const handleUpdatePayment = async (
+    paymentId: string,
+    payload: Partial<CreatePurchasePaymentRequest>,
+  ) => {
+    const result = await purchaseApi.updatePayment(paymentId, payload);
+    setSelectedOrder(result.order);
+    updateOrderRow(result.order);
+    setToast({
+      mode: "success",
+      message: "Abono actualizado correctamente",
     });
   };
 
@@ -347,7 +373,9 @@ export function PurchasesPage() {
 
       if (selectedOrder?.purchase_order_id === updated.purchase_order_id) {
         setSelectedOrder(updated);
-        const matching = await purchaseApi.getMatching(updated.purchase_order_id);
+        const matching = await purchaseApi.getMatching(
+          updated.purchase_order_id,
+        );
         setSelectedMatching(matching);
       }
 
@@ -378,7 +406,7 @@ export function PurchasesPage() {
         />
       )}
 
-      <section className="mb-6 rounded-[2rem] border border-amber-200 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.16),transparent_36%),linear-gradient(135deg,rgba(255,251,235,1),rgba(255,255,255,1)_58%,rgba(255,247,237,1))] p-6 shadow-[0_18px_40px_-24px_rgba(146,64,14,0.32)]">
+      <section className="mb-6 rounded-4xl border border-amber-200 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.16),transparent_36%),linear-gradient(135deg,rgba(255,251,235,1),rgba(255,255,255,1)_58%,rgba(255,247,237,1))] p-6 shadow-[0_18px_40px_-24px_rgba(146,64,14,0.32)]">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">
@@ -541,7 +569,10 @@ export function PurchasesPage() {
               label: "Acciones",
               width: isSuperuser ? "18%" : "20%",
               render: (_value, order: PurchaseOrder) => (
-                <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                <div
+                  className="flex flex-wrap gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <Button
                     variant="ghost"
                     title="Ver detalle"
@@ -569,7 +600,9 @@ export function PurchasesPage() {
           ]}
           data={filteredOrders}
           emptyMessage="No hay órdenes de compra para mostrar"
-          onRowClick={(order) => openDetail((order as PurchaseOrder).purchase_order_id)}
+          onRowClick={(order) =>
+            openDetail((order as PurchaseOrder).purchase_order_id)
+          }
         />
       </section>
 
@@ -676,7 +709,7 @@ export function PurchasesPage() {
                 }
               >
                 <IconPlus />
-                Agregar línea
+                Agregar producto
               </Button>
             </div>
 
@@ -686,18 +719,14 @@ export function PurchasesPage() {
                   key={`purchase-item-${index}`}
                   className="grid gap-3 rounded-2xl border border-white bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] md:grid-cols-[1.8fr_0.7fr_0.8fr_auto]"
                 >
-                  <Select
-                    label={`Producto ${index + 1}`}
+                  <ProductVariantComboBox
+                    tenantId={user?.tenant.tenant_id || ""}
                     value={item.product_variant_id}
-                    onChange={(event) =>
-                      handleItemChange(
-                        index,
-                        "product_variant_id",
-                        event.target.value,
-                      )
-                    }
-                    options={productOptions}
-                    placeholder="Seleccionar producto"
+                    displayValue={item.sku ? `${item.variant_name} (${item.sku})` : item.variant_name}
+                    onChange={(selection) => handleProductSelect(index, selection)}
+                    onClear={() => handleProductClear(index)}
+                    label={`Producto ${index + 1}`}
+                    placeholder="Buscar por SKU o nombre"
                     required
                   />
 
@@ -717,17 +746,23 @@ export function PurchasesPage() {
                     required
                   />
 
-                  <Input
-                    label="Costo unitario"
-                    type="number"
-                    min="0.01"
-                    step="0.001"
-                    value={item.unit_price}
-                    onChange={(event) =>
-                      handleItemChange(index, "unit_price", event.target.value)
-                    }
-                    required
-                  />
+                  <div>
+                    <Input
+                      label="Costo unitario"
+                      type="number"
+                      min="0.01"
+                      step="0.001"
+                      value={item.unit_price}
+                      onChange={(event) =>
+                        handleItemChange(
+                          index,
+                          "unit_price",
+                          event.target.value,
+                        )
+                      }
+                      required
+                    />
+                  </div>
 
                   <div className="flex items-end">
                     <Button
@@ -739,7 +774,9 @@ export function PurchasesPage() {
                           items:
                             prev.items.length === 1
                               ? prev.items
-                              : prev.items.filter((_, itemIndex) => itemIndex !== index),
+                              : prev.items.filter(
+                                  (_, itemIndex) => itemIndex !== index,
+                                ),
                         }))
                       }
                       disabled={formData.items.length === 1}
@@ -801,9 +838,11 @@ export function PurchasesPage() {
 
           {isSuperuser && (
             <p className="text-xs text-gray-500">
-              La creación de órdenes se realiza con el tenant activo de la sesión:
-              {" "}
-              <span className="font-medium text-gray-700">{currentTenantName}</span>
+              La creación de órdenes se realiza con el tenant activo de la
+              sesión:{" "}
+              <span className="font-medium text-gray-700">
+                {currentTenantName}
+              </span>
               .
             </p>
           )}
@@ -844,6 +883,9 @@ export function PurchasesPage() {
             order={selectedOrder}
             matching={selectedMatching}
             showTenant={isSuperuser}
+            paymentMethods={canManage ? catalogs.payment_methods : undefined}
+            onRegisterPayment={canManage ? handleRegisterPayment : undefined}
+            onUpdatePayment={canManage ? handleUpdatePayment : undefined}
           />
         )}
       </Modal>

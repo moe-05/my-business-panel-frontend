@@ -5,6 +5,10 @@ import type { CreateCustomerRequest } from "@/interfaces/api/requests/CreateCust
 import type { UpdateCustomerRequest } from "@/interfaces/api/requests/UpdateCustomerRequest.interface";
 import type { Customer } from "@/interfaces/entities/Customer.interface";
 import type { CustomersListResponse } from "@/interfaces/api/responses/CustomersListResponse.interface";
+import type {
+  CustomerDetail,
+  CustomerSalesHistoryResponse,
+} from "@/interfaces/entities/CustomerDetail.interface";
 
 export const customerApi = {
   async create(data: CreateCustomerRequest): Promise<Customer> {
@@ -47,9 +51,18 @@ export const customerApi = {
       );
 
       const json: ApiResponse<CustomersListResponse> = await response.json();
-      console.log(json);
+
+      if (!response.ok) {
+        throw new Error(json.message ?? `Error ${response.status} al listar clientes`);
+      }
+
+      if (!json.data) {
+        return { customers: [], total: 0, page, limit };
+      }
+
       return json.data;
     } catch (error) {
+      console.error("listAll error:", error);
       throw new Error(
         error instanceof Error ? error.message : "Error al listar clientes",
       );
@@ -60,10 +73,12 @@ export const customerApi = {
     tenantId: string,
     page = 1,
     limit = 100,
+    segmentId?: string,
   ): Promise<CustomersListResponse> {
     try {
+      const segmentQuery = segmentId ? `&segment_id=${segmentId}` : "";
       const response = await fetch(
-        `${url}/customers/tenant/${tenantId}?page=${page}&limit=${limit}`,
+        `${url}/customers/tenant/${tenantId}?page=${page}&limit=${limit}${segmentQuery}`,
         {
           method: "GET",
           headers: { "Content-Type": "application/json" },
@@ -72,8 +87,18 @@ export const customerApi = {
       );
 
       const json: ApiResponse<CustomersListResponse> = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json.message ?? `Error ${response.status} al listar clientes`);
+      }
+
+      if (!json.data) {
+        return { customers: [], total: 0, page, limit };
+      }
+
       return json.data;
     } catch (error) {
+      console.error("listByTenant error:", error);
       throw new Error(
         error instanceof Error
           ? error.message
@@ -97,6 +122,39 @@ export const customerApi = {
         error instanceof Error ? error.message : "Error al obtener cliente",
       );
     }
+  },
+
+  async checkAvailability(params: {
+    tenantId: string;
+    field: "document_number" | "email" | "phone";
+    value: string;
+    excludeId?: string;
+  }): Promise<{ exists: boolean }> {
+    const search = new URLSearchParams({
+      tenant_id: params.tenantId,
+      field: params.field,
+      value: params.value,
+    });
+    if (params.excludeId) search.set("exclude_id", params.excludeId);
+
+    const response = await fetch(
+      `${url}/customers/availability?${search.toString()}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+
+    if (!response.ok) {
+      // If the probe itself fails, fall back to "not taken" so the user is
+      // not blocked. The unique constraint at the DB level remains the source
+      // of truth on submit.
+      return { exists: false };
+    }
+
+    const json: ApiResponse<{ exists: boolean }> = await response.json();
+    return json.data ?? { exists: false };
   },
 
   async getByDocNumber(docNumber: string): Promise<Customer> {
@@ -162,10 +220,12 @@ export const customerApi = {
     query: string,
     page = 1,
     limit = 100,
+    segmentId?: string,
   ): Promise<CustomersListResponse> {
     try {
+      const segmentQuery = segmentId ? `&segment_id=${segmentId}` : "";
       const response = await fetch(
-        `${url}/customers/tenant/${tenantId}/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
+        `${url}/customers/tenant/${tenantId}/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}${segmentQuery}`,
         {
           method: "GET",
           headers: { "Content-Type": "application/json" },
@@ -174,12 +234,55 @@ export const customerApi = {
       );
 
       const json: ApiResponse<CustomersListResponse> = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json.message ?? `Error ${response.status} al buscar clientes`);
+      }
+
+      if (!json.data) {
+        return { customers: [], total: 0, page, limit };
+      }
+
       return json.data;
     } catch (error) {
+      console.error("search error:", error);
       throw new Error(
         error instanceof Error ? error.message : "Error al buscar clientes",
       );
     }
+  },
+
+  async getDetail(customerId: string): Promise<CustomerDetail> {
+    const response = await fetch(`${url}/customers/${customerId}/detail`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    if (!response.ok) {
+      throw new Error(`Error ${response.status} al obtener detalle del cliente`);
+    }
+    const json: ApiResponse<CustomerDetail> = await response.json();
+    return json.data;
+  },
+
+  async getSalesHistory(
+    customerId: string,
+    page = 1,
+    limit = 10,
+  ): Promise<CustomerSalesHistoryResponse> {
+    const response = await fetch(
+      `${url}/customers/${customerId}/sales?page=${page}&limit=${limit}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Error ${response.status} al obtener historial de ventas`);
+    }
+    const json: ApiResponse<CustomerSalesHistoryResponse> = await response.json();
+    return json.data;
   },
 
   async filterBySegment(
@@ -188,24 +291,6 @@ export const customerApi = {
     page = 1,
     limit = 100,
   ): Promise<CustomersListResponse> {
-    try {
-      const response = await fetch(
-        `${url}/customers/tenant/${tenantId}?segment_id=${segmentId}&page=${page}&limit=${limit}`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-        },
-      );
-
-      const json: ApiResponse<CustomersListResponse> = await response.json();
-      return json.data;
-    } catch (error) {
-      throw new Error(
-        error instanceof Error
-          ? error.message
-          : "Error al filtrar clientes por segmento",
-      );
-    }
+    return this.listByTenant(tenantId, page, limit, segmentId);
   },
 };

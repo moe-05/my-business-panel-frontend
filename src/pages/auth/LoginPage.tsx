@@ -29,8 +29,11 @@ export function LoginPage() {
   const onSubmit = async (values: FormValues) => {
     setServerError('');
     try {
-      await login(values);
-      navigate('/app/dashboard', { replace: true });
+      const currentUser = await login(values);
+      const isEmployee = currentUser?.role.role_id === 4;
+      navigate(isEmployee ? '/app/pos/sales/new' : '/app/dashboard', {
+        replace: true,
+      });
     } catch (err) {
       setServerError(err instanceof Error ? err.message : 'Credenciales incorrectas');
     }

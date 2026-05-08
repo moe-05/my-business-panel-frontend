@@ -5,8 +5,9 @@ import { Select } from "@/components/ui/Select";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Table } from "@/components/ui/Table";
+import { Table, Pagination } from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
+import { IconEdit, IconEye, IconTrash } from "@/assets/icons";
 
 import {
   getCashRegistersByBranches,
@@ -18,6 +19,7 @@ import {
   createCashRegister,
   startCashRegisterSession,
 } from "@/router/actions/cashRegister.actions";
+import { cashRegisterApi } from "@/api/cashRegister.api";
 
 import type {
   CashRegister,
@@ -26,7 +28,8 @@ import type {
 import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
 
-import { CashSessionDetailModal } from "./CashSessionDetailModal";
+import { CashSessionModal } from "./CashSessionModal";
+import { CashRegisterEditModal } from "./CashRegisterEditModal";
 
 type StatusFilter = "all" | "active" | "inactive";
 type SessionAction = "open" | "close";
@@ -94,11 +97,67 @@ export function CashSessionsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreatingRegister, setIsCreatingRegister] = useState(false);
 
-  const [selected, setSelected] = useState<CashRegisterSession | null>(null);
+  const [sessionModal, setSessionModal] = useState<CashRegisterSession | null>(null);
   const [toast, setToast] = useState<{
     mode: ToastMode;
     message: string;
   } | null>(null);
+
+  // Admin cash registers table state
+  const [adminRegisters, setAdminRegisters] = useState<CashRegister[]>([]);
+  const [adminTotal, setAdminTotal] = useState(0);
+  const [adminPage, setAdminPage] = useState(1);
+  const [adminPages, setAdminPages] = useState(1);
+  const [adminBranchFilter, setAdminBranchFilter] = useState("");
+  const [adminStatusFilter, setAdminStatusFilter] = useState<"" | "true" | "false">("");
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [editingRegister, setEditingRegister] = useState<CashRegister | null>(null);
+  const [viewRegister, setViewRegister] = useState<CashRegister | null>(null);
+
+  const loadAdminRegisters = async (page = 1) => {
+    setAdminLoading(true);
+    try {
+      const res = await cashRegisterApi.listPaginated({
+        branchId: adminBranchFilter || undefined,
+        isActive:
+          adminStatusFilter === "" ? undefined : adminStatusFilter === "true",
+        page,
+        limit: 10,
+      });
+      setAdminRegisters(res.results);
+      setAdminTotal(res.total);
+      setAdminPages(Math.ceil(res.total / res.limit));
+    } catch {
+      // silent
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadAdminRegisters(adminPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminBranchFilter, adminStatusFilter, adminPage]);
+
+  const handleDeleteRegister = async (reg: CashRegister) => {
+    if (
+      !confirm(
+        `¿Está seguro de eliminar la caja "${reg.register_name}"? Esta acción no se puede deshacer.`,
+      )
+    )
+      return;
+    try {
+      await cashRegisterApi.remove(reg.cash_register_id);
+      setToast({ mode: "success", message: "Caja eliminada correctamente" });
+      void loadAdminRegisters(adminPage);
+      await refreshRegisters();
+    } catch (e: unknown) {
+      setToast({
+        mode: "error",
+        message: e instanceof Error ? e.message : "Error al eliminar caja",
+      });
+    }
+  };
 
   const isFirstTableRender = useRef(true);
   const isFirstActionRender = useRef(true);
@@ -435,6 +494,24 @@ export function CashSessionsPage() {
         <Badge variant={v ? "green" : "gray"}>{v ? "Activa" : "Cerrada"}</Badge>
       ),
     },
+    {
+      key: "actions",
+      label: "",
+      width: "8%",
+      render: (_: unknown, row: CashRegisterSession) =>
+        row.is_active ? null : (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Ver reporte de turno"
+              onClick={() => setSessionModal(row)}
+            >
+              <IconEye />
+            </Button>
+          </div>
+        ),
+    },
   ];
 
   return (
@@ -579,16 +656,196 @@ export function CashSessionsPage() {
             data={sessions}
             isLoading={isLoading}
             emptyMessage="No hay sesiones de caja registradas"
-            onRowClick={(row) => setSelected(row)}
+            onRowClick={(row) => setSessionModal(row)}
           />
         </div>
       </div>
 
-      <CashSessionDetailModal
-        isOpen={selected !== null}
-        session={selected}
-        onClose={() => setSelected(null)}
+      {/* ── Admin: Cajas registradoras ──────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-300 mt-6 overflow-hidden">
+        <div className="p-6 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-gray-900">
+              Administración de cajas registradoras
+            </h2>
+            <span className="text-sm text-gray-500">
+              {adminTotal} caja{adminTotal !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Select
+              label="Filtrar por sucursal"
+              value={adminBranchFilter}
+              onChange={(e) => {
+                setAdminBranchFilter(e.target.value);
+                setAdminPage(1);
+              }}
+              options={[
+                { value: "", label: "Todas las sucursales" },
+                ...branches.map((b) => ({
+                  value: b.branch_id,
+                  label: b.branch_name,
+                })),
+              ]}
+            />
+            <Select
+              label="Estado"
+              value={adminStatusFilter}
+              onChange={(e) => {
+                setAdminStatusFilter(e.target.value as "" | "true" | "false");
+                setAdminPage(1);
+              }}
+              options={[
+                { value: "", label: "Todas" },
+                { value: "true", label: "Activas" },
+                { value: "false", label: "Inactivas" },
+              ]}
+            />
+          </div>
+        </div>
+        <div className="p-6">
+          <Table
+            columns={[
+              { key: "register_name", label: "Nombre", width: "25%" },
+              {
+                key: "branch_name",
+                label: "Sucursal",
+                width: "25%",
+                render: (v: string) => v ?? "—",
+              },
+              {
+                key: "is_active",
+                label: "Estado",
+                width: "14%",
+                render: (v: boolean) => (
+                  <Badge variant={v ? "green" : "gray"}>
+                    {v ? "Activa" : "Inactiva"}
+                  </Badge>
+                ),
+              },
+              {
+                key: "created_at",
+                label: "Creada",
+                width: "18%",
+                render: (v: string) => formatDate(v),
+              },
+              {
+                key: "actions",
+                label: "Acciones",
+                width: "18%",
+                render: (_: unknown, row: CashRegister) => (
+                  <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Ver detalle"
+                      onClick={() => setViewRegister(row)}
+                    >
+                      <IconEye />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Editar"
+                      onClick={() => setEditingRegister(row)}
+                    >
+                      <IconEdit />
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      title="Eliminar"
+                      onClick={() => void handleDeleteRegister(row)}
+                    >
+                      <IconTrash />
+                    </Button>
+                  </div>
+                ),
+              },
+            ]}
+            data={adminRegisters}
+            isLoading={adminLoading}
+            emptyMessage="No hay cajas registradoras"
+          />
+          {adminPages > 1 && (
+            <Pagination
+              page={adminPage}
+              totalPages={adminPages}
+              onPageChange={setAdminPage}
+              loading={adminLoading}
+            />
+          )}
+        </div>
+      </div>
+
+      <CashSessionModal
+        session={sessionModal}
+        onClose={() => setSessionModal(null)}
       />
+
+      {editingRegister && (
+        <CashRegisterEditModal
+          register={editingRegister}
+          branches={branches}
+          onClose={() => setEditingRegister(null)}
+          onSaved={(updated) => {
+            setEditingRegister(null);
+            setAdminRegisters((prev) =>
+              prev.map((r) =>
+                r.cash_register_id === updated.cash_register_id ? updated : r,
+              ),
+            );
+            setToast({ mode: "success", message: "Caja actualizada" });
+            void refreshRegisters();
+          }}
+        />
+      )}
+
+      {viewRegister && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setViewRegister(null)}
+        >
+          <div
+            className="bg-white rounded-2xl border border-gray-200 shadow-2xl p-6 max-w-sm w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              Detalle de caja
+            </h3>
+            <div className="space-y-3 text-sm">
+              {[
+                ["ID", viewRegister.cash_register_id],
+                ["Nombre", viewRegister.register_name],
+                [
+                  "Estado",
+                  viewRegister.is_active ? "Activa" : "Inactiva",
+                ],
+                ["Creada", formatDate(viewRegister.created_at)],
+                ["Actualizada", formatDate(viewRegister.updated_at)],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <p className="text-xs font-medium text-gray-500 uppercase">
+                    {label}
+                  </p>
+                  <p className="text-gray-900 font-mono text-xs break-all">
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5">
+              <Button
+                variant="ghost"
+                fullWidth
+                onClick={() => setViewRegister(null)}
+              >
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

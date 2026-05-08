@@ -1,8 +1,11 @@
-import { url } from ".";
+﻿import { url } from ".";
 
 import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
 import type { Warehouse } from "@/interfaces/entities/Warehouse.interface";
-import type { InventoryItem } from "@/interfaces/entities/InventoryItem.interface";
+import type {
+  AggregatedInventoryItem,
+  InventoryItem,
+} from "@/interfaces/entities/InventoryItem.interface";
 import type { InventoryTransfer } from "@/interfaces/entities/InventoryTransfer.interface";
 import type { DiscrepancyReport } from "@/interfaces/entities/DiscrepancyReport.interface";
 import type { CreateWarehouseRequest } from "@/interfaces/api/requests/CreateWarehouseRequest.interface";
@@ -68,17 +71,37 @@ export const warehouseApi = {
   async listInventory(
     warehouseId: string,
     search?: string,
+    groupId?: string,
   ): Promise<InventoryItem[]> {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (groupId) params.set("group_id", groupId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const res = await fetch(`${url}/warehouse/inventory/${warehouseId}${qs}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    return json<InventoryItem[]>(res, "Error al listar inventario");
+  },
+
+  async listInventoryAggregated(
+    warehouseId: string,
+    search?: string,
+  ): Promise<AggregatedInventoryItem[]> {
     const params = search ? `?search=${encodeURIComponent(search)}` : "";
     const res = await fetch(
-      `${url}/warehouse/inventory/${warehouseId}${params}`,
+      `${url}/warehouse/inventory/${warehouseId}/aggregated${params}`,
       {
         method: "GET",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
       },
     );
-    return json<InventoryItem[]>(res, "Error al listar inventario");
+    return json<AggregatedInventoryItem[]>(
+      res,
+      "Error al listar inventario agregado",
+    );
   },
 
   async updateInventoryItem(
@@ -91,7 +114,10 @@ export const warehouseApi = {
       credentials: "include",
       body: JSON.stringify(data),
     });
-    return json<InventoryItem>(res, "Error al actualizar registro de inventario");
+    return json<InventoryItem>(
+      res,
+      "Error al actualizar registro de inventario",
+    );
   },
 
   async deleteInventoryItem(inventoryId: string): Promise<{ message: string }> {
@@ -127,7 +153,10 @@ export const warehouseApi = {
       credentials: "include",
       body: JSON.stringify(data),
     });
-    return json<DiscrepancyReport>(res, "Error al crear reporte de discrepancia");
+    return json<DiscrepancyReport>(
+      res,
+      "Error al crear reporte de discrepancia",
+    );
   },
 
   async listDiscrepancyReports(
@@ -169,5 +198,52 @@ export const warehouseApi = {
       res,
       "Error al crear transferencia",
     );
+  },
+  async listNegativeStockProducts(
+    warehouseId: string,
+  ): Promise<AggregatedInventoryItem[]> {
+    const all = await warehouseApi.listInventoryAggregated(warehouseId);
+    return all.filter((item) => item.stock < 0);
+  },
+
+  async disaggregateLote(
+    warehouse_id: string,
+    product_variant_id: string,
+    amount: number,
+  ): Promise<{ message: string }> {
+    const res = await fetch(`${url}/warehouse/disaggregate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ warehouse_id, product_variant_id, amount }),
+    });
+    return json<{ message: string }>(res, "Error al desagrupar lote");
+  },
+
+  async listTransferRequests(): Promise<any[]> {
+    const res = await fetch(`${url}/warehouse/transfer-request`, {
+      credentials: "include",
+    });
+    return json<any[]>(res, "Error al obtener solicitudes de transferencia");
+  },
+
+  async updateTransferRequestStatus(
+    requestId: string,
+    status: "approved" | "rejected",
+    rejectionReason?: string,
+  ): Promise<{ message: string }> {
+    const res = await fetch(
+      `${url}/warehouse/transfer-request/${requestId}/status`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          status,
+          rejection_reason: rejectionReason || null,
+        }),
+      },
+    );
+    return json<{ message: string }>(res, "Error al actualizar solicitud");
   },
 };

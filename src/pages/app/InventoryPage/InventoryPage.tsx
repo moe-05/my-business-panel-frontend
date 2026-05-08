@@ -2,12 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router-dom";
 
 import { warehouseApi } from "@/api/warehouse.api";
-import {
-  bulkInsertInventory,
-  createDiscrepancyReport,
-  deleteInventoryItem,
-  updateInventoryItem,
-} from "@/router/actions/inventory.actions";
+import { createDiscrepancyReport } from "@/router/actions/inventory.actions";
 import { useDebounce } from "@/hooks/useDebounce";
 
 import { Button } from "@/components/ui/Button";
@@ -15,39 +10,37 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table } from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
-import { IconEdit, IconPlus, IconTrash } from "@/assets/icons";
 
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
-import type { InventoryItem } from "@/interfaces/entities/InventoryItem.interface";
+import type { AggregatedInventoryItem } from "@/interfaces/entities/InventoryItem.interface";
 import type { InventoryPageLoaderData } from "@/router/loaders/inventory.loaders";
 
-import {
-  AddInventoryModal,
-  type AddInventoryItem,
-} from "./AddInventoryModal";
 import { DiscrepancyReportModal } from "./DiscrepancyReportModal";
-import { EditInventoryModal } from "./EditInventoryModal";
+
+import { DisaggregateModal } from "./DisaggregateModal";
 
 type StockFilter = "all" | "zero" | "low" | "ok";
 
 export function InventoryPage() {
-  const { warehouses, tenantId } = useLoaderData() as InventoryPageLoaderData;
+  const { warehouses } = useLoaderData() as InventoryPageLoaderData;
 
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(
     warehouses[0]?.warehouse_id ?? "",
   );
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [inventory, setInventory] = useState<AggregatedInventoryItem[]>([]);
   const [isLoadingInventory, setIsLoadingInventory] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
   const debouncedSearch = useDebounce(searchQuery, 400);
 
-  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [showNegativeStock, setShowNegativeStock] = useState(false);
+
   const [isDiscrepancyOpen, setIsDiscrepancyOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
-  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
+  const [disaggregatingItem, setDisaggregatingItem] =
+    useState<AggregatedInventoryItem | null>(null);
+  const [isSubmittingDisaggregate, setIsSubmittingDisaggregate] =
+    useState(false);
   const [isSubmittingDiscrepancy, setIsSubmittingDiscrepancy] = useState(false);
-  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
   const [toast, setToast] = useState<{
     mode: ToastMode;
@@ -66,16 +59,14 @@ export function InventoryPage() {
     let cancelled = false;
     setIsLoadingInventory(true);
     warehouseApi
-      .listInventory(selectedWarehouseId, debouncedSearch || undefined)
+      .listInventoryAggregated(selectedWarehouseId, debouncedSearch || undefined)
       .then((data) => {
         if (!cancelled) setInventory(data);
       })
       .catch((error) => {
         if (cancelled) return;
         const message =
-          error instanceof Error
-            ? error.message
-            : "Error al cargar inventario";
+          error instanceof Error ? error.message : "Error al cargar inventario";
         setToast({ mode: "error", message });
         setInventory([]);
       })
@@ -88,46 +79,39 @@ export function InventoryPage() {
   }, [selectedWarehouseId, debouncedSearch]);
 
   const filtered = useMemo(() => {
-    if (stockFilter === "all") return inventory;
+    if (stockFilter === "all") {
+      return showNegativeStock
+        ? inventory
+        : inventory.filter((i) => i.stock > 0);
+    }
     if (stockFilter === "zero") return inventory.filter((i) => i.stock === 0);
     if (stockFilter === "low")
       return inventory.filter((i) => i.stock > 0 && i.stock <= 10);
     return inventory.filter((i) => i.stock > 10);
-  }, [inventory, stockFilter]);
+  }, [inventory, stockFilter, showNegativeStock]);
 
-  const reloadInventory = async () => {
-    if (!selectedWarehouseId) return;
-    const fresh = await warehouseApi.listInventory(
-      selectedWarehouseId,
-      debouncedSearch || undefined,
-    );
-    setInventory(fresh);
-  };
-
-  const handleBulkAdd = async (items: AddInventoryItem[]) => {
-    if (!selectedWarehouseId) return;
-    setIsSubmittingAdd(true);
+  const handleDisaggregate = async (quantity: number) => {
+    if (!disaggregatingItem) return;
+    setIsSubmittingDisaggregate(true);
     try {
-      await bulkInsertInventory({
-        warehouse_id: selectedWarehouseId,
-        items: items.map((i) => ({
-          product_variant_id: i.product_variant_id,
-          stock: i.stock,
-          expiration_date: i.expiration_date,
-        })),
-      });
-      await reloadInventory();
+      await warehouseApi.disaggregateLote(
+        disaggregatingItem.warehouse_id,
+        disaggregatingItem.product_variant_id,
+        quantity,
+      );
       setToast({
         mode: "success",
-        message: `Se agregaron ${items.length} producto${items.length === 1 ? "" : "s"} al inventario`,
+        message: "Lote desagrupado correctamente",
       });
-      setIsAddOpen(false);
+      window.location.reload();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Error al agregar inventario";
-      setToast({ mode: "error", message });
+      setToast({
+        mode: "error",
+        message: error instanceof Error ? error.message : "Error al desagrupar",
+      });
     } finally {
-      setIsSubmittingAdd(false);
+      setIsSubmittingDisaggregate(false);
+      setDisaggregatingItem(null);
     }
   };
 
@@ -161,46 +145,6 @@ export function InventoryPage() {
       setToast({ mode: "error", message });
     } finally {
       setIsSubmittingDiscrepancy(false);
-    }
-  };
-
-  const handleEditSubmit = async (data: {
-    stock: number;
-    expiration_date: string | null;
-  }) => {
-    if (!editingItem) return;
-    setIsSubmittingEdit(true);
-    try {
-      await updateInventoryItem(editingItem.inventory_id, data);
-      await reloadInventory();
-      setToast({ mode: "success", message: "Registro actualizado" });
-      setEditingItem(null);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Error al actualizar registro";
-      setToast({ mode: "error", message });
-    } finally {
-      setIsSubmittingEdit(false);
-    }
-  };
-
-  const handleDelete = async (item: InventoryItem) => {
-    if (
-      !window.confirm(
-        `¿Eliminar "${item.variant_name}" del inventario? Esta acción no se puede deshacer.`,
-      )
-    )
-      return;
-    try {
-      await deleteInventoryItem(item.inventory_id);
-      setInventory((prev) =>
-        prev.filter((i) => i.inventory_id !== item.inventory_id),
-      );
-      setToast({ mode: "success", message: "Registro eliminado" });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Error al eliminar registro";
-      setToast({ mode: "error", message });
     }
   };
 
@@ -244,6 +188,7 @@ export function InventoryPage() {
               placeholder="Nombre, SKU o ID"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              disabled={showNegativeStock}
             />
           </div>
           <div className="lg:col-span-2">
@@ -251,6 +196,7 @@ export function InventoryPage() {
               label="Filtrar por stock"
               value={stockFilter}
               onChange={(e) => setStockFilter(e.target.value as StockFilter)}
+              disabled={showNegativeStock}
               options={[
                 { value: "all", label: "Todos" },
                 { value: "zero", label: "Sin stock (0)" },
@@ -259,7 +205,21 @@ export function InventoryPage() {
               ]}
             />
           </div>
-          <div className="lg:col-span-4 flex flex-col sm:flex-row gap-2">
+          <div className="lg:col-span-4 flex flex-col sm:flex-row gap-2 items-end">
+            <label className="flex items-center gap-2 cursor-pointer select-none shrink-0">
+              <input
+                type="checkbox"
+                checked={showNegativeStock}
+                onChange={(e) => {
+                  setShowNegativeStock(e.target.checked);
+                  if (e.target.checked) setStockFilter("all");
+                }}
+                className="w-4 h-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500 cursor-pointer"
+              />
+              <span className="text-sm font-medium whitespace-nowrap">
+                Sin stock
+              </span>
+            </label>
             <Button
               variant="secondary"
               onClick={() => setIsDiscrepancyOpen(true)}
@@ -267,15 +227,6 @@ export function InventoryPage() {
               fullWidth
             >
               Reportar discrepancia
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => setIsAddOpen(true)}
-              disabled={!selectedWarehouseId || !tenantId}
-              fullWidth
-            >
-              <IconPlus />
-              Agregar
             </Button>
           </div>
         </div>
@@ -285,72 +236,80 @@ export function InventoryPage() {
         <Table
           isLoading={isLoadingInventory}
           columns={[
-            { key: "product_name", label: "Producto", width: "22%" },
+            {
+              key: "product_name",
+              label: "Producto",
+              width: "22%",
+              render: (value: unknown) => (
+                <span className="truncate">{value as string}</span>
+              ),
+            },
             { key: "variant_name", label: "Variante", width: "18%" },
             {
               key: "sku",
               label: "SKU",
-              width: "13%",
-              render: (value: unknown) => (value as string | null) ?? "—",
+              width: "12%",
+              render: (value: unknown) => (value as string | null) ?? "-",
+            },
+            {
+              key: "is_composite",
+              label: "Tipo",
+              width: "10%",
+              render: (value: unknown) =>
+                value ? (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                    Lote
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                    Simple
+                  </span>
+                ),
             },
             {
               key: "stock",
-              label: "Stock",
-              width: "9%",
+              label: "Stock total",
+              width: "12%",
               render: (value: unknown) => {
                 const n = value as number;
                 const color =
-                  n === 0
+                  n <= 0
                     ? "text-red-600"
                     : n <= 10
                       ? "text-amber-600"
                       : "text-gray-900";
-                return <span className={`font-mono ${color}`}>{n}</span>;
+                return (
+                  <span className={`font-mono font-semibold ${color}`}>
+                    {n}
+                  </span>
+                );
               },
             },
             {
               key: "expiration_date",
-              label: "Vence",
+              label: "Próx. vence",
               width: "13%",
               render: (value: unknown) =>
                 value
                   ? new Date(value as string).toLocaleDateString("es-CR")
-                  : "—",
-            },
-            {
-              key: "warehouse_id",
-              label: "Almacén",
-              width: "13%",
-              render: (value: unknown) => (
-                <span className="font-mono text-[11px]">
-                  {(value as string).slice(0, 8)}
-                </span>
-              ),
+                  : "-",
             },
             {
               key: "actions",
               label: "",
-              width: "12%",
-              render: (_: unknown, row: InventoryItem) => (
-                <div className="flex items-center gap-1">
+              width: "13%",
+              render: (_: unknown, row: AggregatedInventoryItem) =>
+                row.is_composite ? (
                   <Button
                     type="button"
-                    variant="ghost"
-                    onClick={() => setEditingItem(row)}
-                    title="Editar"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setDisaggregatingItem(row)}
+                    title="Desagrupar Lote"
                   >
-                    <IconEdit />
+                    Desagrupar
                   </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => handleDelete(row)}
-                    title="Eliminar"
-                  >
-                    <IconTrash />
-                  </Button>
-                </div>
-              ),
+                ) : null,
             },
           ]}
           data={filtered}
@@ -362,17 +321,6 @@ export function InventoryPage() {
         />
       </div>
 
-      {tenantId && (
-        <AddInventoryModal
-          isOpen={isAddOpen}
-          tenantId={tenantId}
-          warehouseName={selectedWarehouse?.warehouse_name ?? ""}
-          isSubmitting={isSubmittingAdd}
-          onClose={() => setIsAddOpen(false)}
-          onSubmit={handleBulkAdd}
-        />
-      )}
-
       <DiscrepancyReportModal
         isOpen={isDiscrepancyOpen}
         inventory={inventory}
@@ -382,13 +330,13 @@ export function InventoryPage() {
         onSubmit={handleDiscrepancySubmit}
       />
 
-      {editingItem && (
-        <EditInventoryModal
+      {disaggregatingItem && (
+        <DisaggregateModal
           isOpen={true}
-          item={editingItem}
-          isSubmitting={isSubmittingEdit}
-          onClose={() => setEditingItem(null)}
-          onSubmit={handleEditSubmit}
+          item={disaggregatingItem}
+          isSubmitting={isSubmittingDisaggregate}
+          onClose={() => setDisaggregatingItem(null)}
+          onSubmit={handleDisaggregate}
         />
       )}
     </div>

@@ -22,7 +22,7 @@ export function AppLayout() {
   };
 
   const sidebarProps = {
-    roleId: user?.role.role_id ?? 1,
+    roleId: user?.role.role_id ?? 0,
     userEmail: user?.email ?? "",
     roleName: user?.role.role_name ?? "usuario",
     onLogout: handleLogout,

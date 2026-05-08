@@ -19,6 +19,20 @@ export interface PurchaseOrderItem {
   quantity_ordered: number;
   unit_price: NumericLike;
   line_total?: NumericLike;
+  /** Total units of this variant sold across all time (completed sales only). */
+  sales_quantity_lifetime?: NumericLike;
+  /** Gross revenue from this variant across all time. */
+  sales_revenue_lifetime?: NumericLike;
+  /** Units sold of this variant in the last 30 days (current rotation). */
+  sales_quantity_30d?: NumericLike;
+  /** Revenue from the last 30 days. */
+  sales_revenue_30d?: NumericLike;
+  /** Units sold since this purchase order was placed. */
+  sales_quantity_since_po?: NumericLike;
+  /** Revenue since this purchase order was placed. */
+  sales_revenue_since_po?: NumericLike;
+  /** Date of the most recent completed sale of this variant, if any. */
+  last_sold_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -43,12 +57,38 @@ export interface PurchasePayment {
   purchase_account_payable_id: string;
   payment_method_id: number;
   payment_method_name?: string | null;
+  currency_id?: number | null;
+  currency_code?: string | null;
+  currency_name?: string | null;
+  currency_symbol?: string | null;
   amount_paid: NumericLike;
   payment_reference?: string | null;
   notes?: string | null;
   payment_date: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface CurrencyCatalog {
+  currency_id: number;
+  currency_code: string;
+  currency_name: string;
+  symbol: string;
+}
+
+export interface ExchangeRateResult {
+  exchange_rate_id: string;
+  from_currency_id: number;
+  from_currency_code: string;
+  from_currency_name: string;
+  from_currency_symbol: string;
+  to_currency_id: number;
+  to_currency_code: string;
+  to_currency_name: string;
+  to_currency_symbol: string;
+  rate: string;
+  effective_date: string;
+  updated_at: string;
 }
 
 export interface GoodsReceiptSummary {
@@ -167,6 +207,7 @@ export interface PurchaseCatalogs {
   order_statuses: PurchaseStatusCatalog[];
   payable_statuses: PurchaseStatusCatalog[];
   payment_methods: PaymentMethodCatalog[];
+  currencies: CurrencyCatalog[];
   payment_conditions: PaymentConditionOption[];
 }
 

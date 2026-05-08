@@ -17,6 +17,7 @@ import {
   updatePromotion,
 } from "@/router/actions/promotion.actions";
 import { getPromotionsByTenant } from "@/router/loaders/promotion.loaders";
+import { promotionApi } from "@/api/promotion.api";
 
 import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 import type { CreatePromotionRequest } from "@/interfaces/api/requests/CreatePromotionRequest.interface";
@@ -26,6 +27,7 @@ import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface"
 
 import { promotionTypeLabel } from "@/utils/promotion";
 import { PromotionUpsertModal } from "./PromotionUpsertModal";
+import { capitalize } from "@/utils/capitalize";
 
 const formatDate = (raw?: string) =>
   raw ? new Date(raw).toLocaleDateString("es-CR") : "—";
@@ -59,7 +61,7 @@ export function PromotionsPage() {
         p.promotion_name?.toLowerCase().includes(q) ||
         p.promotion_code?.toLowerCase().includes(q) ||
         promotionTypeLabel(p.type_name).toLowerCase().includes(q) ||
-        (p.segment_name ?? "").toLowerCase().includes(q),
+        (p.segment_names ?? []).some((s) => s.toLowerCase().includes(q)),
     );
   }, [items, search]);
 
@@ -146,6 +148,39 @@ export function PromotionsPage() {
     }
   };
 
+  const handleToggleActive = async (promotion: Promotion) => {
+    const promotionId = promotion.promotion_id;
+    if (!promotionId) return;
+
+    const previous = items;
+    const nextActive = !promotion.is_active;
+
+    setItems((prev) =>
+      prev.map((item) =>
+        item.promotion_id === promotionId
+          ? { ...item, is_active: nextActive }
+          : item,
+      ),
+    );
+
+    try {
+      await updatePromotion(promotionId, { is_active: nextActive });
+      setToast({
+        mode: "success",
+        message: nextActive ? "Promoción activada" : "Promoción desactivada",
+      });
+    } catch (error) {
+      setItems(previous);
+      setToast({
+        mode: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error al cambiar el estado de la promoción",
+      });
+    }
+  };
+
   const isUpsertOpen = isCreateOpen || !!editingPromotion;
   const isEditing = !!editingPromotion;
 
@@ -166,10 +201,24 @@ export function PromotionsPage() {
       ),
     },
     {
-      key: "segment_name",
-      label: "Segmento",
+      key: "segment_names",
+      label: "Segmentos",
       width: "12%",
-      render: (v) => (v ? <Badge variant="secondary">{v}</Badge> : "—"),
+      render: (_: unknown, row: Promotion) => {
+        if (row.is_universal !== false)
+          return <Badge variant="secondary">Todos</Badge>;
+        const names = row.segment_names ?? [];
+        if (names.length === 0) return "—";
+        return (
+          <div className="flex flex-wrap gap-1">
+            {names.map((n) => (
+              <Badge key={n} variant="secondary">
+                {capitalize(n)}
+              </Badge>
+            ))}
+          </div>
+        );
+      },
     },
     {
       key: "promotion_start_date",
@@ -196,12 +245,30 @@ export function PromotionsPage() {
             label: "Acciones",
             width: "7%",
             render: (_: unknown, row: Promotion) => (
-              <div
-                className="flex gap-2"
-                onClick={(e) => e.stopPropagation()}
-              >
+              <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                 <Button
-                  onClick={() => setEditingPromotion(row)}
+                  onClick={() => handleToggleActive(row)}
+                  title={
+                    row.is_active ? "Desactivar promoción" : "Activar promoción"
+                  }
+                  variant="secondary"
+                  className="hover:bg-gray-50 rounded-lg transition-colors"
+                  disabled={!row.promotion_id}
+                >
+                  {row.is_active ? "Off" : "On"}
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!row.promotion_id) return;
+                    // Fetch full info so the modal can pre-fill rules and
+                    // group targets that the list endpoint doesn't include.
+                    try {
+                      const full = await promotionApi.getInfo(row.promotion_id);
+                      setEditingPromotion(full ?? row);
+                    } catch {
+                      setEditingPromotion(row);
+                    }
+                  }}
                   title="Editar promoción"
                   variant="ghost"
                   className="hover:bg-gray-50 rounded-lg transition-colors"
@@ -258,7 +325,7 @@ export function PromotionsPage() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">
-              {items.length} promoción{items.length !== 1 ? "es" : ""}
+              {items.length} promoci{items.length !== 1 ? "ones" : "ón"}
             </span>
             {canManage && (
               <Button

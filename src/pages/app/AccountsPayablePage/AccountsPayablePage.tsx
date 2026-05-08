@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router-dom";
 
 import { purchaseApi } from "@/api/purchase.api";
@@ -26,6 +26,7 @@ import { PurchaseOrderDetailPanel } from "@/pages/app/SupplyChain/PurchaseOrderD
 import type { CreatePurchasePaymentRequest } from "@/interfaces/api/requests/PurchaseModuleRequests.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
 import type {
+  ExchangeRateResult,
   PurchaseAccountPayable,
   PurchaseMatching,
   PurchaseOrderDetail,
@@ -35,22 +36,29 @@ import type { AccountsPayablePageLoaderData } from "@/router/loaders/purchase.lo
 import {
   formatCurrency,
   formatDate,
+  formatPaymentMethodName,
   getOrderStatusTone,
   getPayableStatusTone,
 } from "@/utils/purchase";
+
+const CRC_CURRENCY_ID = 1;
 
 interface PaymentFormState {
   purchase_account_payable_id: string;
   amount_paid: string;
   payment_method_id: string;
+  currency_id: string;
   payment_reference: string;
+  exchange_rate_override: string;
 }
 
 const emptyPaymentForm: PaymentFormState = {
   purchase_account_payable_id: "",
   amount_paid: "",
   payment_method_id: "",
+  currency_id: String(CRC_CURRENCY_ID),
   payment_reference: "",
+  exchange_rate_override: "",
 };
 
 export function AccountsPayablePage() {
@@ -65,9 +73,8 @@ export function AccountsPayablePage() {
 
   const canManage = user?.role.role_id === 1 || user?.role.role_id === 2;
 
-  const [payables, setPayables] = useState<PurchaseAccountPayable[]>(
-    initialPayables,
-  );
+  const [payables, setPayables] =
+    useState<PurchaseAccountPayable[]>(initialPayables);
   const [search, setSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -77,18 +84,49 @@ export function AccountsPayablePage() {
     useState<PaymentFormState>(emptyPaymentForm);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<PurchaseOrderDetail | null>(
+  const [exchangeRate, setExchangeRate] = useState<ExchangeRateResult | null>(
     null,
   );
-  const [selectedMatching, setSelectedMatching] = useState<PurchaseMatching | null>(
-    null,
-  );
+  const [isLoadingRate, setIsLoadingRate] = useState(false);
+  const [selectedOrder, setSelectedOrder] =
+    useState<PurchaseOrderDetail | null>(null);
+  const [selectedMatching, setSelectedMatching] =
+    useState<PurchaseMatching | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [toast, setToast] = useState<{
     mode: ToastMode;
     message: string;
   } | null>(null);
+
+  const selectedCurrencyId = Number(paymentForm.currency_id);
+
+  useEffect(() => {
+    if (!isPaymentModalOpen) return;
+
+    if (selectedCurrencyId === CRC_CURRENCY_ID) {
+      setExchangeRate(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingRate(true);
+    purchaseApi
+      .getExchangeRate(selectedCurrencyId)
+      .then((rate) => {
+        if (!cancelled) setExchangeRate(rate);
+      })
+      .catch(() => {
+        if (!cancelled) setExchangeRate(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingRate(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCurrencyId, isPaymentModalOpen]);
 
   const filteredPayables = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -159,16 +197,28 @@ export function AccountsPayablePage() {
 
   const openPaymentModal = (payable: PurchaseAccountPayable) => {
     setSelectedPayable(payable);
+    const filteredMethods = catalogs.payment_methods.filter(
+      (method) => Number(method.payment_method_id) !== 5,
+    );
     setPaymentForm({
       purchase_account_payable_id: payable.purchase_account_payable_id,
       amount_paid: String(Number(payable.balance_due ?? 0)),
-      payment_method_id: String(
-        catalogs.payment_methods[0]?.payment_method_id ?? "",
-      ),
+      payment_method_id: String(filteredMethods[0]?.payment_method_id ?? ""),
+      currency_id: String(CRC_CURRENCY_ID),
       payment_reference: "",
+      exchange_rate_override: "",
     });
+    setExchangeRate(null);
     setPaymentError(null);
     setIsPaymentModalOpen(true);
+  };
+
+  const closePaymentModal = () => {
+    setIsPaymentModalOpen(false);
+    setSelectedPayable(null);
+    setPaymentForm(emptyPaymentForm);
+    setExchangeRate(null);
+    setPaymentError(null);
   };
 
   const handleRegisterPayment = async (
@@ -180,6 +230,7 @@ export function AccountsPayablePage() {
 
     const amount = Number(paymentForm.amount_paid);
     const paymentMethodId = Number(paymentForm.payment_method_id);
+    const currencyId = Number(paymentForm.currency_id);
     const maxAmount = Number(selectedPayable.balance_due ?? 0);
 
     if (!amount || amount <= 0) {
@@ -202,9 +253,11 @@ export function AccountsPayablePage() {
 
     try {
       const payload: CreatePurchasePaymentRequest = {
-        purchase_account_payable_id: selectedPayable.purchase_account_payable_id,
+        purchase_account_payable_id:
+          selectedPayable.purchase_account_payable_id,
         amount_paid: amount,
         payment_method_id: paymentMethodId,
+        currency_id: currencyId !== CRC_CURRENCY_ID ? currencyId : undefined,
         payment_reference: paymentForm.payment_reference || undefined,
       };
 
@@ -226,7 +279,9 @@ export function AccountsPayablePage() {
         ),
       );
 
-      if (selectedOrder?.purchase_order_id === response.order.purchase_order_id) {
+      if (
+        selectedOrder?.purchase_order_id === response.order.purchase_order_id
+      ) {
         setSelectedOrder(response.order);
         const matching = await purchaseApi.getMatching(
           response.order.purchase_order_id,
@@ -234,20 +289,99 @@ export function AccountsPayablePage() {
         setSelectedMatching(matching);
       }
 
-      setToast({ mode: "success", message: "Abono registrado correctamente" });
-      setIsPaymentModalOpen(false);
-      setSelectedPayable(null);
-      setPaymentForm(emptyPaymentForm);
+      closePaymentModal();
     } catch (error) {
       setToast({
         mode: "error",
         message:
-          error instanceof Error ? error.message : "No se pudo registrar el abono",
+          error instanceof Error
+            ? error.message
+            : "No se pudo registrar el abono",
       });
     } finally {
       setIsSubmittingPayment(false);
     }
   };
+
+  const handleRegisterPaymentPanel = async (
+    payload: CreatePurchasePaymentRequest,
+  ) => {
+    const response = await purchaseApi.registerPayment(payload);
+
+    setPayables((prev) =>
+      prev.map((item) =>
+        item.purchase_account_payable_id ===
+        payload.purchase_account_payable_id
+          ? {
+              ...item,
+              ...response.purchase_account_payable,
+            }
+          : item,
+      ),
+    );
+
+    if (selectedOrder?.purchase_order_id === response.order.purchase_order_id) {
+      setSelectedOrder(response.order);
+      const matching = await purchaseApi.getMatching(
+        response.order.purchase_order_id,
+      ).catch(() => null);
+      if (matching) setSelectedMatching(matching);
+    }
+
+    setToast({ mode: "success", message: "Abono registrado correctamente" });
+  };
+
+  const handleUpdatePaymentPanel = async (
+    paymentId: string,
+    payload: Partial<CreatePurchasePaymentRequest>,
+  ) => {
+    const response = await purchaseApi.updatePayment(paymentId, payload);
+
+    setPayables((prev) =>
+      prev.map((item) =>
+        item.purchase_account_payable_id ===
+        response.purchase_account_payable.purchase_account_payable_id
+          ? {
+              ...item,
+              ...response.purchase_account_payable,
+            }
+          : item,
+      ),
+    );
+
+    if (selectedOrder?.purchase_order_id === response.order.purchase_order_id) {
+      setSelectedOrder(response.order);
+      const matching = await purchaseApi.getMatching(
+        response.order.purchase_order_id,
+      ).catch(() => null);
+      if (matching) setSelectedMatching(matching);
+    }
+
+    setToast({ mode: "success", message: "Abono actualizado correctamente" });
+  };
+
+  const selectedCurrency = catalogs.currencies?.find(
+    (c) => c.currency_id === selectedCurrencyId,
+  );
+
+  const round2 = (value: number) => Number(value.toFixed(2));
+
+  const effectiveExchangeRate = useMemo(() => {
+    const parsed = parseFloat(paymentForm.exchange_rate_override);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    return exchangeRate?.rate ? Number(exchangeRate.rate) : 0;
+  }, [paymentForm.exchange_rate_override, exchangeRate]);
+
+  const amount = Number(paymentForm.amount_paid) || 0;
+  const convertedAmount = useMemo(() => {
+    if (selectedCurrencyId === CRC_CURRENCY_ID) {
+      if (effectiveExchangeRate <= 0) return null;
+      return round2(amount / effectiveExchangeRate);
+    } else {
+      if (effectiveExchangeRate <= 0) return null;
+      return round2(amount * effectiveExchangeRate);
+    }
+  }, [amount, selectedCurrencyId, effectiveExchangeRate]);
 
   return (
     <div className="p-6 lg:p-8">
@@ -421,7 +555,10 @@ export function AccountsPayablePage() {
               label: "Acciones",
               width: isSuperuser ? "16%" : "18%",
               render: (_value, payable: PurchaseAccountPayable) => (
-                <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                <div
+                  className="flex flex-wrap gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <Button
                     variant="ghost"
                     title="Ver detalle"
@@ -450,14 +587,10 @@ export function AccountsPayablePage() {
         />
       </section>
 
+      {/* Payment modal */}
       <Modal
         isOpen={isPaymentModalOpen}
-        onClose={() => {
-          setIsPaymentModalOpen(false);
-          setSelectedPayable(null);
-          setPaymentForm(emptyPaymentForm);
-          setPaymentError(null);
-        }}
+        onClose={closePaymentModal}
         title="Registrar abono"
       >
         <form className="space-y-4" onSubmit={handleRegisterPayment}>
@@ -470,8 +603,7 @@ export function AccountsPayablePage() {
                 Orden {selectedPayable.purchase_order_id}
               </p>
               <p className="mt-3 text-sm text-gray-600">
-                Saldo pendiente actual:
-                {" "}
+                Saldo pendiente actual:{" "}
                 <span className="font-semibold text-gray-900">
                   {formatCurrency(selectedPayable.balance_due)}
                 </span>
@@ -495,6 +627,149 @@ export function AccountsPayablePage() {
           />
 
           <Select
+            label="Moneda"
+            value={paymentForm.currency_id}
+            onChange={(event) =>
+              setPaymentForm((prev) => ({
+                ...prev,
+                currency_id: event.target.value,
+                exchange_rate_override: "",
+              }))
+            }
+            options={(catalogs.currencies ?? []).map((c) => ({
+              value: String(c.currency_id),
+              label: `${c.currency_code} — ${c.currency_name}`,
+            }))}
+          />
+
+          {/* Conversion display with rate info */}
+          {selectedCurrencyId !== CRC_CURRENCY_ID && (
+            <>
+              {amount > 0 && convertedAmount !== null && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                        Conversión en vivo
+                      </p>
+                      <p className="text-sm font-medium text-blue-900 mt-1">
+                        {amount.toLocaleString("es-CR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        {selectedCurrency?.currency_code} ={" "}
+                        <span className="font-semibold">
+                          {convertedAmount.toLocaleString("es-CR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          CRC
+                        </span>
+                      </p>
+                    </div>
+                    {effectiveExchangeRate > 0 && (
+                      <div className="text-right text-xs text-blue-700">
+                        <p className="font-medium">
+                          Tasa:{" "}
+                          {effectiveExchangeRate.toLocaleString("es-CR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 6,
+                          })}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Rate info box */}
+              {isLoadingRate ? (
+                <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-500">
+                  Cargando tasa de cambio…
+                </div>
+              ) : exchangeRate ? (
+                <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm">
+                  <p className="font-medium text-blue-900">Tasa del sistema</p>
+                  <p className="text-blue-700 mt-1">
+                    1 {exchangeRate?.from_currency_code} ={" "}
+                    <span className="font-semibold">
+                      {exchangeRate
+                        ? Number(exchangeRate.rate).toLocaleString("es-CR", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 6,
+                          })
+                        : "—"}
+                    </span>{" "}
+                    {exchangeRate?.to_currency_code}
+                  </p>
+                  <p className="text-xs text-blue-500 mt-1">
+                    Vigente al{" "}
+                    {new Date(exchangeRate.effective_date).toLocaleDateString(
+                      "es-CR",
+                    )}
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
+                  <p className="text-amber-800 font-medium">
+                    No hay tasa de cambio disponible
+                  </p>
+                  <p className="text-amber-700 mt-1">
+                    Ingresa una manualmente para ver la conversión:
+                  </p>
+                  <Input
+                    label="Tasa de cambio personalizada"
+                    type="number"
+                    min="0"
+                    step="0.000001"
+                    placeholder="Ej: 510.00"
+                    value={paymentForm.exchange_rate_override}
+                    onChange={(event) =>
+                      setPaymentForm((prev) => ({
+                        ...prev,
+                        exchange_rate_override: event.target.value,
+                      }))
+                    }
+                    className="mt-2"
+                  />
+                </div>
+              )}
+
+              {amount > 0 &&
+                effectiveExchangeRate > 0 &&
+                paymentForm.exchange_rate_override && (
+                  <div className="rounded-xl border border-purple-200 bg-purple-50 p-3">
+                    <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
+                      Usando tasa personalizada
+                    </p>
+                    <Input
+                      label="Tasa"
+                      type="number"
+                      min="0"
+                      step="0.000001"
+                      value={paymentForm.exchange_rate_override}
+                      onChange={(event) =>
+                        setPaymentForm((prev) => ({
+                          ...prev,
+                          exchange_rate_override: event.target.value,
+                        }))
+                      }
+                      className="mt-2"
+                      hint={`Tasa del sistema: ${
+                        exchangeRate
+                          ? Number(exchangeRate.rate).toLocaleString("es-CR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 6,
+                            })
+                          : "—"
+                      }`}
+                    />
+                  </div>
+                )}
+            </>
+          )}
+
+          <Select
             label="Método de pago"
             value={paymentForm.payment_method_id}
             onChange={(event) =>
@@ -503,13 +778,12 @@ export function AccountsPayablePage() {
                 payment_method_id: event.target.value,
               }))
             }
-            options={catalogs.payment_methods.map((method) => ({
-              value: method.payment_method_id,
-              label: method.name
-                .split("_")
-                .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                .join(" "),
-            }))}
+            options={catalogs.payment_methods
+              .filter((method) => Number(method.payment_method_id) !== 5)
+              .map((method) => ({
+                value: method.payment_method_id,
+                label: formatPaymentMethodName(method.name),
+              }))}
             placeholder="Seleccionar método"
             required
           />
@@ -526,19 +800,16 @@ export function AccountsPayablePage() {
             hint="Número de transferencia, voucher o comentario breve."
           />
 
-          {paymentError && <p className="text-xs text-red-500">{paymentError}</p>}
+          {paymentError && (
+            <p className="text-xs text-red-500">{paymentError}</p>
+          )}
 
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button
               type="button"
               variant="ghost"
               disabled={isSubmittingPayment}
-              onClick={() => {
-                setIsPaymentModalOpen(false);
-                setSelectedPayable(null);
-                setPaymentForm(emptyPaymentForm);
-                setPaymentError(null);
-              }}
+              onClick={closePaymentModal}
             >
               Cancelar
             </Button>
@@ -549,6 +820,7 @@ export function AccountsPayablePage() {
         </form>
       </Modal>
 
+      {/* Detail modal */}
       <Modal
         isOpen={isDetailOpen}
         onClose={() => {
@@ -569,6 +841,9 @@ export function AccountsPayablePage() {
             order={selectedOrder}
             matching={selectedMatching}
             showTenant={isSuperuser}
+            paymentMethods={catalogs.payment_methods}
+            onRegisterPayment={handleRegisterPaymentPanel}
+            onUpdatePayment={handleUpdatePaymentPanel}
           />
         )}
       </Modal>

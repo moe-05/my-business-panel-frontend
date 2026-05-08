@@ -59,6 +59,34 @@ export const employeeApi = {
     }
   },
 
+  async checkAvailability(params: {
+    field: "doc_number" | "email" | "phone";
+    value: string;
+    tenantId?: string;
+    excludeId?: string;
+  }): Promise<{ exists: boolean }> {
+    const search = new URLSearchParams({
+      field: params.field,
+      value: params.value,
+    });
+    if (params.tenantId) search.set("tenant_id", params.tenantId);
+    if (params.excludeId) search.set("exclude_id", params.excludeId);
+
+    const response = await fetch(
+      `${url}/employee/availability?${search.toString()}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+
+    if (!response.ok) return { exists: false };
+
+    const json: ApiResponse<{ exists: boolean }> = await response.json();
+    return json.data ?? { exists: false };
+  },
+
   async deactivate(employeeId: string): Promise<void> {
     const response = await fetch(`${url}/employee/deactivate/${employeeId}`, {
       method: "PATCH",

@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router-dom";
 
 import { contractApi } from "@/api/contract.api";
 import { employeeApi } from "@/api/employee.api";
 import { userApi } from "@/api/user.api";
+
+import { useDebounce } from "@/hooks/useDebounce";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -58,6 +60,8 @@ export function HREmployeesPage() {
     message: string;
   } | null>(null);
 
+  const debouncedSearch = useDebounce(search, 400);
+
   const paymentScheduleMap = useMemo(
     () =>
       new Map(
@@ -80,27 +84,58 @@ export function HREmployeesPage() {
     [turns],
   );
 
-  const filteredEmployees = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        const tenantId = currentUser.tenant.tenant_id;
+        const allEmployees = await employeeApi.listByTenant(tenantId);
 
-    return employees.filter((employee) => {
-      const matchesBranch =
-        !branchFilter || employee.branch_id === branchFilter;
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "active" && employee.is_active) ||
-        (statusFilter === "inactive" && !employee.is_active);
-      const matchesSearch =
-        !normalizedSearch ||
-        `${employee.first_name} ${employee.last_name}`
-          .toLowerCase()
-          .includes(normalizedSearch) ||
-        employee.document_number.toLowerCase().includes(normalizedSearch) ||
-        employee.email.toLowerCase().includes(normalizedSearch);
+        // Aplicar filtros localmente
+        const filtered = allEmployees.filter((employee) => {
+          const matchesBranch =
+            !branchFilter || employee.branch_id === branchFilter;
+          const matchesStatus =
+            statusFilter === "all" ||
+            (statusFilter === "active" && employee.is_active) ||
+            (statusFilter === "inactive" && !employee.is_active);
+          const matchesSearch =
+            !debouncedSearch.trim() ||
+            `${employee.first_name || ""} ${employee.last_name || ""}`
+              .toLowerCase()
+              .includes(debouncedSearch.trim().toLowerCase()) ||
+            (employee.doc_number
+              ?.toLowerCase()
+              .includes(debouncedSearch.trim().toLowerCase()) ??
+              false) ||
+            (employee.email
+              ?.toLowerCase()
+              .includes(debouncedSearch.trim().toLowerCase()) ??
+              false);
 
-      return matchesBranch && matchesStatus && matchesSearch;
-    });
-  }, [branchFilter, employees, search, statusFilter]);
+          return matchesBranch && matchesStatus && matchesSearch;
+        });
+
+        setEmployees(filtered);
+      } catch (error) {
+        setToast({
+          mode: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error al cargar empleados",
+        });
+      }
+    };
+
+    fetchEmployees();
+  }, [
+    debouncedSearch,
+    branchFilter,
+    statusFilter,
+    currentUser.tenant.tenant_id,
+  ]);
+
+  const filteredEmployees = useMemo(() => employees, [employees]);
 
   const refreshEmployees = async () => {
     const tenantId = currentUser.tenant.tenant_id;
@@ -120,7 +155,9 @@ export function HREmployeesPage() {
       setToast({
         mode: "error",
         message:
-          error instanceof Error ? error.message : "No se pudo crear el empleado",
+          error instanceof Error
+            ? error.message
+            : "No se pudo crear el empleado",
       });
       throw error;
     }
@@ -214,7 +251,9 @@ export function HREmployeesPage() {
       setToast({
         mode: "error",
         message:
-          error instanceof Error ? error.message : "No se pudo eliminar el empleado",
+          error instanceof Error
+            ? error.message
+            : "No se pudo eliminar el empleado",
       });
     }
   };
@@ -245,7 +284,7 @@ export function HREmployeesPage() {
         </div>
       ),
     },
-    { key: "document_number", label: "Documento", width: "12%" },
+    { key: "doc_number", label: "Documento", width: "12%" },
     { key: "branch_name", label: "Sucursal", width: "14%" },
     {
       key: "payment_schedule_id",
@@ -265,7 +304,9 @@ export function HREmployeesPage() {
       width: "12%",
       render: (value: number, row: HrEmployeeRecord) => (
         <div>
-          <p className="text-gray-900">{turnMap.get(value) ?? `Turno ${value}`}</p>
+          <p className="text-gray-900">
+            {turnMap.get(value) ?? `Turno ${value}`}
+          </p>
           <p className="text-xs text-gray-500">{row.turn_type} h por turno</p>
         </div>
       ),
@@ -285,7 +326,10 @@ export function HREmployeesPage() {
       label: "Acciones",
       width: "8%",
       render: (_value: unknown, row: HrEmployeeRecord) => (
-        <div className="flex gap-2" onClick={(event) => event.stopPropagation()}>
+        <div
+          className="flex gap-2"
+          onClick={(event) => event.stopPropagation()}
+        >
           <Button
             type="button"
             variant="ghost"

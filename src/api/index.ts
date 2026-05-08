@@ -40,3 +40,6 @@ export { returnsApi } from "./returns.api";
 export { promotionApi } from "./promotion.api";
 export { warehouseApi } from "./warehouse.api";
 export { purchaseApi } from "./purchase.api";
+export { specialCodeApi } from "./specialCode.api";
+export { currencyApi } from "./currency.api";
+export { exchangeRateApi } from "./exchangeRate.api";

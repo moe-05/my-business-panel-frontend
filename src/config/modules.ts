@@ -22,7 +22,10 @@ export interface SubModule {
     | "map-pin"
     | "contact"
     | "building"
-    | "tag";
+    | "tag"
+    | "shield"
+    | "trending-down"
+    | "gift";
   /** Si está definido, solo los roles listados pueden acceder. Si es undefined, todos pueden. */
   rolesAllowed?: number[];
   end?: boolean;
@@ -56,6 +59,7 @@ export const MODULES: Record<ModuleId, Module> = {
     code: "GEN",
     path: "/app",
     icon: "briefcase",
+    rolesAllowed: [1, 2, 3],
     submodules: [
       {
         id: "dashboard",
@@ -101,6 +105,13 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "briefcase",
         rolesAllowed: [1],
       },
+      {
+        id: "special-codes",
+        label: "Códigos especiales",
+        path: "/app/special-codes",
+        icon: "shield",
+        rolesAllowed: [1],
+      },
       { id: "profile", label: "Mi perfil", path: "/app/profile", icon: "user" },
     ],
   },
@@ -115,16 +126,17 @@ export const MODULES: Record<ModuleId, Module> = {
     icon: "shopping-cart",
     submodules: [
       {
-        id: "cash-sessions",
-        label: "Sesiones de caja",
-        path: "/app/pos/cash-sessions",
-        icon: "credit-card",
-      },
-      {
         id: "create-sale",
         label: "Crear venta",
         path: "/app/pos/sales/new",
         icon: "shopping-cart",
+      },
+      {
+        id: "cash-sessions",
+        label: "Sesiones de caja",
+        path: "/app/pos/cash-sessions",
+        icon: "credit-card",
+        rolesAllowed: [1, 2, 3],
       },
       {
         id: "sales-history",
@@ -139,12 +151,28 @@ export const MODULES: Record<ModuleId, Module> = {
         label: "Reembolsos",
         path: "/app/pos/refunds",
         icon: "package",
+        rolesAllowed: [1, 2, 3],
       },
       {
         id: "promotions",
         label: "Promociones",
         path: "/app/pos/promotions",
         icon: "trending-up",
+        rolesAllowed: [1, 2, 3],
+      },
+      {
+        id: "expenses",
+        label: "Gastos",
+        path: "/app/pos/expenses",
+        icon: "trending-down",
+        rolesAllowed: [1, 2, 3, 4],
+      },
+      {
+        id: "royalties",
+        label: "Regalías",
+        path: "/app/pos/royalties",
+        icon: "gift",
+        rolesAllowed: [1, 2],
       },
     ],
   },
@@ -159,16 +187,11 @@ export const MODULES: Record<ModuleId, Module> = {
     icon: "package",
     submodules: [
       {
-        id: "warehouses",
-        label: "Almacenes",
-        path: "/app/int/warehouses",
-        icon: "building",
-      },
-      {
         id: "inventory",
         label: "Inventario",
         path: "/app/int/inventory",
         icon: "package",
+        rolesAllowed: [1, 2, 3, 4],
       },
       {
         id: "movements",
@@ -177,10 +200,18 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "trending-up",
       },
       {
+        id: "warehouses",
+        label: "Almacenes",
+        path: "/app/int/warehouses",
+        icon: "building",
+        rolesAllowed: [1, 2, 3],
+      },
+      {
         id: "reports",
         label: "Reportes",
         path: "/app/int/reports",
         icon: "file-text",
+        rolesAllowed: [1, 2, 3],
       },
     ],
   },
@@ -193,13 +224,8 @@ export const MODULES: Record<ModuleId, Module> = {
     code: "SCH",
     path: "/app/sch",
     icon: "file-text",
+    rolesAllowed: [1, 2, 3],
     submodules: [
-      {
-        id: "suppliers",
-        label: "Proveedores",
-        path: "/app/sch/suppliers",
-        icon: "briefcase",
-      },
       {
         id: "purchases",
         label: "Compras",
@@ -211,6 +237,12 @@ export const MODULES: Record<ModuleId, Module> = {
         label: "Cuentas por pagar",
         path: "/app/sch/payables",
         icon: "credit-card",
+      },
+      {
+        id: "suppliers",
+        label: "Proveedores",
+        path: "/app/sch/suppliers",
+        icon: "briefcase",
       },
       {
         id: "analytics",
@@ -235,24 +267,34 @@ export const MODULES: Record<ModuleId, Module> = {
         label: "Empleados",
         path: "/app/hr/employees",
         icon: "users",
+        rolesAllowed: [1, 2, 3],
       },
       {
         id: "contracts",
         label: "Contratos",
         path: "/app/hr/contracts",
         icon: "briefcase",
+        rolesAllowed: [1, 2, 3],
       },
       {
         id: "payroll",
         label: "Nomina",
         path: "/app/hr/payroll",
         icon: "credit-card",
+        rolesAllowed: [1, 2, 3],
       },
       {
         id: "attendance",
         label: "Horarios",
         path: "/app/hr/attendance",
         icon: "calendar",
+        rolesAllowed: [1, 2, 3],
+      },
+      {
+        id: "amonestaciones",
+        label: "Amonestaciones",
+        path: "/app/hr/amonestaciones",
+        icon: "shield",
       },
     ],
   },
@@ -265,6 +307,7 @@ export const MODULES: Record<ModuleId, Module> = {
     code: "FNZ",
     path: "/app/fnz",
     icon: "credit-card",
+    rolesAllowed: [1, 2, 3],
     submodules: [
       {
         id: "accounting",
