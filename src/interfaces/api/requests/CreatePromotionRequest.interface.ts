@@ -16,6 +16,6 @@ export interface CreatePromotionRequest {
   is_active?: boolean;
   is_default?: boolean;
   is_stackable?: boolean;
-  rules?: PromotionRule | PromotionRule[];
+  rules?: PromotionRule[];
   targets?: PromotionTargetInput[];
 }

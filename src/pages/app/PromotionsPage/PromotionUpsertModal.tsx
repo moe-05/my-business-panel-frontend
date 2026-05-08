@@ -57,6 +57,7 @@ const normalizeRule = (rule?: PromotionRule | null): PromotionRule => ({
   tier_min_quantity: toNumberOrUndefined(rule?.tier_min_quantity),
   tier_max_quantity: toNumberOrUndefined(rule?.tier_max_quantity),
   tier_price: toNumberOrUndefined(rule?.tier_price),
+  tier_discount_percentage: toNumberOrUndefined(rule?.tier_discount_percentage),
   min_purchase_amount: toNumberOrUndefined(rule?.min_purchase_amount),
 });
 
@@ -153,7 +154,6 @@ export function PromotionUpsertModal({
       });
 
       const existingTiers = (promotion.rules ?? [])
-        .filter((r) => r.tier_level != null)
         .sort((a, b) => (a.tier_level ?? 0) - (b.tier_level ?? 0))
         .map(normalizeRule);
       setTiers(existingTiers.length > 0 ? existingTiers : [{}]);
@@ -251,9 +251,9 @@ export function PromotionUpsertModal({
       return;
     }
 
-    const rulesPayload: PromotionRule | PromotionRule[] = isTieredPricing
+    const rulesPayload: PromotionRule[] = isTieredPricing
       ? tiers.map((t, i) => ({ ...normalizeRule(t), tier_level: i + 1 }))
-      : normalizeRule(form.rules);
+      : [normalizeRule(form.rules)];
 
     const payload: CreatePromotionRequest = {
       tenant_id: tenantId,
