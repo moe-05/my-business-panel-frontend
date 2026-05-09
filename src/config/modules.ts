@@ -1,6 +1,6 @@
 // Module definitions with colors, icons, and submodules
 
-export type ModuleId = "general" | "pos" | "int" | "sch" | "hr" | "fnz";
+export type ModuleId = "general" | "pos" | "int" | "sch" | "hr";
 
 export interface SubModule {
   id: string;
@@ -299,42 +299,42 @@ export const MODULES: Record<ModuleId, Module> = {
     ],
   },
 
-  fnz: {
-    id: "fnz",
-    label: "Finanzas",
-    description: "Gestion financiera",
-    color: "red",
-    code: "FNZ",
-    path: "/app/fnz",
-    icon: "credit-card",
-    rolesAllowed: [1, 2, 3],
-    submodules: [
-      {
-        id: "accounting",
-        label: "Contabilidad",
-        path: "/app/fnz/accounting",
-        icon: "briefcase",
-      },
-      {
-        id: "reports",
-        label: "Reportes",
-        path: "/app/fnz/reports",
-        icon: "file-text",
-      },
-      {
-        id: "budgets",
-        label: "Presupuestos",
-        path: "/app/fnz/budgets",
-        icon: "credit-card",
-      },
-      {
-        id: "analytics",
-        label: "Analisis",
-        path: "/app/fnz/analytics",
-        icon: "trending-up",
-      },
-    ],
-  },
+  // fnz: {
+  //   id: "fnz",
+  //   label: "Finanzas",
+  //   description: "Gestion financiera",
+  //   color: "red",
+  //   code: "FNZ",
+  //   path: "/app/fnz",
+  //   icon: "credit-card",
+  //   rolesAllowed: [1, 2, 3],
+  //   submodules: [
+  //     {
+  //       id: "accounting",
+  //       label: "Contabilidad",
+  //       path: "/app/fnz/accounting",
+  //       icon: "briefcase",
+  //     },
+  //     {
+  //       id: "reports",
+  //       label: "Reportes",
+  //       path: "/app/fnz/reports",
+  //       icon: "file-text",
+  //     },
+  //     {
+  //       id: "budgets",
+  //       label: "Presupuestos",
+  //       path: "/app/fnz/budgets",
+  //       icon: "credit-card",
+  //     },
+  //     {
+  //       id: "analytics",
+  //       label: "Analisis",
+  //       path: "/app/fnz/analytics",
+  //       icon: "trending-up",
+  //     },
+  //   ],
+  // },
 };
 
 export function isAllowedForRole(
