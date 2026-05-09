@@ -51,7 +51,7 @@ export function OnboardingLayout({
               My Business Panel{" "}
               {import.meta.env.VITE_ENV === "production"
                 ? ""
-                : `(env: ${import.meta.env.VITE_ENV})`}
+                : `(current environment: ${import.meta.env.VITE_ENV})`}
             </span>
           </div>
 
