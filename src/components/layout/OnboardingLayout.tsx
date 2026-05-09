@@ -48,7 +48,10 @@ export function OnboardingLayout({
               </svg>
             </div>
             <span className="text-white font-semibold text-lg tracking-tight font-display">
-              My Business Panel
+              My Business Panel{" "}
+              {import.meta.env.VITE_ENV === "production"
+                ? ""
+                : `(current environment: ${import.meta.env.VITE_ENV})`}
             </span>
           </div>
 
