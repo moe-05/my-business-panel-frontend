@@ -371,10 +371,10 @@ export const privateRoutes: RouteObject[] = [
             path: "fnz/analytics",
             element: <ComingSoon title="FNZ - Análisis" />,
           },
-          // {
-          //   path: "fnz/*",
-          //   element: <ModuleRedirect moduleId="fnz" />,
-          // },
+          {
+            path: "fnz/*",
+            element: <ModuleRedirect moduleId="fnz" />,
+          },
 
           { path: "*", element: <Navigate to="dashboard" replace /> },
         ],
