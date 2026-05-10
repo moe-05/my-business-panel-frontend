@@ -28,7 +28,7 @@ const json = async <T>(res: Response, fallback: string): Promise<T> => {
 
 export const warehouseApi = {
   async listByTenant(): Promise<Warehouse[]> {
-    const res = await fetch(`${url}/warehouse/tenant/`, {
+    const res = await fetch(`${url}/warehouse/tenant`, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
