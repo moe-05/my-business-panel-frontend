@@ -140,7 +140,7 @@ export function ConceptUpsertModal({
             label="Código"
             value={code}
             onChange={(event) => setCode(event.target.value)}
-            hint="Opcional, útil para reportes"
+            required
           />
           <Select
             label="Tipo"
@@ -170,6 +170,7 @@ export function ConceptUpsertModal({
             min="0"
             step="0.01"
             value={baseValue}
+            required
             onChange={(event) => setBaseValue(event.target.value)}
           />
           <Select
