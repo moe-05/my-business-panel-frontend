@@ -84,6 +84,7 @@ export function CashSessionsPage() {
     branches[0]?.branch_id ?? "",
   );
   const [newRegisterName, setNewRegisterName] = useState("");
+  const [newRegisterKey, setNewRegisterKey] = useState("");
   const [newRegisterIsActive, setNewRegisterIsActive] = useState(true);
 
   const [sessions, setSessions] = useState<CashRegisterSession[]>(
@@ -356,10 +357,12 @@ export function CashSessionsPage() {
         branchId: newRegisterBranchId,
         registerName: safeRegisterName,
         isActive: newRegisterIsActive,
+        cashRegisterKey: newRegisterKey.trim() || null,
       });
 
       await refreshRegisters();
       setNewRegisterName("");
+      setNewRegisterKey("");
       setNewRegisterIsActive(true);
 
       setToast({
@@ -558,6 +561,13 @@ export function CashSessionsPage() {
             value={newRegisterName}
             onChange={(e) => setNewRegisterName(e.target.value)}
             required
+          />
+          <Input
+            label="Contrasena (opcional)"
+            type="password"
+            placeholder="Sin contrasena"
+            value={newRegisterKey}
+            onChange={(e) => setNewRegisterKey(e.target.value)}
           />
           <div className="flex items-end justify-end">
             <Button type="submit" loading={isCreatingRegister}>

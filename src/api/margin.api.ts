@@ -21,8 +21,14 @@ export const marginApi = {
         credentials: "include",
       });
 
-      const json: ApiResponse<Margin[]> = await response.json();
-      return json.data;
+      const json = await response.json();
+      if (!response.ok) {
+        const message = Array.isArray(json?.message)
+          ? json.message.join(", ")
+          : (json?.message ?? "Error al listar márgenes del tenant");
+        throw new Error(message);
+      }
+      return (json as ApiResponse<Margin[]>).data ?? [];
     } catch (error) {
       throw new Error(
         error instanceof Error
@@ -58,8 +64,14 @@ export const marginApi = {
         body: JSON.stringify(data),
       });
 
-      const json: ApiResponse<{ message: string }> = await response.json();
-      return json.data;
+      const json = await response.json();
+      if (!response.ok) {
+        const message = Array.isArray(json?.message)
+          ? json.message.join(", ")
+          : (json?.message ?? "Error al crear margen");
+        throw new Error(message);
+      }
+      return (json as ApiResponse<{ message: string }>).data;
     } catch (error) {
       throw new Error(
         error instanceof Error ? error.message : "Error al crear margen",
@@ -79,8 +91,14 @@ export const marginApi = {
         body: JSON.stringify(data),
       });
 
-      const json: ApiResponse<{ message: string }> = await response.json();
-      return json.data;
+      const json = await response.json();
+      if (!response.ok) {
+        const message = Array.isArray(json?.message)
+          ? json.message.join(", ")
+          : (json?.message ?? "Error al actualizar margen");
+        throw new Error(message);
+      }
+      return (json as ApiResponse<{ message: string }>).data;
     } catch (error) {
       throw new Error(
         error instanceof Error ? error.message : "Error al actualizar margen",

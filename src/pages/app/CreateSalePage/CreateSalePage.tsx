@@ -2195,11 +2195,7 @@ export function CreateSalePage() {
                       step={Number(split.methodId) === 5 ? "1" : "0.01"}
                       placeholder={Number(split.methodId) === 5 ? "0" : "0.00"}
                       value={
-                        !isPartialPayment &&
-                        idx === 0 &&
-                        Number(split.methodId) !== 5
-                          ? String(totalAmountDisplay)
-                          : Number(split.methodId) === 5 &&
+                        Number(split.methodId) === 5 &&
                               split.amount &&
                               pointsRate > 0
                             ? String(
@@ -2211,39 +2207,20 @@ export function CreateSalePage() {
                       }
                       onChange={(e) => {
                         const newValue = e.target.value;
-                        if (isPartialPayment) {
-                          // If using points, convert to currency before saving
-                          if (Number(split.methodId) === 5 && pointsRate > 0) {
-                            const pointsValue = parseFloat(newValue) || 0;
-                            const amountInCurrency = round2(
-                              pointsValue / pointsRate,
-                            );
-                            updatePaymentSplit(
-                              split.id,
-                              "amount",
-                              String(amountInCurrency),
-                            );
-                          } else {
-                            updatePaymentSplit(split.id, "amount", newValue);
-                          }
-                        } else if (Number(split.methodId) === 5) {
-                          // Convert points to currency before saving
-                          if (pointsRate > 0) {
-                            const pointsValue = parseFloat(newValue) || 0;
-                            const amountInCurrency = round2(
-                              pointsValue / pointsRate,
-                            );
-                            updatePaymentSplit(
-                              split.id,
-                              "amount",
-                              String(amountInCurrency),
-                            );
-                          }
+                        if (Number(split.methodId) === 5 && pointsRate > 0) {
+                          const pointsValue = parseFloat(newValue) || 0;
+                          const amountInCurrency = round2(
+                            pointsValue / pointsRate,
+                          );
+                          updatePaymentSplit(
+                            split.id,
+                            "amount",
+                            String(amountInCurrency),
+                          );
+                        } else {
+                          updatePaymentSplit(split.id, "amount", newValue);
                         }
                       }}
-                      disabled={
-                        !isPartialPayment && Number(split.methodId) !== 5
-                      }
                     />
                     {Number(split.methodId) === 5 &&
                     split.amount &&
