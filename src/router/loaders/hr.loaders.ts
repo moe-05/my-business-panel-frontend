@@ -2,6 +2,7 @@ import { authApi } from "@/api/auth.api";
 import { branchApi } from "@/api/branch.api";
 import { conceptApi } from "@/api/concept.api";
 import { contractApi } from "@/api/contract.api";
+import { dutiesTypeApi } from "@/api/dutiesType.api";
 import { employeeApi } from "@/api/employee.api";
 import { paysheetApi } from "@/api/paysheet.api";
 import { turnsApi } from "@/api/turns.api";
@@ -10,6 +11,7 @@ import { userApi } from "@/api/user.api";
 import type { Role } from "@/interfaces/entities/Role.interface";
 import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type {
+  HrDutiesType,
   HrEmployeeRecord,
   HrPaymentSchedule,
   HrPayrollConcept,
@@ -59,18 +61,23 @@ export type HrEmployeesPageLoaderData = {
   paymentSchedules: HrPaymentSchedule[];
   turns: HrTurn[];
   roles: Role[];
+  dutiesTypes: HrDutiesType[];
 };
 
 export const getHrEmployeesPageData =
   async (): Promise<HrEmployeesPageLoaderData> => {
     const { currentUser, tenantId, branches } = await getCurrentTenantContext();
 
-    const [employees, paymentSchedules, turns, roles] = await Promise.all([
-      tenantId ? employeeApi.listByTenant(tenantId) : Promise.resolve([]),
-      contractApi.getPaymentSchedules(),
-      getTurnsForBranches(branches),
-      userApi.getRoles(),
-    ]);
+    const [employees, paymentSchedules, turns, roles, dutiesTypes] =
+      await Promise.all([
+        tenantId ? employeeApi.listByTenant(tenantId) : Promise.resolve([]),
+        contractApi.getPaymentSchedules(),
+        getTurnsForBranches(branches),
+        userApi.getRoles(),
+        tenantId
+          ? dutiesTypeApi.listByTenant(tenantId).catch(() => [] as HrDutiesType[])
+          : Promise.resolve([] as HrDutiesType[]),
+      ]);
 
     return {
       currentUser,
@@ -79,6 +86,7 @@ export const getHrEmployeesPageData =
       paymentSchedules,
       turns,
       roles,
+      dutiesTypes,
     };
   };
 
@@ -88,12 +96,16 @@ export const getHrContractsPageData =
   async (): Promise<HrContractsPageLoaderData> => {
     const { currentUser, tenantId, branches } = await getCurrentTenantContext();
 
-    const [employees, paymentSchedules, turns, roles] = await Promise.all([
-      tenantId ? employeeApi.listByTenant(tenantId) : Promise.resolve([]),
-      contractApi.getPaymentSchedules(),
-      getTurnsForBranches(branches),
-      userApi.getRoles(),
-    ]);
+    const [employees, paymentSchedules, turns, roles, dutiesTypes] =
+      await Promise.all([
+        tenantId ? employeeApi.listByTenant(tenantId) : Promise.resolve([]),
+        contractApi.getPaymentSchedules(),
+        getTurnsForBranches(branches),
+        userApi.getRoles(),
+        tenantId
+          ? dutiesTypeApi.listByTenant(tenantId).catch(() => [] as HrDutiesType[])
+          : Promise.resolve([] as HrDutiesType[]),
+      ]);
 
     return {
       currentUser,
@@ -102,6 +114,7 @@ export const getHrContractsPageData =
       paymentSchedules,
       turns,
       roles,
+      dutiesTypes,
     };
   };
 

@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/Select";
 import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
 
 import { employeeApi } from "@/api/employee.api";
+import type { CreateEmployeeWithContractPayload } from "@/api/employee.api";
 import { userApi } from "@/api/user.api";
 
 import { identificationTypes } from "@/constants/identification-types";
@@ -19,6 +20,7 @@ import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type { Role } from "@/interfaces/entities/Role.interface";
 import type { CreateUserRequest } from "@/interfaces/api/requests/CreateUserRequest.interface";
 import type {
+  HrDutiesType,
   HrEmployeeRecord,
   HrPaymentSchedule,
   HrTurn,
@@ -60,6 +62,7 @@ const EMPTY_CONTRACT: ContractFields = {
   hours: "40",
   base_salary: "0",
   duties: "",
+  duties_type_id: "",
   turn_type: "8",
   turn_id: "",
 };
@@ -91,8 +94,10 @@ interface EmployeeUpsertModalProps {
   roles: Role[];
   paymentSchedules: HrPaymentSchedule[];
   turns: HrTurn[];
+  dutiesTypes: HrDutiesType[];
   onClose: () => void;
   onCreate: (payload: CreateUserRequest) => Promise<void>;
+  onCreateNoUser: (payload: CreateEmployeeWithContractPayload) => Promise<void>;
   onUpdate: (
     employeeId: string,
     contractId: string,
@@ -112,8 +117,10 @@ export function EmployeeUpsertModal({
   roles,
   paymentSchedules,
   turns,
+  dutiesTypes,
   onClose,
   onCreate,
+  onCreateNoUser,
   onUpdate,
 }: EmployeeUpsertModalProps) {
   const [employeeData, setEmployeeData] = useState<EmployeeFields>(
@@ -123,6 +130,7 @@ export function EmployeeUpsertModal({
     EMPTY_CONTRACT,
   );
   const [accountData, setAccountData] = useState<AccountFields>(EMPTY_ACCOUNT);
+  const [withAccount, setWithAccount] = useState(true);
   const [employeeErrors, setEmployeeErrors] = useState<EmployeeErrors>({});
   const [contractErrors, setContractErrors] = useState<ContractErrors>({});
   const [accountErrors, setAccountErrors] = useState<AccountErrors>({});
@@ -135,6 +143,7 @@ export function EmployeeUpsertModal({
       setEmployeeData(EMPTY_EMPLOYEE);
       setContractData(EMPTY_CONTRACT);
       setAccountData(EMPTY_ACCOUNT);
+      setWithAccount(true);
       setEmployeeErrors({});
       setContractErrors({});
       setAccountErrors({});
@@ -178,7 +187,8 @@ export function EmployeeUpsertModal({
       end_date: employee.end_date.slice(0, 10),
       hours: String(employee.hours),
       base_salary: String(employee.base_salary),
-      duties: employee.duties,
+      duties: employee.duties ?? "",
+      duties_type_id: employee.duties_type_id ? String(employee.duties_type_id) : "",
       turn_type: String(employee.turn_type),
       turn_id: String(employee.turn_id),
     });
@@ -284,7 +294,7 @@ export function EmployeeUpsertModal({
     accountData.email,
     checkAccountEmail,
     {
-      skip: !isCreate || !accountData.email,
+      skip: !isCreate || !withAccount || !accountData.email,
       minLength: 5,
       isWellFormed: (value) => EMAIL_REGEX.test(value),
     },
@@ -294,13 +304,13 @@ export function EmployeeUpsertModal({
     docStatus === "taken" ||
     phoneStatus === "taken" ||
     employeeEmailStatus === "taken" ||
-    accountEmailStatus === "taken";
+    (withAccount && accountEmailStatus === "taken");
 
   const uniquenessProbing =
     docStatus === "checking" ||
     phoneStatus === "checking" ||
     employeeEmailStatus === "checking" ||
-    accountEmailStatus === "checking";
+    (withAccount && accountEmailStatus === "checking");
 
   const validateEmployee = () => {
     const result = employeeSchema.safeParse(employeeData);
@@ -325,7 +335,7 @@ export function EmployeeUpsertModal({
   };
 
   const validateAccount = () => {
-    if (!isCreate) return true;
+    if (!isCreate || !withAccount) return true;
 
     const result = accountSchema.safeParse(accountData);
     if (result.success) {
@@ -352,14 +362,43 @@ export function EmployeeUpsertModal({
 
     setIsSubmitting(true);
 
+    const contractPayload = {
+      start_date: contractData.start_date,
+      end_date: contractData.end_date,
+      hours: Number(contractData.hours),
+      base_salary: Number(contractData.base_salary),
+      duties_type_id: contractData.duties_type_id
+        ? Number(contractData.duties_type_id)
+        : null,
+      turn_type: Number(contractData.turn_type),
+      turn_id: Number(contractData.turn_id),
+    };
+
     try {
       if (isCreate) {
-        await onCreate({
-          tenant_id: tenantId,
-          email: accountData.email,
-          password: accountData.password,
-          role_id: accountData.role_id,
-          employeeInfo: {
+        if (withAccount) {
+          await onCreate({
+            tenant_id: tenantId,
+            email: accountData.email,
+            password: accountData.password,
+            role_id: accountData.role_id,
+            employeeInfo: {
+              tenant_id: tenantId,
+              branch_id: employeeData.branch_id,
+              first_name: employeeData.first_name,
+              last_name: employeeData.last_name,
+              doc_number: employeeData.document_number,
+              identification_type_id: Number(
+                employeeData.identification_type_id,
+              ),
+              phone: employeeData.phone,
+              email: employeeData.employee_email,
+              payment_schedule_id: Number(employeeData.payment_schedule_id),
+              contractData: contractPayload,
+            },
+          });
+        } else {
+          await onCreateNoUser({
             tenant_id: tenantId,
             branch_id: employeeData.branch_id,
             first_name: employeeData.first_name,
@@ -369,17 +408,9 @@ export function EmployeeUpsertModal({
             phone: employeeData.phone,
             email: employeeData.employee_email,
             payment_schedule_id: Number(employeeData.payment_schedule_id),
-            contractData: {
-              start_date: contractData.start_date,
-              end_date: contractData.end_date,
-              hours: Number(contractData.hours),
-              base_salary: Number(contractData.base_salary),
-              duties: contractData.duties,
-              turn_type: Number(contractData.turn_type),
-              turn_id: Number(contractData.turn_id),
-            },
-          },
-        });
+            contractData: contractPayload,
+          });
+        }
       } else if (employee) {
         await onUpdate(employee.employee_id, employee.contract_id, {
           employee: {
@@ -392,15 +423,7 @@ export function EmployeeUpsertModal({
             payment_schedule_id: Number(employeeData.payment_schedule_id),
             branch_id: employeeData.branch_id,
           },
-          contract: {
-            start_date: contractData.start_date,
-            end_date: contractData.end_date,
-            hours: Number(contractData.hours),
-            base_salary: Number(contractData.base_salary),
-            duties: contractData.duties,
-            turn_type: Number(contractData.turn_type),
-            turn_id: Number(contractData.turn_id),
-          },
+          contract: contractPayload,
         });
       }
 
@@ -681,100 +704,123 @@ export function EmployeeUpsertModal({
             />
           </div>
 
-          <Input
-            label="Funciones"
-            value={contractData.duties}
+          <Select
+            label="Tipo de cargo"
+            value={contractData.duties_type_id}
             onChange={(event) =>
               setContractData((prev) => ({
                 ...prev,
-                duties: event.target.value,
+                duties_type_id: event.target.value,
               }))
             }
-            error={contractErrors.duties}
+            options={
+              dutiesTypes.length
+                ? dutiesTypes.map((dt) => ({
+                    value: String(dt.duties_type_id),
+                    label: dt.name,
+                  }))
+                : [{ value: "", label: "Sin tipos de cargo configurados" }]
+            }
+            error={contractErrors.duties_type_id}
             required
           />
         </section>
 
         {isCreate && (
           <section className="space-y-4 border-t border-gray-200 pt-6">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900">
-                Cuenta de acceso
-              </h3>
-              <p className="text-sm text-gray-500">
-                El empleado se crea junto con su usuario del sistema.
-              </p>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Cuenta de acceso
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {withAccount
+                    ? "El empleado se crea junto con su usuario del sistema."
+                    : "Este empleado no tendra acceso al sistema."}
+                </p>
+              </div>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 cursor-pointer"
+                  checked={withAccount}
+                  onChange={(e) => setWithAccount(e.target.checked)}
+                />
+                Con cuenta
+              </label>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Input
-                label="Email de acceso"
-                type="email"
-                value={accountData.email}
-                onChange={(event) =>
-                  setAccountData((prev) => ({
-                    ...prev,
-                    email: event.target.value,
-                  }))
-                }
-                error={
-                  accountErrors.email ??
-                  (accountEmailStatus === "taken"
-                    ? "Ya existe un usuario con este email"
-                    : undefined)
-                }
-                hint={
-                  accountEmailStatus === "checking"
-                    ? "Verificando disponibilidad…"
-                    : accountEmailStatus === "available"
-                      ? "Email disponible"
-                      : undefined
-                }
-                required
-              />
-              <Select
-                label="Rol"
-                value={accountData.role_id}
-                onChange={(event) =>
-                  setAccountData((prev) => ({
-                    ...prev,
-                    role_id: Number(event.target.value),
-                  }))
-                }
-                options={availableRoles.map((role) => ({
-                  value: role.role_id,
-                  label: capitalize(role.role_name.replace(/_/g, " ")),
-                }))}
-                error={accountErrors.role_id}
-                required
-              />
-              <Input
-                label="Contraseña"
-                type="password"
-                value={accountData.password}
-                onChange={(event) =>
-                  setAccountData((prev) => ({
-                    ...prev,
-                    password: event.target.value,
-                  }))
-                }
-                error={accountErrors.password}
-                required
-              />
-              <Input
-                label="Confirmar contraseña"
-                type="password"
-                value={accountData.confirmPassword}
-                onChange={(event) =>
-                  setAccountData((prev) => ({
-                    ...prev,
-                    confirmPassword: event.target.value,
-                  }))
-                }
-                error={accountErrors.confirmPassword}
-                required
-              />
-            </div>
+            {withAccount && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input
+                  label="Email de acceso"
+                  type="email"
+                  value={accountData.email}
+                  onChange={(event) =>
+                    setAccountData((prev) => ({
+                      ...prev,
+                      email: event.target.value,
+                    }))
+                  }
+                  error={
+                    accountErrors.email ??
+                    (accountEmailStatus === "taken"
+                      ? "Ya existe un usuario con este email"
+                      : undefined)
+                  }
+                  hint={
+                    accountEmailStatus === "checking"
+                      ? "Verificando disponibilidad…"
+                      : accountEmailStatus === "available"
+                        ? "Email disponible"
+                        : undefined
+                  }
+                  required
+                />
+                <Select
+                  label="Rol"
+                  value={accountData.role_id}
+                  onChange={(event) =>
+                    setAccountData((prev) => ({
+                      ...prev,
+                      role_id: Number(event.target.value),
+                    }))
+                  }
+                  options={availableRoles.map((role) => ({
+                    value: role.role_id,
+                    label: capitalize(role.role_name.replace(/_/g, " ")),
+                  }))}
+                  error={accountErrors.role_id}
+                  required
+                />
+                <Input
+                  label="Contraseña"
+                  type="password"
+                  value={accountData.password}
+                  onChange={(event) =>
+                    setAccountData((prev) => ({
+                      ...prev,
+                      password: event.target.value,
+                    }))
+                  }
+                  error={accountErrors.password}
+                  required
+                />
+                <Input
+                  label="Confirmar contraseña"
+                  type="password"
+                  value={accountData.confirmPassword}
+                  onChange={(event) =>
+                    setAccountData((prev) => ({
+                      ...prev,
+                      confirmPassword: event.target.value,
+                    }))
+                  }
+                  error={accountErrors.confirmPassword}
+                  required
+                />
+              </div>
+            )}
           </section>
         )}
 

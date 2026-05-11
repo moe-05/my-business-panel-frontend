@@ -98,7 +98,9 @@ export function CashSessionsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreatingRegister, setIsCreatingRegister] = useState(false);
 
-  const [sessionModal, setSessionModal] = useState<CashRegisterSession | null>(null);
+  const [sessionModal, setSessionModal] = useState<CashRegisterSession | null>(
+    null,
+  );
   const [toast, setToast] = useState<{
     mode: ToastMode;
     message: string;
@@ -110,9 +112,13 @@ export function CashSessionsPage() {
   const [adminPage, setAdminPage] = useState(1);
   const [adminPages, setAdminPages] = useState(1);
   const [adminBranchFilter, setAdminBranchFilter] = useState("");
-  const [adminStatusFilter, setAdminStatusFilter] = useState<"" | "true" | "false">("");
+  const [adminStatusFilter, setAdminStatusFilter] = useState<
+    "" | "true" | "false"
+  >("");
   const [adminLoading, setAdminLoading] = useState(false);
-  const [editingRegister, setEditingRegister] = useState<CashRegister | null>(null);
+  const [editingRegister, setEditingRegister] = useState<CashRegister | null>(
+    null,
+  );
   const [viewRegister, setViewRegister] = useState<CashRegister | null>(null);
 
   const loadAdminRegisters = async (page = 1) => {
@@ -289,13 +295,9 @@ export function CashSessionsPage() {
     return map;
   }, [sessionsForActions]);
 
-
-
-
   const selectedActiveSession = selectedRegisterId
     ? (activeSessionByRegister.get(selectedRegisterId) ?? null)
     : null;
-
 
   const canOpen = !!selectedRegisterId && !selectedActiveSession;
   const canClose = !!selectedRegisterId && !!selectedActiveSession;
@@ -304,7 +306,6 @@ export function CashSessionsPage() {
   const isAmountValid = Number.isFinite(amountValue) && amountValue > 0;
 
   const actionIsBlocked = actionType === "open" ? !canOpen : !canClose;
-
 
   const refreshSessions = async () => {
     const isActive =
@@ -563,9 +564,9 @@ export function CashSessionsPage() {
             required
           />
           <Input
-            label="Contrasena (opcional)"
+            label="Contraseña"
             type="password"
-            placeholder="Sin contrasena"
+            placeholder="Contraseña de apertura y cierre de caja"
             value={newRegisterKey}
             onChange={(e) => setNewRegisterKey(e.target.value)}
           />
@@ -744,7 +745,10 @@ export function CashSessionsPage() {
                 label: "Acciones",
                 width: "18%",
                 render: (_: unknown, row: CashRegister) => (
-                  <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                  <div
+                    className="flex gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Button
                       variant="ghost"
                       size="sm"
@@ -827,10 +831,7 @@ export function CashSessionsPage() {
               {[
                 ["ID", viewRegister.cash_register_id],
                 ["Nombre", viewRegister.register_name],
-                [
-                  "Estado",
-                  viewRegister.is_active ? "Activa" : "Inactiva",
-                ],
+                ["Estado", viewRegister.is_active ? "Activa" : "Inactiva"],
                 ["Creada", formatDate(viewRegister.created_at)],
                 ["Actualizada", formatDate(viewRegister.updated_at)],
               ].map(([label, value]) => (
