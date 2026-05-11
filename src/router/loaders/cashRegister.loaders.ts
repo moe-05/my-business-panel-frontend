@@ -50,7 +50,10 @@ export const getCashSessionsPageData =
       tenantId
         ? branchApi.listByTenant(tenantId, 1, 200)
         : Promise.resolve({ branches: [], total: 0, page: 1, limit: 200 }),
-      cashRegisterApi.listSessions().catch(() => []),
+      cashRegisterApi.listSessions().catch((e: unknown) => {
+        console.error("[CashSessions] sessions load error:", e);
+        return [] as import("@/interfaces/entities/CashRegister.interface").CashRegisterSession[];
+      }),
     ]);
 
     const branches = branchesRes.branches ?? [];

@@ -62,6 +62,7 @@ const INITIAL_CONTRACT: ContractFields = {
   hours: "40",
   base_salary: "0",
   duties: "",
+  duties_type_id: "",
   turn_type: "1",
   turn_id: "",
 };

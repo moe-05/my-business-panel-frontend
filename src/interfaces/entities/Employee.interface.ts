@@ -13,7 +13,8 @@ export interface IEmployeeDetail {
   end_date: string;
   hours: number;
   base_salary: number;
-  duties: string;
+  duties: string | null;
+  duties_type_id: number | null;
   turn_type: number;
   turn_id: number;
 }
@@ -34,7 +35,7 @@ export interface UpdateContractPayload {
   end_date: string;
   hours: number;
   base_salary: number;
-  duties: string;
+  duties_type_id?: number | null;
   turn_type: number;
   turn_id: number;
 }

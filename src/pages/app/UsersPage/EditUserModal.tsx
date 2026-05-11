@@ -79,6 +79,7 @@ const EMPTY_CTR: ContractFields = {
   hours: "",
   base_salary: "",
   duties: "",
+  duties_type_id: "",
   turn_type: "1",
   turn_id: "",
 };
@@ -182,7 +183,10 @@ export function EditUserModal({
             end_date: empDetail.end_date.substring(0, 10),
             hours: String(empDetail.hours),
             base_salary: String(empDetail.base_salary),
-            duties: empDetail.duties,
+            duties: empDetail.duties ?? "",
+            duties_type_id: empDetail.duties_type_id
+              ? String(empDetail.duties_type_id)
+              : "",
             turn_type: String(empDetail.turn_type),
             turn_id: String(empDetail.turn_id),
           });
@@ -294,7 +298,9 @@ export function EditUserModal({
             end_date: ctrData.end_date,
             hours: Number(ctrData.hours),
             base_salary: Number(ctrData.base_salary),
-            duties: ctrData.duties,
+            duties_type_id: ctrData.duties_type_id
+              ? Number(ctrData.duties_type_id)
+              : null,
             turn_type: Number(ctrData.turn_type),
             turn_id: Number(ctrData.turn_id),
           }),

@@ -3,7 +3,8 @@ export interface ContractData {
   end_date: string;
   hours: number;
   base_salary: number;
-  duties: string;
+  duties?: string;
+  duties_type_id?: number | null;
   turn_type: number;
   turn_id: number;
 }

@@ -4,9 +4,18 @@ export interface HrPaymentSchedule {
   daycount: number;
 }
 
+export interface HrDutiesType {
+  duties_type_id: number;
+  tenant_id: string;
+  name: string;
+  description?: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface HrEmployeeRecord {
   employee_id: string;
-  user_id: string;
+  user_id: string | null;
   tenant_id: string;
   branch_id: string;
   branch_name: string;
@@ -24,7 +33,10 @@ export interface HrEmployeeRecord {
   end_date: string;
   hours: number;
   base_salary: number;
-  duties: string;
+  duties: string | null;
+  duties_type_id: number | null;
+  duties_type_name: string | null;
+  duties_type_description?: string | null;
   turn_type: number;
   turn_id: number;
 }

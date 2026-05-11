@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router-dom";
 
 import { contractApi } from "@/api/contract.api";
+import { dutiesTypeApi } from "@/api/dutiesType.api";
 import { employeeApi } from "@/api/employee.api";
+import type { CreateEmployeeWithContractPayload } from "@/api/employee.api";
 import { userApi } from "@/api/user.api";
 
 import { useDebounce } from "@/hooks/useDebounce";
@@ -20,7 +22,10 @@ import { IconEdit, IconPlus, IconTrash, IconUsers } from "@/assets/icons";
 import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 import type { CreateUserRequest } from "@/interfaces/api/requests/CreateUserRequest.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
-import type { HrEmployeeRecord } from "@/interfaces/entities/Hr.interface";
+import type {
+  HrDutiesType,
+  HrEmployeeRecord,
+} from "@/interfaces/entities/Hr.interface";
 import type {
   UpdateContractPayload,
   UpdateEmployeePayload,
@@ -45,9 +50,15 @@ export function HREmployeesPage() {
     paymentSchedules,
     turns,
     roles,
+    dutiesTypes: initialDutiesTypes,
   } = useLoaderData() as HrEmployeesPageLoaderData;
 
   const [employees, setEmployees] = useState(initialEmployees);
+  const [dutiesTypes, setDutiesTypes] =
+    useState<HrDutiesType[]>(initialDutiesTypes);
+  const [newDutyName, setNewDutyName] = useState("");
+  const [newDutyDesc, setNewDutyDesc] = useState("");
+  const [isCreatingDuty, setIsCreatingDuty] = useState(false);
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -163,6 +174,68 @@ export function HREmployeesPage() {
     }
   };
 
+  const handleCreateNoUser = async (
+    payload: CreateEmployeeWithContractPayload,
+  ) => {
+    try {
+      await employeeApi.createWithContract(payload);
+      await refreshEmployees();
+      setToast({ mode: "success", message: "Empleado creado correctamente" });
+    } catch (error) {
+      setToast({
+        mode: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "No se pudo crear el empleado",
+      });
+      throw error;
+    }
+  };
+
+  const handleCreateDuty = async () => {
+    if (!newDutyName.trim()) return;
+    setIsCreatingDuty(true);
+    try {
+      const created = await dutiesTypeApi.create({
+        tenant_id: currentUser.tenant.tenant_id,
+        name: newDutyName.trim(),
+        description: newDutyDesc.trim() || undefined,
+      });
+      setDutiesTypes((prev) => [...prev, created]);
+      setNewDutyName("");
+      setNewDutyDesc("");
+      setToast({ mode: "success", message: "Tipo de cargo creado" });
+    } catch (error) {
+      setToast({
+        mode: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error al crear tipo de cargo",
+      });
+    } finally {
+      setIsCreatingDuty(false);
+    }
+  };
+
+  const handleDeleteDuty = async (id: number) => {
+    if (!confirm("¿Eliminar este tipo de cargo?")) return;
+    try {
+      await dutiesTypeApi.remove(id);
+      setDutiesTypes((prev) => prev.filter((dt) => dt.duties_type_id !== id));
+      setToast({ mode: "success", message: "Tipo de cargo eliminado" });
+    } catch (error) {
+      setToast({
+        mode: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error al eliminar tipo de cargo",
+      });
+    }
+  };
+
   const handleUpdate = async (
     employeeId: string,
     contractId: string,
@@ -241,7 +314,11 @@ export function HREmployeesPage() {
     );
 
     try {
-      await userApi.delete(employee.user_id);
+      if (employee.user_id) {
+        await userApi.delete(employee.user_id);
+      } else {
+        await employeeApi.deactivate(employee.employee_id);
+      }
       setToast({
         mode: "success",
         message: "Empleado eliminado correctamente",
@@ -458,6 +535,61 @@ export function HREmployeesPage() {
         </div>
       </div>
 
+      <div className="mb-6 rounded-2xl border border-gray-300 bg-white p-6">
+        <h2 className="mb-4 text-base font-semibold text-gray-900">
+          Tipos de cargo
+        </h2>
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <Input
+            label="Nombre del cargo"
+            placeholder="Ej: Vendedor, Conserje"
+            value={newDutyName}
+            onChange={(e) => setNewDutyName(e.target.value)}
+          />
+          <Input
+            label="Descripción"
+            placeholder="Responsabilidades del cargo"
+            value={newDutyDesc}
+            onChange={(e) => setNewDutyDesc(e.target.value)}
+          />
+          <div className="flex items-end">
+            <Button
+              type="button"
+              loading={isCreatingDuty}
+              disabled={!newDutyName.trim()}
+              onClick={handleCreateDuty}
+            >
+              <IconPlus />
+              Agregar cargo
+            </Button>
+          </div>
+        </div>
+        {dutiesTypes.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {dutiesTypes.map((dt) => (
+              <div
+                key={dt.duties_type_id}
+                className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-sm text-gray-700"
+              >
+                <span>{dt.name}</span>
+                <button
+                  type="button"
+                  className="ml-1 text-gray-400 hover:text-red-500"
+                  onClick={() => handleDeleteDuty(dt.duties_type_id)}
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">
+            Sin tipos de cargo configurados. Agrega al menos uno antes de
+            registrar empleados.
+          </p>
+        )}
+      </div>
+
       <div className="rounded-2xl border border-gray-300 bg-white p-6">
         <Table
           columns={columns}
@@ -475,12 +607,14 @@ export function HREmployeesPage() {
         roles={roles}
         paymentSchedules={paymentSchedules}
         turns={turns}
+        dutiesTypes={dutiesTypes}
         onClose={() => {
           setIsModalOpen(false);
           setSelectedEmployee(null);
           setModalMode("create");
         }}
         onCreate={handleCreate}
+        onCreateNoUser={handleCreateNoUser}
         onUpdate={handleUpdate}
       />
     </div>

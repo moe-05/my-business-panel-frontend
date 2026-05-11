@@ -153,9 +153,14 @@ export const cashRegisterApi = {
           credentials: "include",
         },
       );
-      const json: ApiResponse<ListWrapper<CashRegisterSession>> =
-        await response.json();
-      return json.data?.results ?? [];
+      const json = await response.json();
+      if (!response.ok) {
+        const message = Array.isArray(json?.message)
+          ? json.message.join(", ")
+          : (json?.message ?? "Error al listar sesiones de caja");
+        throw new Error(message);
+      }
+      return (json as ApiResponse<ListWrapper<CashRegisterSession>>).data?.results ?? [];
     } catch (error) {
       throw new Error(
         error instanceof Error

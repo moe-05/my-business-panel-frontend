@@ -7,6 +7,27 @@ import type {
 } from "@/interfaces/entities/Employee.interface";
 import type { HrEmployeeRecord } from "@/interfaces/entities/Hr.interface";
 
+export interface CreateEmployeeWithContractPayload {
+  tenant_id: string;
+  branch_id: string;
+  first_name: string;
+  last_name: string;
+  doc_number: string;
+  identification_type_id: number;
+  phone: string;
+  email: string;
+  payment_schedule_id: number;
+  contractData: {
+    start_date: string;
+    end_date: string;
+    hours: number;
+    base_salary: number;
+    duties_type_id?: number | null;
+    turn_type: number;
+    turn_id: number;
+  };
+}
+
 const buildError = async (response: Response, fallback: string) => {
   const json = await response.json().catch(() => ({}));
   const message = json?.message ?? json?.error ?? fallback;
@@ -85,6 +106,20 @@ export const employeeApi = {
 
     const json: ApiResponse<{ exists: boolean }> = await response.json();
     return json.data ?? { exists: false };
+  },
+
+  async createWithContract(
+    data: CreateEmployeeWithContractPayload,
+  ): Promise<void> {
+    const response = await fetch(`${url}/employee`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      await buildError(response, "Error al crear empleado");
+    }
   },
 
   async deactivate(employeeId: string): Promise<void> {
