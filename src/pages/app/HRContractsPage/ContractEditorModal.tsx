@@ -6,7 +6,11 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 
-import type { HrEmployeeRecord, HrTurn } from "@/interfaces/entities/Hr.interface";
+import type {
+  HrDutiesType,
+  HrEmployeeRecord,
+  HrTurn,
+} from "@/interfaces/entities/Hr.interface";
 import type { UpdateContractPayload } from "@/interfaces/entities/Employee.interface";
 
 import { contractSchema } from "@/pages/app/UsersPage/newUser.schema";
@@ -20,6 +24,7 @@ const EMPTY_CONTRACT: ContractFields = {
   hours: "40",
   base_salary: "0",
   duties: "",
+  duties_type_id: "",
   turn_type: "8",
   turn_id: "",
 };
@@ -39,6 +44,7 @@ interface ContractEditorModalProps {
   isOpen: boolean;
   employee: HrEmployeeRecord | null;
   turns: HrTurn[];
+  dutiesTypes: HrDutiesType[];
   onClose: () => void;
   onSubmit: (
     contractId: string,
@@ -50,6 +56,7 @@ export function ContractEditorModal({
   isOpen,
   employee,
   turns,
+  dutiesTypes,
   onClose,
   onSubmit,
 }: ContractEditorModalProps) {
@@ -72,7 +79,10 @@ export function ContractEditorModal({
       end_date: employee.end_date.slice(0, 10),
       hours: String(employee.hours),
       base_salary: String(employee.base_salary),
-      duties: employee.duties,
+      duties: employee.duties ?? "",
+      duties_type_id: employee.duties_type_id
+        ? String(employee.duties_type_id)
+        : "",
       turn_type: String(employee.turn_type),
       turn_id: String(employee.turn_id),
     });
@@ -101,7 +111,9 @@ export function ContractEditorModal({
         end_date: contractData.end_date,
         hours: Number(contractData.hours),
         base_salary: Number(contractData.base_salary),
-        duties: contractData.duties,
+        duties_type_id: contractData.duties_type_id
+          ? Number(contractData.duties_type_id)
+          : null,
         turn_type: Number(contractData.turn_type),
         turn_id: Number(contractData.turn_id),
       });
@@ -221,16 +233,24 @@ export function ContractEditorModal({
             />
           </div>
 
-          <Input
-            label="Funciones"
-            value={contractData.duties}
+          <Select
+            label="Tipo de cargo"
+            value={contractData.duties_type_id}
             onChange={(event) =>
               setContractData((prev) => ({
                 ...prev,
-                duties: event.target.value,
+                duties_type_id: event.target.value,
               }))
             }
-            error={errors.duties}
+            options={
+              dutiesTypes.length
+                ? dutiesTypes.map((dt) => ({
+                    value: String(dt.duties_type_id),
+                    label: dt.name,
+                  }))
+                : [{ value: "", label: "Sin tipos de cargo configurados" }]
+            }
+            error={errors.duties_type_id}
             required
           />
 

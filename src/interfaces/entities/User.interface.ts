@@ -16,7 +16,8 @@ export interface UserEmployee {
   end_date: string | null;
   hours: number;
   base_salary: number;
-  duties: string;
+  duties: string | null;
+  duties_type_id?: number | null;
   turn_type: number;
   turn_id: number | null;
 }

@@ -3,6 +3,7 @@ import { useLoaderData } from "react-router-dom";
 
 import { contractApi } from "@/api/contract.api";
 import { employeeApi } from "@/api/employee.api";
+import type { CreateEmployeeWithContractPayload } from "@/api/employee.api";
 import { userApi } from "@/api/user.api";
 
 import { Badge } from "@/components/ui/Badge";
@@ -12,7 +13,13 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Table } from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
 
-import { IconBriefcase, IconEdit, IconPlus, IconTrash } from "@/assets/icons";
+import {
+  IconBriefcase,
+  IconEdit,
+  IconEye,
+  IconPlus,
+  IconTrash,
+} from "@/assets/icons";
 
 import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 import type { CreateUserRequest } from "@/interfaces/api/requests/CreateUserRequest.interface";
@@ -23,6 +30,7 @@ import type { HrEmployeeRecord } from "@/interfaces/entities/Hr.interface";
 
 import { EmployeeUpsertModal } from "@/pages/app/HREmployeesPage/EmployeeUpsertModal";
 import { ContractEditorModal } from "./ContractEditorModal";
+import { ContractDetailModal } from "./ContractDetailModal";
 
 const formatCurrency = (value: number) =>
   `CRC ${Number(value).toLocaleString("es-CR", {
@@ -45,6 +53,7 @@ export function HRContractsPage() {
     paymentSchedules,
     turns,
     roles,
+    dutiesTypes,
   } = useLoaderData() as HrContractsPageLoaderData;
 
   const [employees, setEmployees] = useState(initialEmployees);
@@ -53,6 +62,9 @@ export function HRContractsPage() {
     "all",
   );
   const [createOpen, setCreateOpen] = useState(false);
+  const [detailContract, setDetailContract] = useState<HrEmployeeRecord | null>(
+    null,
+  );
   const [editingContract, setEditingContract] = useState<HrEmployeeRecord | null>(
     null,
   );
@@ -98,6 +110,23 @@ export function HRContractsPage() {
     }
   };
 
+  const handleCreateNoUser = async (
+    payload: CreateEmployeeWithContractPayload,
+  ) => {
+    try {
+      await employeeApi.createWithContract(payload);
+      await refreshEmployees();
+      setToast({ mode: "success", message: "Empleado creado correctamente" });
+    } catch (error) {
+      setToast({
+        mode: "error",
+        message:
+          error instanceof Error ? error.message : "No se pudo crear el empleado",
+      });
+      throw error;
+    }
+  };
+
   const handleUpdateContract = async (
     contractId: string,
     payload: UpdateContractPayload,
@@ -136,7 +165,11 @@ export function HRContractsPage() {
     );
 
     try {
-      await userApi.delete(employee.user_id);
+      if (employee.user_id) {
+        await userApi.delete(employee.user_id);
+      } else {
+        await employeeApi.deactivate(employee.employee_id);
+      }
       setToast({
         mode: "success",
         message: "Contrato eliminado correctamente",
@@ -183,7 +216,13 @@ export function HRContractsPage() {
       render: (value: number) => formatCurrency(value),
     },
     { key: "hours", label: "Horas/semana", width: "10%" },
-    { key: "duties", label: "Funciones", width: "20%" },
+    {
+      key: "duties_type_name",
+      label: "Cargo",
+      width: "20%",
+      render: (value: string | null, row: HrEmployeeRecord) =>
+        value ?? row.duties ?? "-",
+    },
     {
       key: "turn_id",
       label: "Turno",
@@ -217,6 +256,14 @@ export function HRContractsPage() {
       width: "10%",
       render: (_value: unknown, row: HrEmployeeRecord) => (
         <div className="flex gap-2" onClick={(event) => event.stopPropagation()}>
+          <Button
+            type="button"
+            variant="ghost"
+            title="Ver detalle"
+            onClick={() => setDetailContract(row)}
+          >
+            <IconEye />
+          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -348,8 +395,10 @@ export function HRContractsPage() {
         roles={roles}
         paymentSchedules={paymentSchedules}
         turns={turns}
+        dutiesTypes={dutiesTypes}
         onClose={() => setCreateOpen(false)}
         onCreate={handleCreate}
+        onCreateNoUser={handleCreateNoUser}
         onUpdate={async () => undefined}
       />
 
@@ -357,9 +406,18 @@ export function HRContractsPage() {
         isOpen={editingContract !== null}
         employee={editingContract}
         turns={turns}
+        dutiesTypes={dutiesTypes}
         onClose={() => setEditingContract(null)}
         onSubmit={handleUpdateContract}
       />
+
+      {detailContract && (
+        <ContractDetailModal
+          contract={detailContract}
+          turns={turns}
+          onClose={() => setDetailContract(null)}
+        />
+      )}
     </div>
   );
 }

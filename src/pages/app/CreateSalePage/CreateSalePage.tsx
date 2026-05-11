@@ -154,6 +154,8 @@ export function CreateSalePage() {
       currencyId: defaultCurrency.value,
     },
   ]);
+  const [singlePaymentManuallyEdited, setSinglePaymentManuallyEdited] =
+    useState(false);
   const [hasElectronicInvoice, setHasElectronicInvoice] = useState(false);
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
   const [cashRegisterId, setCashRegisterId] = useState("");
@@ -768,13 +770,14 @@ export function CreateSalePage() {
   }, [user?.user_id, user?.email]);
 
   useEffect(() => {
-    if (!isPartialPayment) {
+    if (!isPartialPayment && !singlePaymentManuallyEdited) {
       setPaymentSplits((p) => [{ ...p[0], amount: String(totalAmountDisplay) }]);
     }
-  }, [isPartialPayment, totalAmountDisplay]);
+  }, [isPartialPayment, singlePaymentManuallyEdited, totalAmountDisplay]);
 
   useEffect(() => {
     if (isPartialPayment) {
+      setSinglePaymentManuallyEdited(false);
       setPaymentSplits(
         paymentMethods
           .filter((m) => !(m.code === "loyalty_points" && isWalkInSale))
@@ -785,7 +788,17 @@ export function CreateSalePage() {
             currencyId: CRC_CURRENCY_ID,
           })),
       );
+      return;
     }
+    setSinglePaymentManuallyEdited(false);
+    setPaymentSplits((prev) => [
+      {
+        id: prev[0]?.id ?? "split-1",
+        methodId: prev[0]?.methodId ?? defaultPaymentMethod.value,
+        amount: String(totalAmountDisplay),
+        currencyId: prev[0]?.currencyId ?? defaultCurrency.value,
+      },
+    ]);
   }, [isPartialPayment]);
 
   useEffect(() => {
@@ -1187,6 +1200,7 @@ export function CreateSalePage() {
         currencyId: defaultCurrency.value,
       },
     ]);
+    setSinglePaymentManuallyEdited(false);
     lookupForm.reset({ document_number: "" });
     inlineCustomerForm.reset(blankCustomer());
     setSelectedVariant(null);
@@ -1231,6 +1245,9 @@ export function CreateSalePage() {
     field: keyof PaymentSplit,
     value: string | number,
   ) => {
+    if (!isPartialPayment && field === "amount") {
+      setSinglePaymentManuallyEdited(true);
+    }
     setPaymentSplits((prev) =>
       prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
     );
