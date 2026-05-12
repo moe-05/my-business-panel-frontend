@@ -596,7 +596,6 @@ export function CreateSalePage() {
     };
   }, [currencyId]);
 
-
   // Load exchange rates for each payment split when their currency changes
   // We load rates to convert each split's currency to CRC (as a pivot)
   useEffect(() => {
@@ -771,7 +770,9 @@ export function CreateSalePage() {
 
   useEffect(() => {
     if (!isPartialPayment && !singlePaymentManuallyEdited) {
-      setPaymentSplits((p) => [{ ...p[0], amount: String(totalAmountDisplay) }]);
+      setPaymentSplits((p) => [
+        { ...p[0], amount: String(totalAmountDisplay) },
+      ]);
     }
   }, [isPartialPayment, singlePaymentManuallyEdited, totalAmountDisplay]);
 
@@ -1691,7 +1692,7 @@ export function CreateSalePage() {
                   : "Agregar promoción"
               }
             >
-              <IconTrendingUp />
+              PROMO
             </Button>
           </div>
         </div>
@@ -1928,17 +1929,20 @@ export function CreateSalePage() {
                       Cubierto por puntos
                     </p>
                     <p className="text-2xl font-bold text-emerald-900 mt-0.5">
-                      {formatAmount(pointsCoveredDisplay, currencySymbol)}
+                      {formatAmount(round2(pointsToRedeem / pointsRate), "₡")}
                     </p>
                     <p className="text-xs text-emerald-700 mt-0.5">
-                      Restante: {formatAmount(remainderDisplay, currencySymbol)}
+                      Puntos restantes tras compra:{" "}
+                      {(availablePoints - pointsToRedeem).toLocaleString(
+                        "es-CR",
+                      )}
                     </p>
                   </div>
                 )}
               </div>
 
               <div className="flex flex-col gap-3 min-w-55">
-                {hasEnoughPointsForTotal ? (
+                {hasEnoughPointsForTotal && (
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
                       type="checkbox"
@@ -1988,54 +1992,6 @@ export function CreateSalePage() {
                       Usar puntos para pagar
                     </span>
                   </label>
-                ) : (
-                  <div className="rounded-lg bg-gray-100 border border-gray-200 p-3">
-                    <p className="text-xs text-gray-600">
-                      Puntos insuficientes para pagar la compra completa. Puedes
-                      usar puntos en pago por partes.
-                    </p>
-                  </div>
-                )}
-                {usePoints && hasEnoughPointsForTotal && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-gray-700">
-                        Puntos a canjear (máx.{" "}
-                        {availablePoints.toLocaleString("es-CR")})
-                      </label>
-                      {pointsToRedeem > 0 && pointsRate > 0 ? (
-                        <span className="text-xs text-gray-600">
-                          ≈{" "}
-                          {formatAmount(
-                            round2(pointsToRedeem / pointsRate),
-                            "₡",
-                          )}
-                        </span>
-                      ) : null}
-                    </div>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={availablePoints}
-                      value={pointsToRedeem}
-                      onChange={(e) => {
-                        const val = Math.min(
-                          Math.max(0, Number(e.target.value)),
-                          availablePoints,
-                        );
-                        setPointsToRedeem(val);
-                        // Convert points to currency for the payment split
-                        const amountInCurrency =
-                          pointsRate > 0 ? round2(val / pointsRate) : 0;
-                        // Update payment split with converted amount
-                        updatePaymentSplit(
-                          paymentSplits[0].id,
-                          "amount",
-                          String(amountInCurrency),
-                        );
-                      }}
-                    />
-                  </div>
                 )}
               </div>
             </div>
@@ -2109,20 +2065,22 @@ export function CreateSalePage() {
           </div>
 
           {/* Partial payment checkbox */}
-          <label className="flex items-center gap-3 cursor-pointer mb-6 p-3 rounded-lg bg-gray-50 border border-gray-200">
-            <input
-              type="checkbox"
-              checked={isPartialPayment}
-              onChange={(e) => setIsPartialPayment(e.target.checked)}
-              disabled={usePoints}
-              className="w-4 h-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            />
-            <span
-              className={`text-sm font-medium ${usePoints ? "text-gray-500" : "text-gray-700"}`}
-            >
-              Pago por partes
-            </span>
-          </label>
+          {!loyaltyActive && (
+            <label className="flex items-center gap-3 cursor-pointer mb-6 p-3 rounded-lg bg-gray-50 border border-gray-200">
+              <input
+                type="checkbox"
+                checked={isPartialPayment}
+                onChange={(e) => setIsPartialPayment(e.target.checked)}
+                disabled={usePoints}
+                className="w-4 h-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              <span
+                className={`text-sm font-medium ${usePoints ? "text-gray-500" : "text-gray-700"}`}
+              >
+                Pago por partes
+              </span>
+            </label>
+          )}
 
           {usePoints ? (
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
@@ -2142,7 +2100,7 @@ export function CreateSalePage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {isPartialPayment && (
+              {/* {isPartialPayment && (
                 <Button
                   type="button"
                   variant="secondary"
@@ -2152,7 +2110,7 @@ export function CreateSalePage() {
                 >
                   <IconPlus /> Agregar método
                 </Button>
-              )}
+              )} */}
               {paymentSplits.map((split, idx) => (
                 <div
                   key={split.id}
@@ -2161,6 +2119,7 @@ export function CreateSalePage() {
                   <div className="flex-1">
                     <Select
                       label={idx === 0 ? "Método de pago" : undefined}
+                      disabled={isPartialPayment}
                       value={String(split.methodId)}
                       onChange={(e) =>
                         updatePaymentSplit(
@@ -2198,7 +2157,9 @@ export function CreateSalePage() {
                       label={
                         idx !== 0
                           ? Number(split.methodId) === 5
-                            ? "Puntos a canjear"
+                            ? parseFloat(split.amount) > 0
+                              ? `Puntos a canjear - ${parseFloat(split.amount).toFixed(2)}₡`
+                              : "Puntos a canjear"
                             : "Monto"
                           : undefined
                       }
@@ -2213,14 +2174,12 @@ export function CreateSalePage() {
                       placeholder={Number(split.methodId) === 5 ? "0" : "0.00"}
                       value={
                         Number(split.methodId) === 5 &&
-                              split.amount &&
-                              pointsRate > 0
-                            ? String(
-                                Math.round(
-                                  parseFloat(split.amount) * pointsRate,
-                                ),
-                              )
-                            : split.amount
+                        split.amount &&
+                        pointsRate > 0
+                          ? String(
+                              Math.round(parseFloat(split.amount) * pointsRate),
+                            )
+                          : split.amount
                       }
                       onChange={(e) => {
                         const newValue = e.target.value;
@@ -2239,7 +2198,7 @@ export function CreateSalePage() {
                         }
                       }}
                     />
-                    {Number(split.methodId) === 5 &&
+                    {/* {Number(split.methodId) === 5 &&
                     split.amount &&
                     pointsRate > 0 &&
                     idx !== 0 ? (
@@ -2266,7 +2225,7 @@ export function CreateSalePage() {
                           return "Tasa no disponible";
                         })()}
                       </div>
-                    ) : null}
+                    ) : null} */}
                   </div>
                   <div className={`flex gap-2 ${idx === 0 ? "mb-0" : ""}`}>
                     <Button
@@ -2278,7 +2237,7 @@ export function CreateSalePage() {
                     >
                       ↓
                     </Button>
-                    {paymentSplits.length > 1 && (
+                    {/* {paymentSplits.length > 1 && (
                       <Button
                         type="button"
                         variant="danger"
@@ -2287,58 +2246,62 @@ export function CreateSalePage() {
                       >
                         <IconTrash />
                       </Button>
-                    )}
+                    )} */}
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          <div
-            className={`mt-4 flex flex-col gap-2 rounded-xl p-3 text-sm font-medium ${
-              paymentBalance > 0.01
-                ? "bg-amber-50 border border-amber-200 text-amber-800"
-                : paymentBalance < -0.01
-                  ? "bg-blue-50 border border-blue-200 text-blue-800"
-                  : "bg-emerald-50 border border-emerald-200 text-emerald-800"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span>
-                Total ingresado:{" "}
-                {formatAmount(splitTotalInSaleCurrency, currencySymbol)} /{" "}
-                {formatAmount(targetPayment, currencySymbol)}
-              </span>
-              {paymentBalance > 0.01 && (
+          {!loyaltyActive && (
+            <div
+              className={`mt-4 flex flex-col gap-2 rounded-xl p-3 text-sm font-medium ${
+                paymentBalance > 0.01
+                  ? "bg-amber-50 border border-amber-200 text-amber-800"
+                  : paymentBalance < -0.01
+                    ? "bg-blue-50 border border-blue-200 text-blue-800"
+                    : "bg-emerald-50 border border-emerald-200 text-emerald-800"
+              }`}
+            >
+              <div className="flex items-center justify-between">
                 <span>
-                  Pendiente:{" "}
-                  {formatAmount(Math.abs(paymentBalance), currencySymbol)}
+                  Total ingresado:{" "}
+                  {formatAmount(splitTotalInSaleCurrency, currencySymbol)} /{" "}
+                  {formatAmount(targetPayment, currencySymbol)}
                 </span>
-              )}
-              {paymentBalance < -0.01 && (
-                <span>
-                  Vuelto:{" "}
-                  {formatAmount(Math.abs(paymentBalance), currencySymbol)}
-                </span>
-              )}
-              {Math.abs(paymentBalance) < 0.01 && <span>Pagos cuadrados</span>}
-            </div>
-
-            {isPartialPayment && paymentCurrenciesUsed.length > 1 && (
-              <div className="text-xs border-t border-current opacity-60 pt-1">
-                Pago con múltiples monedas - el saldo pendiente se muestra en la
-                moneda de la compra ({currencySymbol})
+                {paymentBalance > 0.01 && (
+                  <span>
+                    Pendiente:{" "}
+                    {formatAmount(Math.abs(paymentBalance), currencySymbol)}
+                  </span>
+                )}
+                {paymentBalance < -0.01 && (
+                  <span>
+                    Vuelto:{" "}
+                    {formatAmount(Math.abs(paymentBalance), currencySymbol)}
+                  </span>
+                )}
+                {Math.abs(paymentBalance) < 0.01 && (
+                  <span>Pagos cuadrados</span>
+                )}
               </div>
-            )}
-          </div>
+
+              {isPartialPayment && paymentCurrenciesUsed.length > 1 && (
+                <div className="text-xs border-t border-current opacity-60 pt-1">
+                  Pago con múltiples monedas - el saldo pendiente se muestra en
+                  la moneda de la compra ({currencySymbol})
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       {/* ── Submit row ────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-300 p-6 flex flex-col gap-4">
         <Input
-          label="Mensaje en factura (opcional)"
-          placeholder="Ej: Gracias por su compra. Válida hasta el 30/05/2026."
+          label="Mensaje en factura"
+          placeholder="Gracias por su compra."
           value={adMessage}
           onChange={(e) => setAdMessage(e.target.value)}
           hint="El cajero puede incluir un mensaje que aparecerá en la factura digital."
