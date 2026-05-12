@@ -124,7 +124,7 @@ export function BranchUpsertModal({
         />
 
         <Input
-          label="Otras señas"
+          label="Otras senas"
           placeholder="Detalles adicionales de ubicación para factura electrónica"
           value={formData.otras_senas}
           onChange={(e) =>
@@ -136,10 +136,10 @@ export function BranchUpsertModal({
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900">
             <p className="font-semibold">Piso de venta automático</p>
             <p className="mt-1">
-              Al crear esta sucursal se generará su piso de venta como
-              almacén principal usando los datos ingresados arriba. Si
-              necesitas bodegas auxiliares adicionales, regístralas más
-              tarde desde el módulo de Almacenes.
+              Al crear esta sucursal se generará su piso de venta como almacén
+              principal usando los datos ingresados arriba. Si necesitas bodegas
+              auxiliares adicionales, regístralas más tarde desde el módulo de
+              Almacenes.
             </p>
           </div>
         )}

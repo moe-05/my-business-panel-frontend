@@ -59,7 +59,10 @@ export function InventoryPage() {
     let cancelled = false;
     setIsLoadingInventory(true);
     warehouseApi
-      .listInventoryAggregated(selectedWarehouseId, debouncedSearch || undefined)
+      .listInventoryAggregated(
+        selectedWarehouseId,
+        debouncedSearch || undefined,
+      )
       .then((data) => {
         if (!cancelled) setInventory(data);
       })
@@ -294,23 +297,23 @@ export function InventoryPage() {
                   ? new Date(value as string).toLocaleDateString("es-CR")
                   : "-",
             },
-            {
-              key: "actions",
-              label: "",
-              width: "13%",
-              render: (_: unknown, row: AggregatedInventoryItem) =>
-                row.is_composite ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setDisaggregatingItem(row)}
-                    title="Desagrupar Lote"
-                  >
-                    Desagrupar
-                  </Button>
-                ) : null,
-            },
+            // {
+            //   key: "actions",
+            //   label: "",
+            //   width: "13%",
+            //   render: (_: unknown, row: AggregatedInventoryItem) =>
+            //     row.is_composite ? (
+            //       <Button
+            //         type="button"
+            //         variant="secondary"
+            //         size="sm"
+            //         onClick={() => setDisaggregatingItem(row)}
+            //         title="Desagrupar Lote"
+            //       >
+            //         Desagrupar
+            //       </Button>
+            //     ) : null,
+            // },
           ]}
           data={filtered}
           emptyMessage={
