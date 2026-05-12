@@ -2,6 +2,7 @@ import { customerApi } from "@/api/customer.api";
 import { authApi } from "@/api/auth.api";
 import { segmentApi } from "@/api/segment.api";
 import { tenantApi } from "@/api/tenant.api";
+import { withAuthCheck } from "./utils/withAuthCheck";
 
 import type { Customer } from "@/interfaces/entities/Customer.interface";
 import type { CustomersListResponse } from "@/interfaces/api/responses/CustomersListResponse.interface";
@@ -17,33 +18,34 @@ export type CustomersPageLoaderData = {
 };
 
 export const getCustomersPageData =
-  async (): Promise<CustomersPageLoaderData> => {
-    const currentUser = await authApi.getCurrentUser();
-    const isSuperAdmin = currentUser?.role.role_id === 1;
-    const tenantId = currentUser?.tenant.tenant_id;
+  async (): Promise<CustomersPageLoaderData> =>
+    withAuthCheck(async () => {
+      const currentUser = await authApi.getCurrentUser();
+      const isSuperAdmin = currentUser?.role.role_id === 1;
+      const tenantId = currentUser?.tenant.tenant_id;
 
-    const [initialCustomers, segments] = await Promise.all([
-      isSuperAdmin
-        ? customerApi.listAll(1, CUSTOMERS_PAGE_LIMIT)
-        : tenantId
-          ? customerApi.listByTenant(tenantId, 1, CUSTOMERS_PAGE_LIMIT)
-          : {
-              customers: [],
-              total: 0,
-              page: 1,
-              limit: CUSTOMERS_PAGE_LIMIT,
-            },
-      segmentApi.getAll(),
-    ]);
+      const [initialCustomers, segments] = await Promise.all([
+        isSuperAdmin
+          ? customerApi.listAll(1, CUSTOMERS_PAGE_LIMIT)
+          : tenantId
+            ? customerApi.listByTenant(tenantId, 1, CUSTOMERS_PAGE_LIMIT)
+            : {
+                customers: [],
+                total: 0,
+                page: 1,
+                limit: CUSTOMERS_PAGE_LIMIT,
+              },
+        segmentApi.getAll(),
+      ]);
 
-    let tenants: Tenant[] = [];
-    if (isSuperAdmin) {
-      const tenantsResult = await tenantApi.getAll(1, 200);
-      tenants = tenantsResult.tenants;
-    }
+      let tenants: Tenant[] = [];
+      if (isSuperAdmin) {
+        const tenantsResult = await tenantApi.getAll(1, 200);
+        tenants = tenantsResult.tenants;
+      }
 
-    return { initialCustomers, segments, tenants };
-  };
+      return { initialCustomers, segments, tenants };
+    });
 
 export const getAllCustomers = async (
   page = 1,

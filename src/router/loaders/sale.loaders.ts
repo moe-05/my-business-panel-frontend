@@ -4,6 +4,7 @@ import { customerApi } from "@/api/customer.api";
 import { employeeApi } from "@/api/employee.api";
 import { productApi } from "@/api/product.api";
 import { saleApi } from "@/api/sale.api";
+import { withAuthCheck } from "./utils/withAuthCheck";
 
 import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type { Product } from "@/interfaces/entities/Product.interface";
@@ -26,30 +27,34 @@ export interface CreateSalePageLoaderData {
 }
 
 export const getCreateSalePageData =
-  async (): Promise<CreateSalePageLoaderData> => {
-    const currentUser = await authApi.getCurrentUser();
-    const tenantId = currentUser?.tenant?.tenant_id;
-    const userId = currentUser?.user_id;
+  async (): Promise<CreateSalePageLoaderData> =>
+    withAuthCheck(async () => {
+      const currentUser = await authApi.getCurrentUser();
+      const tenantId = currentUser?.tenant?.tenant_id;
+      const userId = currentUser?.user_id;
 
-    let branches: Branch[] = [];
+      let branches: Branch[] = [];
 
-    if (tenantId) {
-      const branchesRes = await branchApi
-        .listByTenant(tenantId, 1, 200)
-        .catch(() => null);
-      branches = branchesRes?.branches ?? [];
-    }
-
-    if (branches.length === 0 && userId) {
-      const employee = await employeeApi.getByUserId(userId).catch(() => null);
-      if (employee?.branch_id) {
-        const branch = await branchApi.getById(employee.branch_id).catch(() => null);
-        if (branch) branches = [branch];
+      if (tenantId) {
+        const branchesRes = await branchApi
+          .listByTenant(tenantId, 1, 200)
+          .catch(() => null);
+        branches = branchesRes?.branches ?? [];
       }
-    }
 
-    const [conditionsRes, productsRes, customersRes] =
-      await Promise.all([
+      if (branches.length === 0 && userId) {
+        const employee = await employeeApi
+          .getByUserId(userId)
+          .catch(() => null);
+        if (employee?.branch_id) {
+          const branch = await branchApi
+            .getById(employee.branch_id)
+            .catch(() => null);
+          if (branch) branches = [branch];
+        }
+      }
+
+      const [conditionsRes, productsRes, customersRes] = await Promise.all([
         saleApi.getSaleConditions().catch(() => []),
         tenantId
           ? productApi.listByTenant(tenantId, 1, 100)
@@ -64,14 +69,14 @@ export const getCreateSalePageData =
             }),
       ]);
 
-    return {
-      currentUser,
-      branches,
-      saleConditions: conditionsRes ?? [],
-      initialProducts: productsRes.products ?? [],
-      initialCustomers: customersRes.customers ?? [],
-    };
-  };
+      return {
+        currentUser,
+        branches,
+        saleConditions: conditionsRes ?? [],
+        initialProducts: productsRes.products ?? [],
+        initialCustomers: customersRes.customers ?? [],
+      };
+    });
 
 export interface SalesHistoryPageLoaderData {
   currentUser: CurrentUserResponse | null;
@@ -81,50 +86,55 @@ export interface SalesHistoryPageLoaderData {
 }
 
 export const getSalesHistoryPageData =
-  async (): Promise<SalesHistoryPageLoaderData> => {
-    const currentUser = await authApi.getCurrentUser();
-    const tenantId = currentUser?.tenant?.tenant_id;
-    const userId = currentUser?.user_id;
+  async (): Promise<SalesHistoryPageLoaderData> =>
+    withAuthCheck(async () => {
+      const currentUser = await authApi.getCurrentUser();
+      const tenantId = currentUser?.tenant?.tenant_id;
+      const userId = currentUser?.user_id;
 
-    let branches: Branch[] = [];
+      let branches: Branch[] = [];
 
-    if (tenantId) {
-      const branchesRes = await branchApi
-        .listByTenant(tenantId, 1, 200)
-        .catch(() => null);
-      branches = branchesRes?.branches ?? [];
-    }
-
-    if (branches.length === 0 && userId) {
-      const employee = await employeeApi.getByUserId(userId).catch(() => null);
-      if (employee?.branch_id) {
-        const branch = await branchApi.getById(employee.branch_id).catch(() => null);
-        if (branch) branches = [branch];
+      if (tenantId) {
+        const branchesRes = await branchApi
+          .listByTenant(tenantId, 1, 200)
+          .catch(() => null);
+        branches = branchesRes?.branches ?? [];
       }
-    }
 
-    const initialBranchId = branches[0]?.branch_id ?? "";
+      if (branches.length === 0 && userId) {
+        const employee = await employeeApi
+          .getByUserId(userId)
+          .catch(() => null);
+        if (employee?.branch_id) {
+          const branch = await branchApi
+            .getById(employee.branch_id)
+            .catch(() => null);
+          if (branch) branches = [branch];
+        }
+      }
 
-    const initialSales = initialBranchId
-      ? await saleApi
-          .listByBranch(initialBranchId, 1, SALES_PAGE_LIMIT)
-          .catch(
-            (): PaginatedResponse<SaleListItem> => ({
-              results: [],
-              total: 0,
-              page: 1,
-              limit: SALES_PAGE_LIMIT,
-            }),
-          )
-      : ({
-          results: [],
-          total: 0,
-          page: 1,
-          limit: SALES_PAGE_LIMIT,
-        } as PaginatedResponse<SaleListItem>);
+      const initialBranchId = branches[0]?.branch_id ?? "";
 
-    return { currentUser, branches, initialSales, initialBranchId };
-  };
+      const initialSales = initialBranchId
+        ? await saleApi
+            .listByBranch(initialBranchId, 1, SALES_PAGE_LIMIT)
+            .catch(
+              (): PaginatedResponse<SaleListItem> => ({
+                results: [],
+                total: 0,
+                page: 1,
+                limit: SALES_PAGE_LIMIT,
+              }),
+            )
+        : ({
+            results: [],
+            total: 0,
+            page: 1,
+            limit: SALES_PAGE_LIMIT,
+          } as PaginatedResponse<SaleListItem>);
+
+      return { currentUser, branches, initialSales, initialBranchId };
+    });
 
 export const getSalesByBranch = async (
   branchId: string,

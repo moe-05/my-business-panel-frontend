@@ -1,6 +1,7 @@
 import { branchApi } from "@/api/branch.api";
 import { authApi } from "@/api/auth.api";
 import { tenantApi } from "@/api/tenant.api";
+import { withAuthCheck } from "./utils/withAuthCheck";
 
 import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type { BranchListResponse } from "@/interfaces/api/responses/BranchListResponse.interface";
@@ -11,8 +12,8 @@ export interface BranchesPageLoaderData {
   tenants: Tenant[];
 }
 
-export const getBranchesPageData =
-  async (): Promise<BranchesPageLoaderData> => {
+export const getBranchesPageData = async (): Promise<BranchesPageLoaderData> =>
+  withAuthCheck(async () => {
     const currentUser = await authApi.getCurrentUser();
     const isSuperAdmin = currentUser?.role?.role_hierarchy === 1;
 
@@ -25,7 +26,7 @@ export const getBranchesPageData =
     const tenants = isSuperAdmin ? (await tenantApi.getAll()).tenants : [];
 
     return { initialBranches, tenants };
-  };
+  });
 
 export const getBranches = async (
   page = 1,
