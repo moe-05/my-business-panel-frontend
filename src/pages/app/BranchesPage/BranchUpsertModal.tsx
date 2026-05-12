@@ -144,7 +144,7 @@ export function BranchUpsertModal({
           </div>
         )}
 
-        <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="cursor-pointer flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <input
             type="checkbox"
             id="is_main"
@@ -156,7 +156,7 @@ export function BranchUpsertModal({
           />
           <label
             htmlFor="is_main"
-            className="text-sm font-medium text-blue-900 cursor-pointer flex-1"
+            className="text-sm font-medium text-blue-900 flex-1"
           >
             Marcar como sucursal principal
           </label>
