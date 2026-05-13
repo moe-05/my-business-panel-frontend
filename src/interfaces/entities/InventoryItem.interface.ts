@@ -12,7 +12,7 @@ export interface InventoryItem {
   is_composite?: boolean;
   unit_price?: number;
   created_at?: string;
-  updated_at?: string;
+  giftable?: boolean;
 }
 
 export interface AggregatedInventoryItem {
@@ -27,6 +27,7 @@ export interface AggregatedInventoryItem {
   product_name: string;
   is_composite?: boolean;
   unit_price?: number;
+  giftable?: boolean;
   lot_count: number;
 }
 

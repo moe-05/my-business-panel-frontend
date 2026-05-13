@@ -20,6 +20,7 @@ import { DiscrepancyReportModal } from "./DiscrepancyReportModal";
 import { DisaggregateModal } from "./DisaggregateModal";
 
 type StockFilter = "all" | "zero" | "low" | "ok";
+type GiftableFilter = "all" | "giftable" | "non-giftable";
 
 export function InventoryPage() {
   const { warehouses } = useLoaderData() as InventoryPageLoaderData;
@@ -31,6 +32,7 @@ export function InventoryPage() {
   const [isLoadingInventory, setIsLoadingInventory] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
+  const [giftableFilter, setGiftableFilter] = useState<GiftableFilter>("all");
   const debouncedSearch = useDebounce(searchQuery, 400);
 
   const [showNegativeStock, setShowNegativeStock] = useState(false);
@@ -82,16 +84,30 @@ export function InventoryPage() {
   }, [selectedWarehouseId, debouncedSearch]);
 
   const filtered = useMemo(() => {
+    let result = inventory;
+
+    // Apply stock filter
     if (stockFilter === "all") {
-      return showNegativeStock
-        ? inventory
-        : inventory.filter((i) => i.stock > 0);
+      if (!showNegativeStock) {
+        result = result.filter((i) => i.stock > 0);
+      }
+    } else if (stockFilter === "zero") {
+      result = result.filter((i) => i.stock === 0);
+    } else if (stockFilter === "low") {
+      result = result.filter((i) => i.stock > 0 && i.stock <= 10);
+    } else if (stockFilter === "ok") {
+      result = result.filter((i) => i.stock > 10);
     }
-    if (stockFilter === "zero") return inventory.filter((i) => i.stock === 0);
-    if (stockFilter === "low")
-      return inventory.filter((i) => i.stock > 0 && i.stock <= 10);
-    return inventory.filter((i) => i.stock > 10);
-  }, [inventory, stockFilter, showNegativeStock]);
+
+    // Apply giftable filter
+    if (giftableFilter === "giftable") {
+      result = result.filter((i) => i.giftable);
+    } else if (giftableFilter === "non-giftable") {
+      result = result.filter((i) => !i.giftable);
+    }
+
+    return result;
+  }, [inventory, stockFilter, showNegativeStock, giftableFilter]);
 
   const handleDisaggregate = async (quantity: number) => {
     if (!disaggregatingItem) return;
@@ -208,7 +224,21 @@ export function InventoryPage() {
               ]}
             />
           </div>
-          <div className="lg:col-span-4 flex flex-col sm:flex-row gap-2 items-end">
+          <div className="lg:col-span-2">
+            <Select
+              label="Regalía"
+              value={giftableFilter}
+              onChange={(e) =>
+                setGiftableFilter(e.target.value as GiftableFilter)
+              }
+              options={[
+                { value: "all", label: "Todos" },
+                { value: "giftable", label: "Regalables" },
+                { value: "non-giftable", label: "No regalables" },
+              ]}
+            />
+          </div>
+          <div className="lg:col-span-2 flex flex-col sm:flex-row gap-2 items-end">
             <label className="flex items-center gap-2 cursor-pointer select-none shrink-0">
               <input
                 type="checkbox"
@@ -242,32 +272,39 @@ export function InventoryPage() {
             {
               key: "product_name",
               label: "Producto",
-              width: "22%",
+              width: "20%",
               render: (value: unknown) => (
-                <span className="truncate">{value as string}</span>
+                <span className="truncate font-medium">{value as string}</span>
               ),
             },
-            { key: "variant_name", label: "Variante", width: "18%" },
+            { key: "variant_name", label: "Variante", width: "16%" },
+            {
+              key: "giftable",
+              label: "Regalía",
+              width: "8%",
+              render: (value: unknown) => (
+                <div className="flex justify-center">
+                  {value ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-tight">
+                      Sí
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-400 uppercase tracking-tight">
+                      No
+                    </span>
+                  )}
+                </div>
+              ),
+            },
             {
               key: "sku",
               label: "SKU",
               width: "12%",
-              render: (value: unknown) => (value as string | null) ?? "-",
-            },
-            {
-              key: "is_composite",
-              label: "Tipo",
-              width: "10%",
-              render: (value: unknown) =>
-                value ? (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 border border-purple-200">
-                    Lote
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
-                    Simple
-                  </span>
-                ),
+              render: (value: unknown) => (
+                <span className="font-mono text-xs text-gray-500">
+                  {(value as string) || "-"}
+                </span>
+              ),
             },
             {
               key: "stock",
@@ -289,31 +326,42 @@ export function InventoryPage() {
               },
             },
             {
-              key: "expiration_date",
-              label: "Próx. vence",
-              width: "13%",
-              render: (value: unknown) =>
-                value
-                  ? new Date(value as string).toLocaleDateString("es-CR")
-                  : "-",
+              key: "lot_count",
+              label: "Lotes",
+              width: "8%",
+              render: (value: unknown) => (
+                <span className="text-gray-600">{value as number}</span>
+              ),
             },
-            // {
-            //   key: "actions",
-            //   label: "",
-            //   width: "13%",
-            //   render: (_: unknown, row: AggregatedInventoryItem) =>
-            //     row.is_composite ? (
-            //       <Button
-            //         type="button"
-            //         variant="secondary"
-            //         size="sm"
-            //         onClick={() => setDisaggregatingItem(row)}
-            //         title="Desagrupar Lote"
-            //       >
-            //         Desagrupar
-            //       </Button>
-            //     ) : null,
-            // },
+            {
+              key: "unit_price",
+              label: "Precio",
+              width: "12%",
+              render: (value: unknown) => (
+                <span className="font-mono text-gray-900">
+                  ₡{" "}
+                  {Number(value || 0).toLocaleString("es-CR", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              ),
+            },
+            {
+              key: "actions",
+              label: "",
+              width: "12%",
+              render: (_: unknown, row: AggregatedInventoryItem) =>
+                row.is_composite ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-accent-600 hover:text-accent-700 font-medium"
+                    onClick={() => setDisaggregatingItem(row)}
+                  >
+                    Desagrupar
+                  </Button>
+                ) : null,
+            },
           ]}
           data={filtered}
           emptyMessage={
