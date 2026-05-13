@@ -14,7 +14,6 @@ import {
   getOpenCashSessionsByBranch,
   startCashRegisterSession,
 } from "@/router/actions/cashRegister.actions";
-import { cashRegisterApi } from "@/api/cashRegister.api";
 
 import type {
   CashRegister,
@@ -49,7 +48,6 @@ export function QuickCashRegisterModal({
   const roleName = user?.role.role_name ?? "";
   // Admin and superuser bypass the key check both client-side and server-side.
   const requiresKey = roleName !== "admin" && roleName !== "superuser";
-  const canDelete = roleName === "admin" || roleName === "superuser";
 
   const [rows, setRows] = useState<RegisterRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -259,37 +257,6 @@ export function QuickCashRegisterModal({
         mode: "error",
         message:
           error instanceof Error ? error.message : "Error al cerrar la sesión",
-      });
-    } finally {
-      setBusyRegisterId(null);
-    }
-  };
-
-  const handleDelete = async (row: RegisterRow) => {
-    if (row.session) {
-      setToast({
-        mode: "error",
-        message: "No se puede eliminar una caja con sesión activa.",
-      });
-      return;
-    }
-    if (
-      !confirm(
-        `¿Eliminar la caja "${row.register.register_name}"? Esta acción no se puede deshacer.`,
-      )
-    )
-      return;
-    setBusyRegisterId(row.register.cash_register_id);
-    try {
-      await cashRegisterApi.remove(row.register.cash_register_id);
-      setToast({ mode: "success", message: "Caja eliminada" });
-      await refresh();
-      await onSessionsChanged();
-    } catch (error) {
-      setToast({
-        mode: "error",
-        message:
-          error instanceof Error ? error.message : "Error al eliminar la caja",
       });
     } finally {
       setBusyRegisterId(null);

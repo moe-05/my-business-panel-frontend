@@ -101,9 +101,7 @@ const RowWithComparison = ({
 
 export function CashSessionModal({ session, onClose }: Props) {
   const [groupSales, setGroupSales] = useState<SessionGroupSale[]>([]);
-  const [paymentSales, setPaymentSales] = useState<SessionPaymentMethodSale[]>(
-    [],
-  );
+  const [, setPaymentSales] = useState<SessionPaymentMethodSale[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {

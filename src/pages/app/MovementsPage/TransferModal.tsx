@@ -273,7 +273,6 @@ export function TransferModal({
           product_id: "",
           product_name: line.product_name,
           created_at: "",
-          updated_at: "",
         });
       }
     });
