@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { royaltyApi } from "@/api/royalty.api";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import type { Customer } from "@/interfaces/entities/Customer.interface";
 import type {
@@ -19,7 +20,6 @@ interface CartItem {
   unit_price: number;
   total_price: number;
 }
-
 
 interface Props {
   customer: Customer | null;
@@ -44,11 +44,15 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
     Record<string, { royalty_option_id: string; product_variant_id: string; product_name: string } | null>
   >({});
 
+  // Per-rule, per-option quantity: key = `${ruleId}-${optionId}`
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+
   // Load applicable rules when customer/amount changes
   useEffect(() => {
     if (!isWholesale || !tenantId || totalAmount <= 0) {
       setRules([]);
       setSelections({});
+      setQuantities({});
       return;
     }
     let cancelled = false;
@@ -58,7 +62,6 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
       .then((rows) => {
         if (cancelled) return;
         setRules(rows);
-        // Reset selections for rules no longer applicable
         setSelections((prev) => {
           const next: typeof prev = {};
           for (const r of rows) {
@@ -102,10 +105,15 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
   };
 
   const handleOptionSelect = async (ruleId: string, opt: RoyaltyOption) => {
-    // Reset product selection when option changes
+    const rule = rules.find((r) => r.royalty_rule_id === ruleId);
+    const maxQty = rule ? opt.quantity * rule.multiplier : opt.quantity;
     setSelections((prev) => ({
       ...prev,
       [ruleId]: { royalty_option_id: opt.royalty_option_id, product_variant_id: "", product_name: "" },
+    }));
+    setQuantities((prev) => ({
+      ...prev,
+      [`${ruleId}-${opt.royalty_option_id}`]: maxQty,
     }));
     if (opt.scope === "any") {
       await loadGiftable(opt.tenant_product_group_id);
@@ -136,7 +144,11 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
       );
       if (!opt) continue;
 
-      const qty = opt.quantity * rule.multiplier;
+      const maxQty = opt.quantity * rule.multiplier;
+      const qtyKey = `${rule.royalty_rule_id}-${opt.royalty_option_id}`;
+      const selectedQty = quantities[qtyKey] ?? maxQty;
+      const qty = Math.min(Math.max(selectedQty, 1), maxQty);
+
       newItems.push({
         id: `royalty-${rule.royalty_rule_id}-${sel.royalty_option_id}-${Date.now()}`,
         product_variant_id: sel.product_variant_id,
@@ -149,12 +161,12 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
 
     if (newItems.length === 0) return;
     onAddItems(newItems);
-    // Reset selections after adding
     setSelections((prev) => {
       const next: typeof prev = {};
       for (const key of Object.keys(prev)) next[key] = null;
       return next;
     });
+    setQuantities({});
   };
 
   const allRulesHaveSelection = rules.length > 0 &&
@@ -187,6 +199,10 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
           const selectedOpt = sel
             ? rule.options.find((o) => o.royalty_option_id === sel.royalty_option_id)
             : null;
+
+          const maxQty = selectedOpt ? selectedOpt.quantity * rule.multiplier : 1;
+          const qtyKey = `${rule.royalty_rule_id}-${selectedOpt?.royalty_option_id ?? ""}`;
+          const currentQty = quantities[qtyKey] ?? maxQty;
 
           const productOptions = selectedOpt
             ? selectedOpt.scope === "specific"
@@ -278,10 +294,31 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
                 )}
               </div>
 
+              {/* Quantity picker (MPV6) */}
+              {sel?.product_variant_id && selectedOpt && (
+                <div className="mt-2">
+                  <Input
+                    label="Cantidad a regalar"
+                    type="number"
+                    min={1}
+                    max={maxQty}
+                    value={currentQty}
+                    onChange={(e) => {
+                      const v = Math.min(
+                        Math.max(parseInt(e.target.value) || 1, 1),
+                        maxQty,
+                      );
+                      setQuantities((prev) => ({ ...prev, [qtyKey]: v }));
+                    }}
+                    hint={`Máximo: ${maxQty} unidad${maxQty !== 1 ? "es" : ""}`}
+                  />
+                </div>
+              )}
+
               {sel?.product_variant_id && selectedOpt && (
                 <p className="text-xs text-emerald-700 mt-1 font-medium">
-                  Se agregarán {selectedOpt.quantity * rule.multiplier} unidad
-                  {selectedOpt.quantity * rule.multiplier !== 1 ? "es" : ""} gratis
+                  Se agregarán {quantities[qtyKey] ?? maxQty} unidad
+                  {(quantities[qtyKey] ?? maxQty) !== 1 ? "es" : ""} gratis
                 </p>
               )}
             </div>

@@ -3,6 +3,7 @@ import { productApi } from "@/api/product.api";
 import { purchaseApi } from "@/api/purchase.api";
 import { tenantApi } from "@/api/tenant.api";
 import { warehouseApi } from "@/api/warehouse.api";
+import { withAuthCheck } from "./utils/withAuthCheck";
 
 import type { Tenant } from "@/interfaces/entities/Tenant.interface";
 import type {
@@ -55,27 +56,35 @@ export interface PaymentAlertsPageLoaderData {
 }
 
 export const getSuppliersPageData =
-  async (): Promise<SuppliersPageLoaderData> => {
-    const currentUser = await authApi.getCurrentUser();
-    const currentTenantId = currentUser?.tenant?.tenant_id ?? "";
-    const currentTenantName = currentUser?.tenant?.tenant_name ?? "Mi tenant";
+  async (): Promise<SuppliersPageLoaderData> =>
+    withAuthCheck(async () => {
+      const currentUser = await authApi.getCurrentUser();
+      const currentTenantId = currentUser?.tenant?.tenant_id ?? "";
+      const currentTenantName = currentUser?.tenant?.tenant_name ?? "Mi tenant";
 
-    const suppliers = currentTenantId
-      ? await purchaseApi.listSuppliers().catch(() => [] as Supplier[])
-      : [];
+      const suppliers = currentTenantId
+        ? await purchaseApi.listSuppliers().catch(() => [] as Supplier[])
+        : [];
 
-    return { suppliers, currentTenantId, currentTenantName };
-  };
+      return { suppliers, currentTenantId, currentTenantName };
+    });
 
 export const getPurchasesPageData =
-  async (): Promise<PurchasesPageLoaderData> => {
-    const currentUser = await authApi.getCurrentUser();
-    const isSuperuser = currentUser?.role?.role_hierarchy === 1;
-    const currentTenantId = currentUser?.tenant?.tenant_id ?? "";
-    const currentTenantName = currentUser?.tenant?.tenant_name ?? "Mi tenant";
+  async (): Promise<PurchasesPageLoaderData> =>
+    withAuthCheck(async () => {
+      const currentUser = await authApi.getCurrentUser();
+      const isSuperuser = currentUser?.role?.role_hierarchy === 1;
+      const currentTenantId = currentUser?.tenant?.tenant_id ?? "";
+      const currentTenantName = currentUser?.tenant?.tenant_name ?? "Mi tenant";
 
-    const [orders, suppliers, warehouses, productsResponse, catalogs, tenants] =
-      await Promise.all([
+      const [
+        orders,
+        suppliers,
+        warehouses,
+        productsResponse,
+        catalogs,
+        tenants,
+      ] = await Promise.all([
         purchaseApi.listOrders().catch(() => [] as PurchaseOrder[]),
         currentTenantId
           ? purchaseApi.listSuppliers().catch(() => [] as Supplier[])
@@ -106,110 +115,112 @@ export const getPurchasesPageData =
           : Promise.resolve([] as Tenant[]),
       ]);
 
-    return {
-      orders,
-      suppliers,
-      warehouses,
-      products: productsResponse.products ?? [],
-      catalogs,
-      currentTenantId,
-      currentTenantName,
-      isSuperuser,
-      tenants,
-    };
-  };
+      return {
+        orders,
+        suppliers,
+        warehouses,
+        products: productsResponse.products ?? [],
+        catalogs,
+        currentTenantId,
+        currentTenantName,
+        isSuperuser,
+        tenants,
+      };
+    });
 
 export const getAccountsPayablePageData =
-  async (): Promise<AccountsPayablePageLoaderData> => {
-    const currentUser = await authApi.getCurrentUser();
-    const isSuperuser = currentUser?.role?.role_hierarchy === 1;
-    const currentTenantId = currentUser?.tenant?.tenant_id ?? "";
-    const currentTenantName = currentUser?.tenant?.tenant_name ?? "Mi tenant";
+  async (): Promise<AccountsPayablePageLoaderData> =>
+    withAuthCheck(async () => {
+      const currentUser = await authApi.getCurrentUser();
+      const isSuperuser = currentUser?.role?.role_hierarchy === 1;
+      const currentTenantId = currentUser?.tenant?.tenant_id ?? "";
+      const currentTenantName = currentUser?.tenant?.tenant_name ?? "Mi tenant";
 
-    const [payables, catalogs, tenants] = await Promise.all([
-      purchaseApi.listPayables().catch(() => [] as PurchaseAccountPayable[]),
-      purchaseApi.getCatalogs().catch(
-        () =>
-          ({
-            order_statuses: [],
-            payable_statuses: [],
-            payment_methods: [],
-            payment_conditions: [],
-            currencies: [],
-          }) as PurchaseCatalogs,
-      ),
-      isSuperuser
-        ? tenantApi.getAll(1, 200).then((response) => response.tenants ?? [])
-        : Promise.resolve([] as Tenant[]),
-    ]);
+      const [payables, catalogs, tenants] = await Promise.all([
+        purchaseApi.listPayables().catch(() => [] as PurchaseAccountPayable[]),
+        purchaseApi.getCatalogs().catch(
+          () =>
+            ({
+              order_statuses: [],
+              payable_statuses: [],
+              payment_methods: [],
+              payment_conditions: [],
+              currencies: [],
+            }) as PurchaseCatalogs,
+        ),
+        isSuperuser
+          ? tenantApi.getAll(1, 200).then((response) => response.tenants ?? [])
+          : Promise.resolve([] as Tenant[]),
+      ]);
 
-    return {
-      payables,
-      catalogs,
-      currentTenantId,
-      currentTenantName,
-      isSuperuser,
-      tenants,
-    };
-  };
+      return {
+        payables,
+        catalogs,
+        currentTenantId,
+        currentTenantName,
+        isSuperuser,
+        tenants,
+      };
+    });
 
 export const getPaymentAlertsPageData =
-  async (): Promise<PaymentAlertsPageLoaderData> => {
-    const currentUser = await authApi.getCurrentUser();
-    const isSuperuser = currentUser?.role?.role_hierarchy === 1;
-    const currentTenantId = currentUser?.tenant?.tenant_id ?? "";
-    const currentTenantName = currentUser?.tenant?.tenant_name ?? "Mi tenant";
+  async (): Promise<PaymentAlertsPageLoaderData> =>
+    withAuthCheck(async () => {
+      const currentUser = await authApi.getCurrentUser();
+      const isSuperuser = currentUser?.role?.role_hierarchy === 1;
+      const currentTenantId = currentUser?.tenant?.tenant_id ?? "";
+      const currentTenantName = currentUser?.tenant?.tenant_name ?? "Mi tenant";
 
-    const [alerts, stats, configResponse, tenants] = await Promise.all([
-      currentTenantId
-        ? purchaseApi
-            .listPaymentAlerts(currentTenantId)
-            .catch(() => [] as PaymentAlert[])
-        : Promise.resolve([] as PaymentAlert[]),
-      currentTenantId
-        ? purchaseApi.getPaymentAlertStats(currentTenantId).catch(
-            () =>
-              ({
-                total_alerts: 0,
-                overdue_count: 0,
-                urgent_count: 0,
-                warning_count: 0,
-                total_amount_at_risk: 0,
-              }) as PaymentAlertStats,
-          )
-        : Promise.resolve({
-            total_alerts: 0,
-            overdue_count: 0,
-            urgent_count: 0,
-            warning_count: 0,
-            total_amount_at_risk: 0,
-          }),
-      currentTenantId
-        ? purchaseApi.getPaymentAlertConfig(currentTenantId).catch(
-            () =>
-              ({
-                tenant_id: currentTenantId,
-                config: null,
-                alert_types: [],
-              }) as PaymentAlertConfigResponse,
-          )
-        : Promise.resolve({
-            tenant_id: currentTenantId,
-            config: null,
-            alert_types: [],
-          }),
-      isSuperuser
-        ? tenantApi.getAll(1, 200).then((response) => response.tenants ?? [])
-        : Promise.resolve([] as Tenant[]),
-    ]);
+      const [alerts, stats, configResponse, tenants] = await Promise.all([
+        currentTenantId
+          ? purchaseApi
+              .listPaymentAlerts(currentTenantId)
+              .catch(() => [] as PaymentAlert[])
+          : Promise.resolve([] as PaymentAlert[]),
+        currentTenantId
+          ? purchaseApi.getPaymentAlertStats(currentTenantId).catch(
+              () =>
+                ({
+                  total_alerts: 0,
+                  overdue_count: 0,
+                  urgent_count: 0,
+                  warning_count: 0,
+                  total_amount_at_risk: 0,
+                }) as PaymentAlertStats,
+            )
+          : Promise.resolve({
+              total_alerts: 0,
+              overdue_count: 0,
+              urgent_count: 0,
+              warning_count: 0,
+              total_amount_at_risk: 0,
+            }),
+        currentTenantId
+          ? purchaseApi.getPaymentAlertConfig(currentTenantId).catch(
+              () =>
+                ({
+                  tenant_id: currentTenantId,
+                  config: null,
+                  alert_types: [],
+                }) as PaymentAlertConfigResponse,
+            )
+          : Promise.resolve({
+              tenant_id: currentTenantId,
+              config: null,
+              alert_types: [],
+            }),
+        isSuperuser
+          ? tenantApi.getAll(1, 200).then((response) => response.tenants ?? [])
+          : Promise.resolve([] as Tenant[]),
+      ]);
 
-    return {
-      alerts,
-      stats,
-      configResponse,
-      currentTenantId,
-      currentTenantName,
-      isSuperuser,
-      tenants,
-    };
-  };
+      return {
+        alerts,
+        stats,
+        configResponse,
+        currentTenantId,
+        currentTenantName,
+        isSuperuser,
+        tenants,
+      };
+    });

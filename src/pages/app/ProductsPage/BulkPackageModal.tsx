@@ -96,6 +96,7 @@ export function BulkPackageModal({
   const [components, setComponents] = useState<ComponentForm[]>([
     newComponent(),
   ]);
+  const [isGiftable, setIsGiftable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [useUniformPricing, setUseUniformPricing] = useState(true);
@@ -132,6 +133,7 @@ export function BulkPackageModal({
     setUseParentSkuAsPrefix(true);
     setComponentCount(1);
     setComponents([newComponent()]);
+    setIsGiftable(false);
     setError(null);
     setSubmitting(false);
     setUseUniformPricing(true);
@@ -307,6 +309,7 @@ export function BulkPackageModal({
         // Children inherit the parent's groups.
         group_ids: parentGroupIds.length ? parentGroupIds : undefined,
         supplier_id: parent.supplier_id || undefined,
+        giftable: isGiftable,
       };
     });
 
@@ -371,6 +374,7 @@ export function BulkPackageModal({
         cost_price: Number(parentTotalCost.toFixed(2)),
         supplier_id: parent.supplier_id || undefined,
         group_ids: parentGroupIds.length ? parentGroupIds : undefined,
+        giftable: isGiftable,
       });
 
       // 3) Wire composition with each component's quantity_per_parent.
@@ -490,6 +494,19 @@ export function BulkPackageModal({
               hint="Se asignará al lote y a todos los componentes"
             />
           </div>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isGiftable}
+              onChange={(e) => setIsGiftable(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              disabled={submitting}
+            />
+            <span className="text-sm text-gray-700 font-medium">
+              Marcar lote y todos sus componentes como regalables
+            </span>
+          </label>
 
           {/* Grupos/dimensiones del lote — los productos hijos los heredan */}
           <div className="space-y-1">

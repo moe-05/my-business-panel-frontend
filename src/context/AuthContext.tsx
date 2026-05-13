@@ -6,10 +6,13 @@ import {
   useEffect,
   useCallback,
   type ReactNode,
+  useRef,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { authApi } from "../api/auth.api";
 import { clockingApi } from "@/api/clocking.api";
 import { employeeApi } from "@/api/employee.api";
+import { UnauthorizedError } from "@/api/errors/UnauthorizedError";
 import type { CurrentUserResponse } from "../interfaces/api/responses/CurrentUserResponse.interface";
 import type { LoginRequest } from "../interfaces/api/requests/LoginRequest.interface";
 
@@ -46,31 +49,55 @@ const registerClockOutForUser = async (userId: string) => {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUserResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+
+  // Actualizar la referencia cuando navigate cambie
+  useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
+
+  // Manejador centralizado para errores UnauthorizedError
+  const handleUnauthorizedError = useCallback(() => {
+    setUser(null);
+    navigateRef.current("/auth/login", { replace: true });
+  }, []);
 
   // Rehidrata la sesión desde la cookie al montar el provider
   const refreshUser = useCallback(async () => {
     try {
       const currentUser = await authApi.getCurrentUser();
       setUser(currentUser);
-    } catch {
-      setUser(null);
+    } catch (error) {
+      if (error instanceof UnauthorizedError) {
+        handleUnauthorizedError();
+      } else {
+        setUser(null);
+      }
     }
-  }, []);
+  }, [handleUnauthorizedError]);
 
   useEffect(() => {
     refreshUser().finally(() => setIsLoading(false));
   }, [refreshUser]);
 
   const login = async (data: LoginRequest) => {
-    const session = await authApi.login(data);
-    const currentUser = await authApi.getCurrentUser();
-    setUser(currentUser);
+    try {
+      const session = await authApi.login(data);
+      const currentUser = await authApi.getCurrentUser();
+      setUser(currentUser);
 
-    void registerClockInForUser(session.user.user_id).catch((error) => {
-      console.error("No se pudo registrar el clock in automático", error);
-    });
+      void registerClockInForUser(session.user.user_id).catch((error) => {
+        console.error("No se pudo registrar el clock in automático", error);
+      });
 
-    return currentUser;
+      return currentUser;
+    } catch (error) {
+      if (error instanceof UnauthorizedError) {
+        handleUnauthorizedError();
+      }
+      throw error;
+    }
   };
 
   const logout = async () => {

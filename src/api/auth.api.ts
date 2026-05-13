@@ -5,6 +5,7 @@ import type { LoginRequest } from "@/interfaces/api/requests/LoginRequest.interf
 import type { ChangePasswordRequest } from "@/interfaces/api/requests/ChangePasswordRequest.interface";
 import type { LoginResponse } from "@/interfaces/api/responses/LoginResponse.interface";
 import type { CurrentUserResponse } from "@/interfaces/api/responses/CurrentUserResponse.interface";
+import { UnauthorizedError } from "./errors/UnauthorizedError";
 
 export const authApi = {
   async login(data: LoginRequest): Promise<LoginResponse> {
@@ -52,9 +53,20 @@ export const authApi = {
         credentials: "include",
       });
 
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new UnauthorizedError("Sesión expirada");
+        }
+        throw new Error("Error al obtener el usuario");
+      }
+
       const json: ApiResponse<CurrentUserResponse> = await response.json();
       return json.data;
     } catch (error) {
+      // Re-lanzar UnauthorizedError sin modificar
+      if (error instanceof UnauthorizedError) {
+        throw error;
+      }
       throw new Error(
         error instanceof Error ? error.message : "Error al obtener el usuario",
       );
@@ -83,5 +95,4 @@ export const authApi = {
       );
     }
   },
-
 };
