@@ -142,3 +142,9 @@ export const getSalesByBranch = async (
   limit = SALES_PAGE_LIMIT,
 ): Promise<PaginatedResponse<SaleListItem>> =>
   saleApi.listByBranch(branchId, page, limit);
+
+export const getSalesByTenant = async (
+  page = 1,
+  limit = SALES_PAGE_LIMIT,
+): Promise<PaginatedResponse<SaleListItem>> =>
+  saleApi.listByTenant(page, limit);

@@ -14,6 +14,7 @@ import {
 import { GroupAssignmentEditor } from "@/components/ui/GroupAssignmentEditor";
 
 import { productApi } from "@/api/product.api";
+import { productCompositionApi } from "@/api/productComposition.api";
 import { productVariantGroupApi } from "@/api/productGroup.api";
 import { purchaseApi } from "@/api/purchase.api";
 
@@ -296,8 +297,8 @@ export function ProductUpsertModal({
         );
         variantId = productId;
 
-        // Propagate supplier change to child products when editing a composite.
         if (product.is_composite) {
+          // MGP1 + MGP4: propagate supplier, giftable, attributes, and groups to all children.
           const composition = await productApi.getComposition(
             product.tenant_id,
             productId,
@@ -306,9 +307,56 @@ export function ProductUpsertModal({
             composition.map((child) =>
               productApi.update(child.child_product_variant_id, {
                 supplier_id: editSupplierId,
+                giftable: data.giftable ?? false,
+                attribute_value_ids,
+                group_ids: groupIds,
               }),
             ),
           );
+        } else {
+          // MGP2/MGP3: sync parent batch giftable based on this child's new value.
+          const parents = await productCompositionApi.byChild(
+            product.tenant_id,
+            productId,
+          );
+          if (parents.length > 0) {
+            const newGiftable = data.giftable ?? false;
+            await Promise.all(
+              parents.map(async (p) => {
+                if (!newGiftable) {
+                  // MGP3: always unmark parent when a child is unmarked.
+                  await productApi.update(p.parent_product_variant_id, {
+                    giftable: false,
+                  });
+                } else {
+                  // MGP2: mark parent only when ALL siblings are now giftable.
+                  const siblings = await productApi.getComposition(
+                    product.tenant_id,
+                    p.parent_product_variant_id,
+                  );
+                  const otherIds = siblings
+                    .filter((s) => s.child_product_variant_id !== productId)
+                    .map((s) => s.child_product_variant_id);
+                  if (otherIds.length === 0) {
+                    await productApi.update(p.parent_product_variant_id, {
+                      giftable: true,
+                    });
+                  } else {
+                    const details = await Promise.all(
+                      otherIds.map((id) =>
+                        productApi.getByIdWithAttributes(product.tenant_id, id),
+                      ),
+                    );
+                    if (details.every((s) => s.giftable === true)) {
+                      await productApi.update(p.parent_product_variant_id, {
+                        giftable: true,
+                      });
+                    }
+                  }
+                }
+              }),
+            );
+          }
         }
       } else {
         variantId = await onCreate({

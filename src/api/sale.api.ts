@@ -94,6 +94,39 @@ export const saleApi = {
     }
   },
 
+  async listByTenant(
+    page = 1,
+    limit = 100,
+  ): Promise<PaginatedResponse<SaleListItem>> {
+    try {
+      const offset = (page - 1) * limit;
+      const response = await fetch(
+        `${url}/sale/tenant/all?limit=${limit}&offset=${offset}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        },
+      );
+      const json = await response.json();
+      const payload = (json as { data?: unknown }).data ?? json;
+      const normalized = payload as { data?: SaleListItem[]; total?: number };
+      const results = normalized.data ?? [];
+      return {
+        results,
+        total: normalized.total ?? results.length,
+        page,
+        limit,
+      };
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Error al obtener historial de ventas",
+      );
+    }
+  },
+
   async getSaleItems(saleId: string): Promise<SaleItemDetail[]> {
     try {
       const response = await fetch(`${url}/items/${saleId}`, {
@@ -134,8 +167,14 @@ export const saleApi = {
         credentials: "include",
       });
       if (!response.ok) return null;
-      const json: ApiResponse<ElectronicInvoiceInfo> = await response.json();
-      return json.data;
+      const json: ApiResponse<ElectronicInvoiceInfo | ElectronicInvoiceInfo[]> =
+        await response.json();
+      // Backend returns rows.map(...) — array. Take first element or null.
+      const data = json.data as unknown;
+      if (Array.isArray(data)) {
+        return (data[0] as ElectronicInvoiceInfo) ?? null;
+      }
+      return (data as ElectronicInvoiceInfo) ?? null;
     } catch {
       return null;
     }

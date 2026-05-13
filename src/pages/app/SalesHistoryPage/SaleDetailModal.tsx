@@ -77,8 +77,26 @@ export function SaleDetailModal({
   if (!sale) return null;
   const symbol = sale.symbol ?? "";
 
+  const royaltyItems = saleItems.filter(
+    (item) => Number(item.unit_price) === 0 && Number(item.total_price) === 0,
+  );
+  const billedItems = saleItems.filter(
+    (item) =>
+      !(Number(item.unit_price) === 0 && Number(item.total_price) === 0),
+  );
+  const promoItems = saleItems.filter(
+    (item) =>
+      item.sale_price_type === "PROMO" &&
+      Number(item.discount_applied ?? 0) > 0,
+  );
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Detalle de la venta" size="lg">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Detalle de la venta"
+      size="lg"
+    >
       <div className="space-y-6">
         {/* ── Encabezado de la venta ─────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -122,7 +140,7 @@ export function SaleDetailModal({
           </h3>
           {isLoading ? (
             <p className="text-sm text-gray-400">Cargando…</p>
-          ) : saleItems.length > 0 ? (
+          ) : billedItems.length > 0 ? (
             <div className="rounded-xl border border-gray-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
@@ -135,26 +153,97 @@ export function SaleDetailModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {saleItems.map((item, i) => (
+                  {billedItems.map((item, i) => (
                     <tr key={i} className="bg-white">
-                      <td className="px-3 py-2 text-gray-900">{item.product_name}</td>
-                      <td className="px-3 py-2 font-mono text-gray-500 text-xs">{item.sku}</td>
-                      <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
-                      <td className="px-3 py-2 text-right text-gray-700">{formatCurrency(item.unit_price, symbol)}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-gray-900">{formatCurrency(item.total_price, symbol)}</td>
+                      <td className="px-3 py-2 text-gray-900">
+                        {item.product_name}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-gray-500 text-xs">
+                        {item.sku}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-700">
+                        {item.quantity}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-700">
+                        {formatCurrency(item.unit_price, symbol)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                        {formatCurrency(item.total_price, symbol)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <p className="text-sm text-gray-400">No hay productos registrados.</p>
+            <p className="text-sm text-gray-400">
+              No hay productos registrados.
+            </p>
           )}
         </div>
 
-        {/* ── Factura digital (solo cuando NO hay factura electrónica) ── */}
-        {!sale.has_electronic_invoice && (
+        {/* ── Descuentos por promoción ───────────────────────────────── */}
+        {!isLoading && promoItems.length > 0 && (
           <div>
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+              Descuentos por promoción
+            </h3>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-2">
+              {promoItems.map((item, i) => (
+                <div
+                  key={i}
+                  className="flex items-start justify-between gap-2 text-sm"
+                >
+                  <div>
+                    <span className="text-gray-800 font-medium">
+                      {item.product_name}
+                    </span>
+                    {item.promotion_name && (
+                      <span className="ml-2 text-xs text-blue-600 bg-blue-100 rounded-md px-2 py-0.5">
+                        {item.promotion_name}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-emerald-700 font-semibold whitespace-nowrap">
+                    -{formatCurrency(item.discount_applied ?? 0, symbol)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Productos regalados (regalías) ─────────────────────────── */}
+        {!isLoading && royaltyItems.length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+              Productos regalados
+            </h3>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+              {royaltyItems.map((item, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <div>
+                    <span className="text-gray-800 font-medium">
+                      {item.product_name}
+                    </span>
+                    <span className="ml-2 text-xs text-gray-500">
+                      SKU: {item.sku}
+                    </span>
+                  </div>
+                  <span className="text-amber-700 font-semibold whitespace-nowrap">
+                    {item.quantity} unid. gratis
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Factura digital ──────────────────────────────────────────── */}
+        <div>
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
               Factura digital
             </h3>
@@ -162,6 +251,10 @@ export function SaleDetailModal({
               <p className="text-sm text-gray-400">Cargando…</p>
             ) : digitalInvoice ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <Field
+                  label="Fecha de factura"
+                  value={formatDateTime(digitalInvoice.invoiced_at)}
+                />
                 {(digitalInvoice.first_name || digitalInvoice.last_name) && (
                   <Field
                     label="Cliente"
@@ -169,7 +262,10 @@ export function SaleDetailModal({
                   />
                 )}
                 {digitalInvoice.document_number && (
-                  <Field label="Documento" value={digitalInvoice.document_number} />
+                  <Field
+                    label="Documento"
+                    value={digitalInvoice.document_number}
+                  />
                 )}
                 {digitalInvoice.email && (
                   <Field label="Email" value={digitalInvoice.email} />
@@ -177,6 +273,10 @@ export function SaleDetailModal({
                 <Field
                   label="Subtotal"
                   value={formatCurrency(digitalInvoice.subtotal_amount, symbol)}
+                />
+                <Field
+                  label="Descuentos"
+                  value={formatCurrency(digitalInvoice.total_discount, symbol)}
                 />
                 <Field
                   label="Impuestos"
@@ -192,21 +292,17 @@ export function SaleDetailModal({
                     value={formatCurrency(digitalInvoice.amount_paid, symbol)}
                   />
                 )}
-                {digitalInvoice.change_amount > 0 && (
-                  <Field
-                    label="Cambio"
-                    value={formatCurrency(digitalInvoice.change_amount, symbol)}
-                  />
-                )}
-                {digitalInvoice.points_accumulated > 0 && (
-                  <Field
-                    label="Puntos acumulados"
-                    value={String(digitalInvoice.points_accumulated)}
-                  />
-                )}
                 <Field
-                  label="Fecha de factura"
-                  value={formatDateTime(digitalInvoice.invoiced_at)}
+                  label="Vuelto"
+                  value={formatCurrency(digitalInvoice.change_amount, symbol)}
+                />
+                <Field
+                  label="Puntos de fidelidad obtenidos"
+                  value={String(digitalInvoice.points_accumulated ?? 0)}
+                />
+                <Field
+                  label="Puntos de fidelidad canjeados"
+                  value={String(digitalInvoice.points_redeemed ?? 0)}
                 />
               </div>
             ) : (
@@ -215,44 +311,39 @@ export function SaleDetailModal({
               </p>
             )}
           </div>
-        )}
 
         {/* ── Factura electrónica ────────────────────────────────────── */}
-        {(sale.has_electronic_invoice || electronicInvoice) && (
+        {!isLoading && electronicInvoice && (
           <div>
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
               Factura electrónica
             </h3>
-            {isLoading ? (
-              <p className="text-sm text-gray-400">Cargando…</p>
-            ) : electronicInvoice ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
-                <Field label="Clave" value={electronicInvoice.key_number} mono />
-                <Field
-                  label="Consecutivo"
-                  value={electronicInvoice.consecutive_number}
-                  mono
-                />
-                <Field
-                  label="Estado"
-                  value={String(electronicInvoice.status_id ?? "—")}
-                />
-                <Field
-                  label="Respuesta Hacienda"
-                  value={formatDateTime(
-                    electronicInvoice.hacienda_response_date ?? undefined,
-                  )}
-                />
-                <Field
-                  label="Creada"
-                  value={formatDateTime(electronicInvoice.created_at)}
-                />
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400">
-                No se pudo recuperar la factura electrónica.
-              </p>
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
+              <Field
+                label="Fecha de factura"
+                value={formatDateTime(electronicInvoice.created_at)}
+              />
+              <Field
+                label="Clave"
+                value={electronicInvoice.key_number}
+                mono
+              />
+              <Field
+                label="Consecutivo"
+                value={electronicInvoice.consecutive_number}
+                mono
+              />
+              <Field
+                label="Estado"
+                value={String(electronicInvoice.status_id ?? "—")}
+              />
+              <Field
+                label="Respuesta Hacienda"
+                value={formatDateTime(
+                  electronicInvoice.hacienda_response_date ?? undefined,
+                )}
+              />
+            </div>
           </div>
         )}
       </div>

@@ -56,9 +56,11 @@ export interface DigitalInvoiceInfo {
   subtotal_amount: number;
   tax_amount: number;
   total_amount: number;
+  total_discount: number;
   amount_paid: number;
   change_amount: number;
   points_accumulated: number;
+  points_redeemed: number;
   ad_message: string | null;
   due_date: string | null;
   invoiced_at: string;
@@ -76,6 +78,10 @@ export interface SaleItemDetail {
   quantity: number;
   unit_price: number;
   total_price: number;
+  sale_price_type?: string | null;
+  original_price?: number | null;
+  discount_applied?: number | null;
+  promotion_name?: string | null;
 }
 
 export interface ElectronicInvoiceInfo {

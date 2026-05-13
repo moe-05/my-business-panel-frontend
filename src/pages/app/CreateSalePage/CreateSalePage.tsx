@@ -19,7 +19,6 @@ import {
   IconPlus,
   IconShoppingCart,
   IconTrash,
-  IconTrendingUp,
   IconUser,
   IconX,
 } from "@/assets/icons";
@@ -1018,6 +1017,17 @@ export function CreateSalePage() {
       return;
     }
 
+    const hasLoyaltySplit = paymentSplits.some(
+      (s) => s.methodId === 5 && parseFloat(s.amount) > 0,
+    );
+    if (hasLoyaltySplit && !customer) {
+      setToast({
+        mode: "error",
+        message: "Debe asociar un cliente para usar puntos de fidelidad.",
+      });
+      return;
+    }
+
     if (isApartado) {
       const abono = parseFloat(apartadoPayment) || 0;
       if (abono <= 0) {
@@ -1129,12 +1139,16 @@ export function CreateSalePage() {
         for (const split of paymentSplits) {
           const amount = parseFloat(split.amount) || 0;
           if (amount > 0) {
+            const isLoyaltyMethod = split.methodId === 5;
+            const splitPointsRedeemed = isLoyaltyMethod
+              ? Math.round(amount * pointsRate)
+              : 0;
             rows.push({
               tenant_customer_id: customerId ?? null,
               payment_method_id: split.methodId,
-              is_points_redemption: false,
-              points_redeemed: 0,
-              points_to_currency_rate: 0,
+              is_points_redemption: isLoyaltyMethod,
+              points_redeemed: splitPointsRedeemed,
+              points_to_currency_rate: isLoyaltyMethod ? pointsRate : 0,
               payment_amount: amount,
               payment_date: now,
               currency_id: split.currencyId,
@@ -1151,6 +1165,17 @@ export function CreateSalePage() {
       const [digitalInvoice] = await Promise.all([
         getDigitalInvoiceForSale(result.saleId),
       ]);
+      const splitPointsTotal = paymentSplits
+        .filter((s) => s.methodId === 5)
+        .reduce(
+          (sum, s) =>
+            sum + Math.round((parseFloat(s.amount) || 0) * pointsRate),
+          0,
+        );
+      const effectivePointsRedeemed = usePoints
+        ? actualPointsRedeemed
+        : splitPointsTotal;
+
       setResultModal({
         open: true,
         saleId: result.saleId ?? null,
@@ -1167,7 +1192,7 @@ export function CreateSalePage() {
         })),
         paymentSplits: paymentSplits,
         currencySymbol: currencySymbol,
-        pointsRedeemed: actualPointsRedeemed,
+        pointsRedeemed: effectivePointsRedeemed,
         pointsRate: pointsRate,
       });
     } catch (err) {
@@ -1223,24 +1248,6 @@ export function CreateSalePage() {
     });
   };
 
-  const addPaymentSplit = () => {
-    setPaymentSplits((prev) => [
-      ...prev,
-      {
-        id: `split-${Date.now()}`,
-        methodId: defaultPaymentMethod.value,
-        amount: "",
-        currencyId: currencyId,
-      },
-    ]);
-  };
-
-  const removePaymentSplit = (id: string) => {
-    setPaymentSplits((prev) =>
-      prev.length > 1 ? prev.filter((s) => s.id !== id) : prev,
-    );
-  };
-
   const updatePaymentSplit = (
     id: string,
     field: keyof PaymentSplit,
@@ -1260,15 +1267,6 @@ export function CreateSalePage() {
       .reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
     const fill = round2(Math.max(targetPayment - others, 0));
     updatePaymentSplit(id, "amount", String(fill));
-  };
-
-  const convertSplitCurrencyToCrc = (splitId: string, amount: number) => {
-    const split = paymentSplits.find((s) => s.id === splitId);
-    if (!split) return null;
-    if (split.currencyId === CRC_CURRENCY_ID) return round2(amount);
-    const rate = exchangeRatesForSplits[splitId];
-    if (!rate) return null;
-    return round2(amount * Number(rate.rate));
   };
 
   const branchOptions = branches.map((b) => ({
@@ -2065,7 +2063,7 @@ export function CreateSalePage() {
           </div>
 
           {/* Partial payment checkbox */}
-          {!loyaltyActive && (
+          {!usePoints && (
             <label className="flex items-center gap-3 cursor-pointer mb-6 p-3 rounded-lg bg-gray-50 border border-gray-200">
               <input
                 type="checkbox"
@@ -2157,9 +2155,7 @@ export function CreateSalePage() {
                       label={
                         idx !== 0
                           ? Number(split.methodId) === 5
-                            ? parseFloat(split.amount) > 0
-                              ? `Puntos a canjear - ${parseFloat(split.amount).toFixed(2)}₡`
-                              : "Puntos a canjear"
+                            ? "Puntos a canjear"
                             : "Monto"
                           : undefined
                       }
@@ -2180,6 +2176,13 @@ export function CreateSalePage() {
                               Math.round(parseFloat(split.amount) * pointsRate),
                             )
                           : split.amount
+                      }
+                      hint={
+                        Number(split.methodId) === 5 &&
+                        split.amount &&
+                        parseFloat(split.amount) > 0
+                          ? `Equivale a ${formatAmount(round2(parseFloat(split.amount)), "₡")}`
+                          : undefined
                       }
                       onChange={(e) => {
                         const newValue = e.target.value;
@@ -2253,7 +2256,7 @@ export function CreateSalePage() {
             </div>
           )}
 
-          {!loyaltyActive && (
+          {!usePoints && (
             <div
               className={`mt-4 flex flex-col gap-2 rounded-xl p-3 text-sm font-medium ${
                 paymentBalance > 0.01
@@ -2371,8 +2374,27 @@ export function CreateSalePage() {
         }))}
         cartSubtotal={grossSubtotal}
         currencySymbol={currencySymbol}
+        totalAmount={totalAmount}
         onClose={() => setIsPromotionModalOpen(false)}
         onApply={handleApplyPromotion}
+        onAddRoyaltyItems={(royaltyItems) => {
+          setItems((prev) => [
+            ...prev,
+            ...royaltyItems
+              .filter(
+                (ri) =>
+                  !prev.some(
+                    (ex) =>
+                      ex.product_variant_id === ri.product_variant_id &&
+                      ex.unit_price === 0,
+                  ),
+              )
+              .map((ri) => ({
+                ...ri,
+                group_ids: [],
+              })),
+          ]);
+        }}
       />
 
       <QuickCashRegisterModal
