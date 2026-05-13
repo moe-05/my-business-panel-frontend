@@ -26,8 +26,7 @@ export function SetupTenantPage() {
   const { data, setStep2 } = useOnboarding();
   const navigate = useNavigate();
   const navigation = useNavigation();
-  const { regions, regionsError } =
-    useLoaderData() as RegionLoaderData;
+  const { regions, regionsError } = useLoaderData() as RegionLoaderData;
   const loadingRegions =
     navigation.state === "loading" &&
     navigation.location?.pathname === "/auth/register/setup-tenant";
@@ -121,7 +120,6 @@ export function SetupTenantPage() {
       branchAddress: values.branchAddress,
       regionId: Number(values.regionId),
     });
-    console.log(data);
     navigate("/auth/register/setup-hacienda");
   };
 

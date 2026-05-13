@@ -144,7 +144,11 @@ export function BranchesPage() {
     try {
       const updated = await updateBranch(branchId, data);
       setBranches((prev) =>
-        prev.map((b) => (b.branch_id === branchId ? { ...b, ...updated } : b)),
+        prev.map((b) => {
+          if (b.branch_id === branchId) return { ...b, ...updated };
+          if (updated.is_main_branch) return { ...b, is_main_branch: false };
+          return b;
+        }),
       );
       setToast({
         mode: "success",
@@ -158,8 +162,18 @@ export function BranchesPage() {
   };
 
   const handleDeleteBranch = async (branchId: string) => {
-    if (!confirm("¿Está seguro de que desea eliminar esta sucursal?")) return;
     const branchToDelete = branches.find((b) => b.branch_id === branchId);
+
+    if (branchToDelete?.is_main_branch) {
+      setToast({
+        mode: "error",
+        message:
+          "No se puede eliminar la sucursal principal. Desmárcala primero.",
+      });
+      return;
+    }
+
+    if (!confirm("¿Está seguro de que desea eliminar esta sucursal?")) return;
     setBranches((prev) => prev.filter((b) => b.branch_id !== branchId));
     setTotal((prev) => prev - 1);
     try {
@@ -235,6 +249,15 @@ export function BranchesPage() {
     setFormData(initialFormState);
     setFormErrors({});
   };
+
+  const sortedBranches = [...branches].sort((a, b) => {
+    if (a.is_main_branch && !b.is_main_branch) return -1;
+    if (!a.is_main_branch && b.is_main_branch) return 1;
+    return (
+      new Date(b.created_at ?? 0).getTime() -
+      new Date(a.created_at ?? 0).getTime()
+    );
+  });
 
   return (
     <div className="p-6 lg:p-8">
@@ -360,7 +383,7 @@ export function BranchesPage() {
                 ]
               : []),
           ]}
-          data={branches}
+          data={sortedBranches}
           emptyMessage="No hay sucursales registradas"
         />
         {totalPages > 1 && (

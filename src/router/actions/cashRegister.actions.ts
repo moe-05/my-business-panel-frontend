@@ -46,12 +46,19 @@ export const startCashRegisterSession = async (
 export const closeCashRegisterSession = async (
   sessionId: string,
   closingAmount: number,
+  amounts: {
+    cash?: number;
+    debit?: number;
+    credit?: number;
+    transfer?: number;
+  },
   closedAt?: string,
   cashRegisterKey?: string,
 ): Promise<CashRegisterSession> =>
   cashRegisterApi.closeSession(
     sessionId,
     closingAmount,
+    amounts,
     closedAt,
     cashRegisterKey,
   );

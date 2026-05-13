@@ -37,13 +37,20 @@ export function RoyaltiesPage() {
   const {
     rules: initialRules,
     productGroups,
+    productGroupTypes,
     tenantId,
   } = useLoaderData() as RoyaltiesPageLoaderData;
 
-  const [rules, setRules] = useState<RoyaltyRule[]>(initialRules);
-  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(
-    initialRules[0]?.royalty_rule_id ?? null,
+  const activeTypes = productGroupTypes.filter((t) => t.is_active);
+  const firstTypeId = activeTypes[0]?.tenant_product_group_type_id ?? null;
+
+  const [selectedTypeId, setSelectedTypeId] = useState<string | null>(firstTypeId);
+  const [rules, setRules] = useState<RoyaltyRule[]>(
+    firstTypeId
+      ? initialRules.filter((r) => r.tenant_product_group_type_id === firstTypeId)
+      : initialRules,
   );
+  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const [toast, setToast] = useState<{
     mode: ToastMode;
     message: string;
@@ -78,10 +85,19 @@ export function RoyaltiesPage() {
   const notify = (mode: ToastMode, message: string) =>
     setToast({ mode, message });
 
-  const reloadRules = async () => {
-    const fresh = await royaltyApi.listRules(tenantId);
+  const reloadRules = async (typeId?: string | null) => {
+    const tid = typeId !== undefined ? typeId : selectedTypeId;
+    const fresh = await royaltyApi.listRules(tenantId, tid ?? undefined);
     setRules(fresh);
     return fresh;
+  };
+
+  const handleTypeChange = async (typeId: string | null) => {
+    setSelectedTypeId(typeId);
+    setSelectedRuleId(null);
+    setOptionDraft(null);
+    setEditingOptionId(null);
+    await reloadRules(typeId);
   };
 
   // ── Load giftable products for a group ─────────────────────────────────────
@@ -108,7 +124,7 @@ export function RoyaltiesPage() {
     }
     setIsSavingRule(true);
     try {
-      const created = await royaltyApi.createRule(tenantId, amount);
+      const created = await royaltyApi.createRule(tenantId, amount, selectedTypeId ?? undefined);
 
       // Pre-populate options from the predecessor rule (rule with highest min_amount < new amount)
       const predecessor = [...rules]
@@ -290,6 +306,7 @@ export function RoyaltiesPage() {
       .filter(
         (g) =>
           g.is_active &&
+          (!selectedTypeId || g.tenant_product_group_type_id === selectedTypeId) &&
           (!usedGroupIds.has(g.tenant_product_group_id) ||
             g.tenant_product_group_id === excludeId),
       )
@@ -319,6 +336,25 @@ export function RoyaltiesPage() {
           monto de compra.
         </p>
       </div>
+
+      {activeTypes.length > 0 && (
+        <div className="mb-6 flex flex-wrap gap-2">
+          {activeTypes.map((t) => (
+            <button
+              key={t.tenant_product_group_type_id}
+              type="button"
+              onClick={() => void handleTypeChange(t.tenant_product_group_type_id)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                selectedTypeId === t.tenant_product_group_type_id
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
+              }`}
+            >
+              {t.type_name}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ── Left: rules list ─────────────────────────────── */}

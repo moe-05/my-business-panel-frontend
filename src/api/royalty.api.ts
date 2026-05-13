@@ -18,8 +18,9 @@ const checkResponse = (res: Response, body: unknown) => {
 };
 
 export const royaltyApi = {
-  async listRules(tenantId: string): Promise<RoyaltyRule[]> {
-    const res = await fetch(`${base}/rules/${tenantId}`, {
+  async listRules(tenantId: string, typeId?: string): Promise<RoyaltyRule[]> {
+    const params = typeId ? `?type_id=${typeId}` : "";
+    const res = await fetch(`${base}/rules/${tenantId}${params}`, {
       credentials: "include",
     });
     const body = await res.json();
@@ -27,12 +28,16 @@ export const royaltyApi = {
     return (body as ApiResponse<RoyaltyRule[]>).data;
   },
 
-  async createRule(tenantId: string, minAmount: number): Promise<RoyaltyRule> {
+  async createRule(tenantId: string, minAmount: number, typeId?: string): Promise<RoyaltyRule> {
     const res = await fetch(`${base}/rules`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ tenant_id: tenantId, min_amount: minAmount }),
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        tenant_product_group_type_id: typeId,
+        min_amount: minAmount,
+      }),
     });
     const body = await res.json();
     checkResponse(res, body);

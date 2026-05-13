@@ -20,6 +20,7 @@ export interface RoyaltyOption {
 export interface RoyaltyRule {
   royalty_rule_id: string;
   tenant_id: string;
+  tenant_product_group_type_id?: string;
   min_amount: number;
   created_at: string;
   updated_at: string;
