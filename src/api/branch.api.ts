@@ -123,6 +123,12 @@ export const branchApi = {
         credentials: "include",
       });
 
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        const message = errorJson?.message ?? "Error al eliminar sucursal";
+        throw new Error(Array.isArray(message) ? message.join(", ") : message);
+      }
+
       const json: ApiResponse<{ message: string }> = await response.json();
       return json.data;
     } catch (error) {

@@ -32,7 +32,6 @@ interface SaleResultModalProps {
   pointsRedeemed?: number;
   pointsRate?: number;
   onNewSale: () => void;
-  onClose: () => void;
 }
 
 const fmt = (value: number | null | undefined, symbol: string) =>
@@ -54,12 +53,16 @@ export function SaleResultModal({
   pointsRedeemed,
   pointsRate,
   onNewSale,
-  onClose,
 }: SaleResultModalProps) {
   const symbol = currencySymbol;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Venta registrada" size="sm">
+    <Modal
+      isOpen={isOpen}
+      onClose={onNewSale}
+      title="Venta registrada"
+      size="sm"
+    >
       <div className="flex flex-col gap-4">
         {/* Éxito */}
         <div className="flex flex-col items-center text-center gap-2">
@@ -149,23 +152,26 @@ export function SaleResultModal({
                   value={fmt(digitalInvoice.change_amount, symbol)}
                 />
               )}
-              {!!pointsRedeemed && pointsRedeemed > 0 && !!pointsRate && pointsRate > 0 && (
-                <div className="border-t border-gray-200 pt-2 mt-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">
-                      Puntos canjeados
-                    </span>
-                    <div className="text-right">
-                      <span className="text-sm font-bold text-amber-800">
-                        -{pointsRedeemed.toLocaleString("es-CR")} pts
+              {!!pointsRedeemed &&
+                pointsRedeemed > 0 &&
+                !!pointsRate &&
+                pointsRate > 0 && (
+                  <div className="border-t border-gray-200 pt-2 mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">
+                        Puntos canjeados
                       </span>
-                      <p className="text-xs text-amber-700 mt-0.5">
-                        ≈ {fmt(Math.floor(pointsRedeemed / pointsRate), "₡")}
-                      </p>
+                      <div className="text-right">
+                        <span className="text-sm font-bold text-amber-800">
+                          -{pointsRedeemed.toLocaleString("es-CR")} pts
+                        </span>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          ≈ {fmt(Math.floor(pointsRedeemed / pointsRate), "₡")}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
               {digitalInvoice.points_accumulated > 0 && (
                 <div className="border-t border-gray-200 pt-2 mt-2 bg-purple-50 -mx-4 -mb-4 px-4 py-2 rounded-b-lg">
                   <div className="flex items-center justify-between">
@@ -182,7 +188,9 @@ export function SaleResultModal({
               {digitalInvoice.due_date && (
                 <Row
                   label="Fecha límite pago"
-                  value={new Date(digitalInvoice.due_date).toLocaleDateString("es-CR")}
+                  value={new Date(digitalInvoice.due_date).toLocaleDateString(
+                    "es-CR",
+                  )}
                 />
               )}
               {digitalInvoice.ad_message && (
@@ -284,11 +292,8 @@ export function SaleResultModal({
         )}
 
         <div className="flex flex-col sm:flex-row gap-2 pt-2">
-          <Button variant="secondary" onClick={onClose} className="flex-1">
-            Cerrar
-          </Button>
           <Button variant="primary" onClick={onNewSale} className="flex-1">
-            Nueva venta
+            Aceptar
           </Button>
         </div>
       </div>

@@ -78,6 +78,10 @@ export function CashSessionsPage() {
   const [actionType, setActionType] = useState<SessionAction>("open");
   const [selectedRegisterId, setSelectedRegisterId] = useState("");
   const [amount, setAmount] = useState("");
+  const [cashAmount, setCashAmount] = useState("");
+  const [debitAmount, setDebitAmount] = useState("");
+  const [creditAmount, setCreditAmount] = useState("");
+  const [transferAmount, setTransferAmount] = useState("");
 
   const [registers, setRegisters] = useState<CashRegister[]>(initialRegisters);
   const [newRegisterBranchId, setNewRegisterBranchId] = useState(
@@ -394,10 +398,19 @@ export function CashSessionsPage() {
       return;
     }
 
-    if (!isAmountValid) {
+    const totalClosingAmount =
+      (parseAmount(cashAmount) || 0) +
+      (parseAmount(debitAmount) || 0) +
+      (parseAmount(creditAmount) || 0) +
+      (parseAmount(transferAmount) || 0);
+
+    const isCurrentAmountValid =
+      actionType === "open" ? isAmountValid : totalClosingAmount > 0;
+
+    if (!isCurrentAmountValid) {
       setToast({
         mode: "error",
-        message: "Ingrese un monto valido mayor que cero",
+        message: "Ingrese un monto válido mayor que cero",
       });
       return;
     }
@@ -424,10 +437,32 @@ export function CashSessionsPage() {
       if (actionType === "open") {
         await startCashRegisterSession(selectedRegisterId, amountValue);
       } else {
-        await closeCashRegisterSession(
+        const closedSession = await closeCashRegisterSession(
           selectedActiveSession!.cash_register_session_id,
-          amountValue,
+          totalClosingAmount,
+          {
+            cash: parseAmount(cashAmount) || 0,
+            debit: parseAmount(debitAmount) || 0,
+            credit: parseAmount(creditAmount) || 0,
+            transfer: parseAmount(transferAmount) || 0,
+          },
         );
+
+        setIsLoading(true);
+        await refreshSessions();
+        setAmount("");
+        setCashAmount("");
+        setDebitAmount("");
+        setCreditAmount("");
+        setTransferAmount("");
+
+        setToast({
+          mode: "success",
+          message: "Sesion de caja cerrada correctamente",
+        });
+
+        if (closedSession) setSessionModal(closedSession);
+        return;
       }
 
       setIsLoading(true);
@@ -436,10 +471,7 @@ export function CashSessionsPage() {
 
       setToast({
         mode: "success",
-        message:
-          actionType === "open"
-            ? "Sesion de caja abierta correctamente"
-            : "Sesion de caja cerrada correctamente",
+        message: "Sesion de caja abierta correctamente",
       });
     } catch (err) {
       setToast({
@@ -590,9 +622,10 @@ export function CashSessionsPage() {
             </span>
           </div>
 
-          {/* Formulario de accion */}
-          <form onSubmit={handleSessionSubmit}>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+          <form onSubmit={handleSessionSubmit} className="space-y-4">
+            <div
+              className={`grid grid-cols-1 ${actionType === "close" ? "md:grid-cols-6" : "md:grid-cols-4"} gap-3 items-end`}
+            >
               <Select
                 label="Caja"
                 value={selectedRegisterId}
@@ -601,34 +634,96 @@ export function CashSessionsPage() {
                 required
               />
               <Select
-                label="Accion"
+                label="Acción"
                 value={actionType}
                 onChange={(e) => setActionType(e.target.value as SessionAction)}
                 options={ACTION_OPTIONS}
               />
-              <Input
-                label={
-                  actionType === "open"
-                    ? "Monto de apertura"
-                    : "Monto de cierre"
-                }
-                type="number"
-                inputMode="decimal"
-                min="0.01"
-                step="0.01"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-              />
-              <Button
-                type="submit"
-                size="md"
-                loading={isSubmitting}
-                disabled={actionIsBlocked || !isAmountValid}
+
+              {actionType === "open" ? (
+                <Input
+                  label="Monto de apertura"
+                  type="number"
+                  inputMode="decimal"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  required
+                />
+              ) : (
+                <>
+                  <Input
+                    label="Efectivo"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={cashAmount}
+                    onChange={(e) => setCashAmount(e.target.value)}
+                  />
+                  <Input
+                    label="Débito"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={debitAmount}
+                    onChange={(e) => setDebitAmount(e.target.value)}
+                  />
+                  <Input
+                    label="Crédito"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={creditAmount}
+                    onChange={(e) => setCreditAmount(e.target.value)}
+                  />
+                  <Input
+                    label="Transferencia"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={transferAmount}
+                    onChange={(e) => setTransferAmount(e.target.value)}
+                  />
+                </>
+              )}
+
+              <div
+                className={`${actionType === "close" ? "md:col-span-6" : ""} flex justify-end items-center gap-4`}
               >
-                {actionType === "open" ? "Abrir sesion" : "Cerrar sesion"}
-              </Button>
+                {actionType === "close" && (
+                  <div className="text-sm font-medium text-gray-700">
+                    Total cierre:{" "}
+                    <span className="font-mono text-gray-900">
+                      ₡{" "}
+                      {(
+                        (parseAmount(cashAmount) || 0) +
+                        (parseAmount(debitAmount) || 0) +
+                        (parseAmount(creditAmount) || 0) +
+                        (parseAmount(transferAmount) || 0)
+                      ).toLocaleString("es-CR", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+                <Button
+                  type="submit"
+                  size="md"
+                  loading={isSubmitting}
+                  disabled={
+                    actionIsBlocked ||
+                    (actionType === "open" && !isAmountValid) ||
+                    (actionType === "close" &&
+                      (parseAmount(cashAmount) || 0) +
+                        (parseAmount(debitAmount) || 0) +
+                        (parseAmount(creditAmount) || 0) +
+                        (parseAmount(transferAmount) || 0) <=
+                        0)
+                  }
+                >
+                  {actionType === "open" ? "Abrir sesión" : "Cerrar sesión"}
+                </Button>
+              </div>
             </div>
 
             {/* {(selectedRegisterStateMessage || formBlockedMessage) && (

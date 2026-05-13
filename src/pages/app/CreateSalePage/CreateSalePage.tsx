@@ -883,6 +883,7 @@ export function CreateSalePage() {
         document_number: data.document_number,
         email: data.email || undefined,
         phone: data.phone || undefined,
+        segment_id: 4,
       });
       setCustomer(created);
       setShowInlineCreate(false);
@@ -1026,6 +1027,29 @@ export function CreateSalePage() {
         message: "Debe asociar un cliente para usar puntos de fidelidad.",
       });
       return;
+    }
+
+    if (hasLoyaltySplit && customer) {
+      const totalLoyaltyAmount = paymentSplits
+        .filter((s) => s.methodId === 5)
+        .reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+      if (totalLoyaltyAmount > 0 && (pointsRate === 0 || availablePoints === 0)) {
+        setToast({
+          mode: "error",
+          message: "El cliente no tiene puntos disponibles para canjear.",
+        });
+        return;
+      }
+      if (pointsRate > 0) {
+        const pointsRequired = Math.round(totalLoyaltyAmount * pointsRate);
+        if (pointsRequired > availablePoints) {
+          setToast({
+            mode: "error",
+            message: `Puntos insuficientes. Disponibles: ${availablePoints.toLocaleString("es-CR")}, requeridos: ${pointsRequired.toLocaleString("es-CR")}.`,
+          });
+          return;
+        }
+      }
     }
 
     if (isApartado) {
@@ -2358,7 +2382,6 @@ export function CreateSalePage() {
         paymentSplits={resultModal.paymentSplits}
         pointsRedeemed={resultModal.pointsRedeemed}
         pointsRate={resultModal.pointsRate}
-        onClose={() => setResultModal((prev) => ({ ...prev, open: false }))}
         onNewSale={resetForNewSale}
       />
 

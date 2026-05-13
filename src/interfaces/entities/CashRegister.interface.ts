@@ -27,19 +27,32 @@ export interface CashRegisterSession {
   user_first_name?: string;
   user_last_name?: string;
   // Shift-report fields (populated on close)
-  cash_sales_amount?: number | null;
-  debit_sales_amount?: number | null;
-  credit_sales_amount?: number | null;
-  transfer_sales_amount?: number | null;
-  points_sales_amount?: number | null;
-  total_sales_amount?: number | null;
+  cash_sales_amount: number | string;
+  debit_sales_amount: number | string;
+  credit_sales_amount: number | string;
+  transfer_sales_amount: number | string;
+  points_sales_amount: number | string;
+
+  user_cash_amount?: number | string;
+  user_debit_amount?: number | string;
+  user_credit_amount?: number | string;
+  user_transfer_amount?: number | string;
+
+  total_sales_amount: number | string;
   mismatch?: boolean | null;
   mismatch_amount?: number | null;
   mismatch_type?: "surplus" | "shortage" | null;
+  payment_method_sales?: SessionPaymentMethodSale[];
 }
 
 export interface SessionGroupSale {
   tenant_product_group_id: string;
   group_name: string;
+  total_amount: number;
+}
+
+export interface SessionPaymentMethodSale {
+  payment_method_id: number;
+  payment_method_name: string;
   total_amount: number;
 }
