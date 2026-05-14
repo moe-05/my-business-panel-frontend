@@ -35,7 +35,7 @@ export function InventoryPage() {
   const [giftableFilter, setGiftableFilter] = useState<GiftableFilter>("all");
   const debouncedSearch = useDebounce(searchQuery, 400);
 
-  const [showNegativeStock, setShowNegativeStock] = useState(false);
+  const showNegativeStock = false;
 
   const [isDiscrepancyOpen, setIsDiscrepancyOpen] = useState(false);
   const [disaggregatingItem, setDisaggregatingItem] =
