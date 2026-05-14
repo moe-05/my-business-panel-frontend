@@ -55,6 +55,9 @@ export interface RoyaltyGiftItem {
   quantity: number;
   unit_price: 0;
   total_price: 0;
+  sale_price_type: "ROYALTY";
+  royalty_option_id: string;
+  royalty_rule_id: string;
 }
 
 interface RoyaltySelection {
@@ -187,14 +190,12 @@ export function ApplyPromotionModal({
     };
   }, [isOpen, tenantId, totalAmount]);
 
-  // Pre-load giftable products for 'any' scope options
+  // Pre-load giftable products for every option's group. Backend recurses
+  // descendants, so one fetch per group covers the whole subtree.
   useEffect(() => {
     for (const rule of royaltyRules) {
       for (const opt of rule.options) {
-        if (
-          opt.scope === "any" &&
-          !royaltyGiftableCache[opt.tenant_product_group_id]
-        ) {
+        if (!royaltyGiftableCache[opt.tenant_product_group_id]) {
           void loadRoyaltyGiftable(opt.tenant_product_group_id);
         }
       }
@@ -243,9 +244,7 @@ export function ApplyPromotionModal({
         quantity: maxQty,
       },
     }));
-    if (opt.scope === "any") {
-      await loadRoyaltyGiftable(opt.tenant_product_group_id);
-    }
+    await loadRoyaltyGiftable(opt.tenant_product_group_id);
   };
 
   const handleRoyaltyProductSelect = (
@@ -376,10 +375,13 @@ export function ApplyPromotionModal({
       result.push({
         id: `royalty-${rule.royalty_rule_id}-${sel.royalty_option_id}-${Date.now()}`,
         product_variant_id: sel.product_variant_id,
-        variant_name: `[Regalía] ${sel.product_name}`,
+        variant_name: `[Regalia] ${sel.product_name}`,
         quantity: sel.quantity,
         unit_price: 0,
         total_price: 0,
+        sale_price_type: "ROYALTY",
+        royalty_option_id: sel.royalty_option_id,
+        royalty_rule_id: rule.royalty_rule_id,
       });
     }
     return result;
@@ -569,19 +571,14 @@ export function ApplyPromotionModal({
                     : 1;
 
                   const productOptions = selectedOpt
-                    ? selectedOpt.scope === "specific"
-                      ? selectedOpt.products.map((p) => ({
-                          value: p.product_variant_id,
-                          label: p.variant_name,
-                        }))
-                      : (
-                          royaltyGiftableCache[
-                            selectedOpt.tenant_product_group_id
-                          ] ?? []
-                        ).map((p) => ({
-                          value: p.product_variant_id,
-                          label: p.variant_name,
-                        }))
+                    ? (
+                        royaltyGiftableCache[
+                          selectedOpt.tenant_product_group_id
+                        ] ?? []
+                      ).map((p) => ({
+                        value: p.product_variant_id,
+                        label: p.variant_name,
+                      }))
                     : [];
 
                   return (
@@ -600,7 +597,7 @@ export function ApplyPromotionModal({
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <Select
-                          label="Opción de departamento"
+                          label="Grupo de producto"
                           value={sel?.royalty_option_id ?? ""}
                           onChange={(e) => {
                             const opt = r.options.find(
@@ -609,10 +606,10 @@ export function ApplyPromotionModal({
                             void handleRoyaltyOptionSelect(r.royalty_rule_id, opt);
                           }}
                           options={[
-                            { value: "", label: "Elige un departamento" },
+                            { value: "", label: "Elige un grupo" },
                             ...r.options.map((o) => ({
                               value: o.royalty_option_id,
-                              label: `${o.group_name} — ${o.quantity} u.`,
+                              label: `${o.group_name} - ${o.quantity} u.`,
                             })),
                           ]}
                         />
@@ -630,11 +627,7 @@ export function ApplyPromotionModal({
                               </p>
                             ) : (
                               <Select
-                                label={
-                                  selectedOpt.scope === "any"
-                                    ? "Producto a regalar"
-                                    : "Producto específico"
-                                }
+                                label="Producto a regalar"
                                 value={sel?.product_variant_id ?? ""}
                                 onChange={(e) => {
                                   const label =

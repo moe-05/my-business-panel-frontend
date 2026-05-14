@@ -9,7 +9,10 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { ProductVariantComboBox, type ProductVariantSelection } from "@/components/ui/ProductVariantComboBox";
+import {
+  ProductVariantComboBox,
+  type ProductVariantSelection,
+} from "@/components/ui/ProductVariantComboBox";
 import { Select } from "@/components/ui/Select";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table } from "@/components/ui/Table";
@@ -329,9 +332,7 @@ export function PurchasesPage() {
   const handleProductClear = (index: number) => {
     setFormData((prev) => {
       const items = prev.items.map((item, itemIndex) =>
-        itemIndex === index
-          ? { ...emptyItem }
-          : item,
+        itemIndex === index ? { ...emptyItem } : item,
       );
       return { ...prev, items };
     });
@@ -722,8 +723,14 @@ export function PurchasesPage() {
                   <ProductVariantComboBox
                     tenantId={user?.tenant.tenant_id || ""}
                     value={item.product_variant_id}
-                    displayValue={item.sku ? `${item.variant_name} (${item.sku})` : item.variant_name}
-                    onChange={(selection) => handleProductSelect(index, selection)}
+                    displayValue={
+                      item.sku
+                        ? `${item.variant_name} (${item.sku})`
+                        : item.variant_name
+                    }
+                    onChange={(selection) =>
+                      handleProductSelect(index, selection)
+                    }
                     onClear={() => handleProductClear(index)}
                     label={`Producto ${index + 1}`}
                     placeholder="Buscar por SKU o nombre"

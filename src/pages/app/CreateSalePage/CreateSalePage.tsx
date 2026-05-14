@@ -97,6 +97,9 @@ interface CartItem {
   quantity: number;
   unit_price: number;
   total_price: number;
+  sale_price_type?: "NORMAL" | "PROMO" | "SEGMENT" | "MANUAL" | "ROYALTY";
+  royalty_option_id?: string | null;
+  royalty_rule_id?: string | null;
 }
 
 interface PaymentSplit {
@@ -360,10 +363,11 @@ export function CreateSalePage() {
       let bestDiscount = 0;
       for (const promo of defaultPromotions) {
         if (!promotionAppliesToItem(promo, item)) continue;
-        if (!promo.rule || !promo.type_name) continue;
+        const rule = promo.rule ?? promo.rules?.[0];
+        if (!rule || !promo.type_name) continue;
         const result = calculatePromotionDiscount({
           type: promo.type_name,
-          rule: promo.rule,
+          rule,
           quantity: item.quantity,
           unit_price: item.unit_price,
           total_purchase_amount: grossForRule,
@@ -1102,14 +1106,23 @@ export function CreateSalePage() {
           : defaultPart > 0
             ? defaultPromoDiscount.source?.promotion_id
             : undefined;
+      // Royalty (gifted) items keep their ROYALTY price type and audit
+      // ids, and bypass promo recomputation since they are zero-priced.
+      const isRoyalty = item.sale_price_type === "ROYALTY";
       return {
         tenant_id: tenantId,
         product_variant_id: item.product_variant_id,
         quantity: item.quantity,
         unit_price: convertCrcToSaleCurrency(netUnitPriceCrc),
         total_price: convertCrcToSaleCurrency(netTotalCrc),
-        sale_price_type: hasDiscount ? "PROMO" : "NORMAL",
-        promotion_id: promotionId,
+        sale_price_type: isRoyalty
+          ? "ROYALTY"
+          : hasDiscount
+            ? "PROMO"
+            : "NORMAL",
+        promotion_id: isRoyalty ? undefined : promotionId,
+        royalty_option_id: item.royalty_option_id ?? null,
+        royalty_rule_id: item.royalty_rule_id ?? null,
         original_price: hasDiscount
           ? convertCrcToSaleCurrency(item.unit_price)
           : undefined,

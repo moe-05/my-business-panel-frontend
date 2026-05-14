@@ -90,7 +90,9 @@ export const getPurchasesPageData =
           ? purchaseApi.listSuppliers().catch(() => [] as Supplier[])
           : Promise.resolve([] as Supplier[]),
         currentTenantId
-          ? warehouseApi.listByTenant().catch(() => [] as Warehouse[])
+          ? (
+              await warehouseApi.listByTenant().catch(() => [] as Warehouse[])
+            ).filter((w) => !w.is_branch)
           : Promise.resolve([] as Warehouse[]),
         currentTenantId
           ? productApi.listByTenant(currentTenantId, 1, 200).catch(() => ({

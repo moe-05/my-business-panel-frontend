@@ -4,7 +4,6 @@ import type {
   ApplicableRoyaltyRule,
   GiftableProduct,
   RoyaltyOption,
-  RoyaltyOptionProduct,
   RoyaltyRule,
 } from "@/interfaces/entities/Royalty.interface";
 
@@ -18,9 +17,8 @@ const checkResponse = (res: Response, body: unknown) => {
 };
 
 export const royaltyApi = {
-  async listRules(tenantId: string, typeId?: string): Promise<RoyaltyRule[]> {
-    const params = typeId ? `?type_id=${typeId}` : "";
-    const res = await fetch(`${base}/rules/${tenantId}${params}`, {
+  async listRules(tenantId: string): Promise<RoyaltyRule[]> {
+    const res = await fetch(`${base}/rules/${tenantId}`, {
       credentials: "include",
     });
     const body = await res.json();
@@ -28,14 +26,13 @@ export const royaltyApi = {
     return (body as ApiResponse<RoyaltyRule[]>).data;
   },
 
-  async createRule(tenantId: string, minAmount: number, typeId?: string): Promise<RoyaltyRule> {
+  async createRule(tenantId: string, minAmount: number): Promise<RoyaltyRule> {
     const res = await fetch(`${base}/rules`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
         tenant_id: tenantId,
-        tenant_product_group_type_id: typeId,
         min_amount: minAmount,
       }),
     });
@@ -65,11 +62,27 @@ export const royaltyApi = {
     checkResponse(res, body);
   },
 
+  async setRuleDimensions(
+    royaltyRuleId: string,
+    tenantProductGroupTypeIds: string[],
+  ): Promise<RoyaltyRule> {
+    const res = await fetch(`${base}/rules/${royaltyRuleId}/dimensions`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        tenant_product_group_type_ids: tenantProductGroupTypeIds,
+      }),
+    });
+    const body = await res.json();
+    checkResponse(res, body);
+    return (body as ApiResponse<RoyaltyRule>).data;
+  },
+
   async createOption(data: {
     royalty_rule_id: string;
     tenant_product_group_id: string;
     quantity: number;
-    scope: "any" | "specific";
   }): Promise<RoyaltyOption> {
     const res = await fetch(`${base}/options`, {
       method: "POST",
@@ -84,7 +97,7 @@ export const royaltyApi = {
 
   async updateOption(
     royaltyOptionId: string,
-    data: { quantity: number; scope: "any" | "specific" },
+    data: { quantity: number },
   ): Promise<RoyaltyOption> {
     const res = await fetch(`${base}/options/${royaltyOptionId}`, {
       method: "PUT",
@@ -104,21 +117,6 @@ export const royaltyApi = {
     });
     const body = await res.json().catch(() => ({}));
     checkResponse(res, body);
-  },
-
-  async setOptionProducts(
-    royaltyOptionId: string,
-    productVariantIds: string[],
-  ): Promise<RoyaltyOptionProduct[]> {
-    const res = await fetch(`${base}/options/${royaltyOptionId}/products`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ product_variant_ids: productVariantIds }),
-    });
-    const body = await res.json();
-    checkResponse(res, body);
-    return (body as ApiResponse<RoyaltyOptionProduct[]>).data;
   },
 
   async getApplicableRules(
