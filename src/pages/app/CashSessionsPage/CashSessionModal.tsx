@@ -76,24 +76,35 @@ const RowWithComparison = ({
   label,
   system,
   user,
+  userOptional,
 }: {
   label: string;
-  system: number | string;
-  user?: number | string;
+  system: number | string | null | undefined;
+  user?: number | string | null;
+  userOptional?: boolean;
 }) => {
-  const fmt = (val: number | string | undefined) => {
-    if (val === undefined || val === null) return "—";
-    return `₡ ${Number(val).toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
+  const fmtAmt = (val: number | string | null | undefined) => {
+    if (val === undefined || val === null) return userOptional ? "—" : "₡ 0,00";
+    const num = Number(val);
+    if (isNaN(num)) return "—";
+    return `₡ ${num.toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
+  };
+
+  const fmtSys = (val: number | string | null | undefined) => {
+    if (val === undefined || val === null) return "₡ 0,00";
+    const num = Number(val);
+    if (isNaN(num)) return "₡ 0,00";
+    return `₡ ${num.toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
   };
 
   return (
     <div className="grid grid-cols-3 items-center py-1 border-b border-gray-50 last:border-0">
       <span className="text-xs text-gray-500">{label}</span>
       <span className="text-right font-mono text-xs text-gray-800">
-        {fmt(system)}
+        {fmtSys(system)}
       </span>
       <span className="text-right font-mono text-xs text-indigo-600 font-semibold">
-        {fmt(user)}
+        {fmtAmt(user)}
       </span>
     </div>
   );
@@ -209,6 +220,7 @@ export function CashSessionModal({ session, onClose }: Props) {
               label="Puntos de fidelidad"
               system={session.points_sales_amount}
               user={undefined}
+              userOptional
             />
             <Row
               label="Total ventas"
@@ -264,8 +276,9 @@ export function CashSessionModal({ session, onClose }: Props) {
                 session.mismatch_type === "surplus" ? "text-blue-900" : "text-red-900"
               }`}
             >
-              {session.mismatch_type === "surplus" ? "+" : "-"}
-              {fmt(session.mismatch_amount)}
+              {session.mismatch_amount != null
+                ? `${session.mismatch_type === "surplus" ? "+" : "-"}${fmt(session.mismatch_amount)}`
+                : "—"}
             </p>
             <p className="text-xs text-gray-500 mt-1">
               Cierre ingresado: {fmt(session.closing_amount)} · Esperado: {fmt(expectedCash)}
