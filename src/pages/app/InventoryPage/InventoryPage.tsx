@@ -239,20 +239,6 @@ export function InventoryPage() {
             />
           </div>
           <div className="lg:col-span-2 flex flex-col sm:flex-row gap-2 items-end">
-            <label className="flex items-center gap-2 cursor-pointer select-none shrink-0">
-              <input
-                type="checkbox"
-                checked={showNegativeStock}
-                onChange={(e) => {
-                  setShowNegativeStock(e.target.checked);
-                  if (e.target.checked) setStockFilter("all");
-                }}
-                className="w-4 h-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500 cursor-pointer"
-              />
-              <span className="text-sm font-medium whitespace-nowrap">
-                Sin stock
-              </span>
-            </label>
             <Button
               variant="secondary"
               onClick={() => setIsDiscrepancyOpen(true)}
