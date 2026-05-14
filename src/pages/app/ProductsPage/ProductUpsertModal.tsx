@@ -272,9 +272,7 @@ export function ProductUpsertModal({
         // In edit mode, an empty supplier_id must be sent as null so the
         // backend sets the field to NULL (undefined would leave it unchanged).
         const editSupplierId: string | null =
-          data.supplier_id && data.supplier_id !== ""
-            ? data.supplier_id
-            : null;
+          data.supplier_id && data.supplier_id !== "" ? data.supplier_id : null;
         const supplierName = editSupplierId
           ? (suppliers.find((s) => s.supplier_id === editSupplierId)
               ?.supplier_name ?? undefined)
@@ -285,7 +283,7 @@ export function ProductUpsertModal({
             product_name: data.product_name,
             description: data.description || undefined,
             category_id: data.category_id,
-            price,
+            unit_price: price,
             cost_price: costPrice,
             supplier_id: editSupplierId,
             giftable: data.giftable ?? false,

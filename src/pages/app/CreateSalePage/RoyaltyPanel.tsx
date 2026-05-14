@@ -19,6 +19,9 @@ interface CartItem {
   quantity: number;
   unit_price: number;
   total_price: number;
+  sale_price_type?: "NORMAL" | "PROMO" | "SEGMENT" | "MANUAL" | "ROYALTY";
+  royalty_option_id?: string | null;
+  royalty_rule_id?: string | null;
 }
 
 interface Props {
@@ -29,7 +32,7 @@ interface Props {
 }
 
 const fmt = (v: number) =>
-  `₡ ${Number(v).toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
+  `CRC ${Number(v).toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
 
 export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Props) {
   const isWholesale = !!customer?.is_wholesale;
@@ -39,15 +42,22 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
   const [giftableCache, setGiftableCache] = useState<Record<string, GiftableProduct[]>>({});
   const [loadingGiftable, setLoadingGiftable] = useState<string | null>(null);
 
-  // Per-rule selections: royalty_rule_id → { royalty_option_id, product_variant_id, product_name }
+  // Per-rule selections
   const [selections, setSelections] = useState<
-    Record<string, { royalty_option_id: string; product_variant_id: string; product_name: string } | null>
+    Record<
+      string,
+      {
+        royalty_option_id: string;
+        product_variant_id: string;
+        product_name: string;
+      } | null
+    >
   >({});
 
-  // Per-rule, per-option quantity: key = `${ruleId}-${optionId}`
+  // Per-rule, per-option quantity
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 
-  // Load applicable rules when customer/amount changes
+  // Load applicable rules whenever customer / amount changes
   useEffect(() => {
     if (!isWholesale || !tenantId || totalAmount <= 0) {
       setRules([]);
@@ -81,16 +91,18 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
     };
   }, [isWholesale, tenantId, totalAmount]);
 
-  // Pre-load giftable products for 'any' scope options when rules load
+  // Pre-load giftable products for every option of every rule. Backend
+  // already recurses into descendant groups, so one fetch per group covers
+  // the whole subtree.
   useEffect(() => {
     for (const rule of rules) {
       for (const opt of rule.options) {
-        if (opt.scope === "any" && !giftableCache[opt.tenant_product_group_id]) {
+        if (!giftableCache[opt.tenant_product_group_id]) {
           void loadGiftable(opt.tenant_product_group_id);
         }
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rules]);
 
   const loadGiftable = async (groupId: string) => {
@@ -104,20 +116,20 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
     }
   };
 
-  const handleOptionSelect = async (ruleId: string, opt: RoyaltyOption) => {
-    const rule = rules.find((r) => r.royalty_rule_id === ruleId);
-    const maxQty = rule ? opt.quantity * rule.multiplier : opt.quantity;
+  const handleOptionSelect = (ruleId: string, opt: RoyaltyOption, multiplier: number) => {
+    const maxQty = opt.quantity * multiplier;
     setSelections((prev) => ({
       ...prev,
-      [ruleId]: { royalty_option_id: opt.royalty_option_id, product_variant_id: "", product_name: "" },
+      [ruleId]: {
+        royalty_option_id: opt.royalty_option_id,
+        product_variant_id: "",
+        product_name: "",
+      },
     }));
     setQuantities((prev) => ({
       ...prev,
       [`${ruleId}-${opt.royalty_option_id}`]: maxQty,
     }));
-    if (opt.scope === "any") {
-      await loadGiftable(opt.tenant_product_group_id);
-    }
   };
 
   const handleProductSelect = (
@@ -128,7 +140,11 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
   ) => {
     setSelections((prev) => ({
       ...prev,
-      [ruleId]: { royalty_option_id: optionId, product_variant_id: productVariantId, product_name: productName },
+      [ruleId]: {
+        royalty_option_id: optionId,
+        product_variant_id: productVariantId,
+        product_name: productName,
+      },
     }));
   };
 
@@ -152,10 +168,13 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
       newItems.push({
         id: `royalty-${rule.royalty_rule_id}-${sel.royalty_option_id}-${Date.now()}`,
         product_variant_id: sel.product_variant_id,
-        variant_name: `[Regalía] ${sel.product_name}`,
+        variant_name: `[Regalia] ${sel.product_name}`,
         quantity: qty,
         unit_price: 0,
         total_price: 0,
+        sale_price_type: "ROYALTY",
+        royalty_option_id: sel.royalty_option_id,
+        royalty_rule_id: rule.royalty_rule_id,
       });
     }
 
@@ -169,7 +188,8 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
     setQuantities({});
   };
 
-  const allRulesHaveSelection = rules.length > 0 &&
+  const allRulesHaveSelection =
+    rules.length > 0 &&
     rules.every((r) => {
       const sel = selections[r.royalty_rule_id];
       return sel?.product_variant_id;
@@ -181,15 +201,16 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-sm font-semibold text-amber-800">Regalías aplicables</span>
-        {loading && (
-          <span className="text-xs text-amber-600">Cargando...</span>
-        )}
+        <span className="text-sm font-semibold text-amber-800">
+          Regalias aplicables
+        </span>
+        {loading && <span className="text-xs text-amber-600">Cargando...</span>}
       </div>
 
       {!loading && rules.length === 0 && (
         <p className="text-xs text-amber-700">
-          El cliente mayorista no alcanza ninguna escala de regalías con este monto.
+          El cliente mayorista no alcanza ninguna escala de regalias con este
+          monto.
         </p>
       )}
 
@@ -197,7 +218,9 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
         {rules.map((rule) => {
           const sel = selections[rule.royalty_rule_id];
           const selectedOpt = sel
-            ? rule.options.find((o) => o.royalty_option_id === sel.royalty_option_id)
+            ? rule.options.find(
+                (o) => o.royalty_option_id === sel.royalty_option_id,
+              )
             : null;
 
           const maxQty = selectedOpt ? selectedOpt.quantity * rule.multiplier : 1;
@@ -205,78 +228,80 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
           const currentQty = quantities[qtyKey] ?? maxQty;
 
           const productOptions = selectedOpt
-            ? selectedOpt.scope === "specific"
-              ? selectedOpt.products.map((p) => ({
+            ? (giftableCache[selectedOpt.tenant_product_group_id] ?? []).map(
+                (p) => ({
                   value: p.product_variant_id,
                   label: p.variant_name,
-                }))
-              : (giftableCache[selectedOpt.tenant_product_group_id] ?? []).map((p) => ({
-                  value: p.product_variant_id,
-                  label: p.variant_name,
-                }))
+                }),
+              )
             : [];
 
           const optionSelectOptions = [
-            { value: "", label: "Elige un departamento" },
+            { value: "", label: "Elige un grupo" },
             ...rule.options.map((o) => ({
               value: o.royalty_option_id,
-              label: `${o.group_name} — ${o.quantity} unidad${o.quantity !== 1 ? "es" : ""}`,
+              label: `${o.group_name} - ${o.quantity} unidad${o.quantity !== 1 ? "es" : ""}`,
             })),
           ];
 
           return (
-            <div key={rule.royalty_rule_id} className="bg-white rounded-xl border border-amber-200 p-3">
+            <div
+              key={rule.royalty_rule_id}
+              className="bg-white rounded-xl border border-amber-200 p-3"
+            >
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs font-semibold text-gray-700">
                   Desde {fmt(rule.min_amount)}
                 </span>
                 <span className="text-xs bg-amber-100 text-amber-700 rounded-md px-2 py-0.5 font-medium">
-                  ×{rule.multiplier}
+                  x{rule.multiplier}
                 </span>
                 <span className="text-xs text-gray-400">
-                  aplica {rule.multiplier} vez{rule.multiplier !== 1 ? "es" : ""}
+                  aplica {rule.multiplier} vez
+                  {rule.multiplier !== 1 ? "es" : ""}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {/* Option (department) selector */}
                 <Select
-                  label="Opción de departamento"
+                  label="Grupo de producto"
                   value={sel?.royalty_option_id ?? ""}
                   onChange={(e) => {
                     const opt = rule.options.find(
                       (o) => o.royalty_option_id === e.target.value,
                     );
-                    if (opt) void handleOptionSelect(rule.royalty_rule_id, opt);
-                    else
+                    if (opt) {
+                      handleOptionSelect(rule.royalty_rule_id, opt, rule.multiplier);
+                      void loadGiftable(opt.tenant_product_group_id);
+                    } else {
                       setSelections((prev) => ({
                         ...prev,
                         [rule.royalty_rule_id]: null,
                       }));
+                    }
                   }}
                   options={optionSelectOptions}
                 />
 
-                {/* Product selector */}
                 {selectedOpt && (
                   <div>
                     {loadingGiftable === selectedOpt.tenant_product_group_id ? (
-                      <p className="text-xs text-gray-400 pt-6">Cargando productos...</p>
+                      <p className="text-xs text-gray-400 pt-6">
+                        Cargando productos...
+                      </p>
                     ) : productOptions.length === 0 ? (
                       <p className="text-xs text-gray-400 pt-6">
-                        Sin productos disponibles
+                        Sin productos regalables en este grupo
                       </p>
                     ) : (
                       <Select
-                        label={
-                          selectedOpt.scope === "any"
-                            ? "Producto a regalar"
-                            : "Producto específico"
-                        }
+                        label="Producto a regalar"
                         value={sel?.product_variant_id ?? ""}
                         onChange={(e) => {
                           const label =
-                            productOptions.find((p) => p.value === e.target.value)?.label ?? "";
+                            productOptions.find(
+                              (p) => p.value === e.target.value,
+                            )?.label ?? "";
                           handleProductSelect(
                             rule.royalty_rule_id,
                             selectedOpt.royalty_option_id,
@@ -294,7 +319,6 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
                 )}
               </div>
 
-              {/* Quantity picker (MPV6) */}
               {sel?.product_variant_id && selectedOpt && (
                 <div className="mt-2">
                   <Input
@@ -310,14 +334,14 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
                       );
                       setQuantities((prev) => ({ ...prev, [qtyKey]: v }));
                     }}
-                    hint={`Máximo: ${maxQty} unidad${maxQty !== 1 ? "es" : ""}`}
+                    hint={`Maximo: ${maxQty} unidad${maxQty !== 1 ? "es" : ""}`}
                   />
                 </div>
               )}
 
               {sel?.product_variant_id && selectedOpt && (
                 <p className="text-xs text-emerald-700 mt-1 font-medium">
-                  Se agregarán {quantities[qtyKey] ?? maxQty} unidad
+                  Se agregaran {quantities[qtyKey] ?? maxQty} unidad
                   {(quantities[qtyKey] ?? maxQty) !== 1 ? "es" : ""} gratis
                 </p>
               )}
@@ -334,11 +358,11 @@ export function RoyaltyPanel({ customer, tenantId, totalAmount, onAddItems }: Pr
             disabled={!allRulesHaveSelection}
             onClick={handleAddToCart}
           >
-            Agregar regalías al carrito
+            Agregar regalias al carrito
           </Button>
           {!allRulesHaveSelection && (
             <p className="text-xs text-amber-600 mt-1">
-              Selecciona una opción y producto para cada regla
+              Selecciona un grupo y producto para cada regla
             </p>
           )}
         </div>
