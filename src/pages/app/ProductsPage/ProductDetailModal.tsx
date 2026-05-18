@@ -39,6 +39,7 @@ export function ProductDetailModal({
     supplier_name?: string;
     giftable?: boolean;
     giftable_from?: number;
+    includes_iva?: boolean;
   };
 
   return (
@@ -69,6 +70,12 @@ export function ProductDetailModal({
                 : pv.price != null
                   ? `₡${Number(pv.price).toLocaleString("es-CR")}`
                   : null,
+            )}
+            {field(
+              "IVA en precio",
+              pv.includes_iva === true
+                ? "Incluido"
+                : "No incluido (se aplica al vender)",
             )}
 
             {field("Código CABYS", pv.cabys_code)}

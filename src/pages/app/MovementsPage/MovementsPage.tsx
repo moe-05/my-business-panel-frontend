@@ -11,14 +11,16 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Table } from "@/components/ui/Table";
 import { Toast } from "@/components/ui/Toast";
-import { IconCheckCircle, IconPlus, IconX } from "@/assets/icons";
+import { IconCheckCircle, IconEye, IconPlus, IconX } from "@/assets/icons";
 
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
 import type { InventoryTransfer } from "@/interfaces/entities/InventoryTransfer.interface";
+import type { InventoryTransferDetail } from "@/interfaces/entities/InventoryTransferDetail.interface";
 import type { InventoryTransferProductInput } from "@/interfaces/api/requests/CreateInventoryTransferRequest.interface";
 import type { MovementsPageLoaderData } from "@/router/loaders/inventoryTransfer.loaders";
 
 import { TransferModal } from "./TransferModal";
+import { TransferDetailModal } from "./TransferDetailModal";
 
 interface TransferRequestProduct {
   product_variant_id: string;
@@ -50,6 +52,10 @@ export function MovementsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isTransferDetailOpen, setIsTransferDetailOpen] = useState(false);
+  const [selectedTransferDetail, setSelectedTransferDetail] =
+    useState<InventoryTransferDetail | null>(null);
+  const [isLoadingTransferDetail, setIsLoadingTransferDetail] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<TransferRequest | null>(null);
@@ -133,6 +139,23 @@ export function MovementsPage() {
     }
   }, [selectedRequestId, rejectionReason, requests]);
 
+  const handleViewTransfer = useCallback(async (transferId: string) => {
+    setIsLoadingTransferDetail(true);
+    try {
+      const detail = await warehouseApi.getTransferDetail(transferId);
+      setSelectedTransferDetail(detail);
+      setIsTransferDetailOpen(true);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error al cargar detalle de transferencia";
+      setToast({ mode: "error", message });
+    } finally {
+      setIsLoadingTransferDetail(false);
+    }
+  }, []);
+
   const handleCancelRequest = useCallback(async (requestId: string) => {
     setIsSubmitting(true);
     try {
@@ -214,11 +237,27 @@ export function MovementsPage() {
             {
               key: "inventory_transfer_id",
               label: "ID",
-              width: "14%",
+              width: "10%",
               render: (value: unknown) => (
                 <span className="font-mono text-[11px]">
                   {(value as string).slice(0, 8)}
                 </span>
+              ),
+            },
+            {
+              key: "inventory_transfer_id",
+              label: "Acciones",
+              width: "8%",
+              render: (value: unknown) => (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleViewTransfer(value as string)}
+                  disabled={isLoadingTransferDetail}
+                  aria-label="Ver detalle"
+                >
+                  <IconEye />
+                </Button>
               ),
             },
           ]}
@@ -290,8 +329,9 @@ export function MovementsPage() {
                           setIsDetailModalOpen(true);
                         }}
                         disabled={isSubmitting}
+                        aria-label="Ver detalle"
                       >
-                        Ver
+                        <IconEye />
                       </Button>
                       {isAdmin ? (
                         <>
@@ -494,6 +534,15 @@ export function MovementsPage() {
           </div>
         )}
       </Modal>
+
+      <TransferDetailModal
+        isOpen={isTransferDetailOpen}
+        transfer={selectedTransferDetail}
+        onClose={() => {
+          setIsTransferDetailOpen(false);
+          setSelectedTransferDetail(null);
+        }}
+      />
 
       <TransferModal
         isOpen={isModalOpen}

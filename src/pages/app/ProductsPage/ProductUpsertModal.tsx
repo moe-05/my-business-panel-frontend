@@ -101,6 +101,7 @@ export function ProductUpsertModal({
                 : "",
             supplier_id: product.supplier_id ?? "",
             giftable: product.giftable ?? false,
+            includes_iva: product.includes_iva ?? false,
             giftable_from:
               product.giftable_from != null
                 ? String(product.giftable_from)
@@ -117,6 +118,7 @@ export function ProductUpsertModal({
             cost_price: "",
             supplier_id: "",
             giftable: false,
+            includes_iva: false,
             giftable_from: "",
             tenant_id: "",
           },
@@ -147,6 +149,7 @@ export function ProductUpsertModal({
                 : "",
             supplier_id: product.supplier_id ?? "",
             giftable: product.giftable ?? false,
+            includes_iva: product.includes_iva ?? false,
             giftable_from:
               product.giftable_from != null
                 ? String(product.giftable_from)
@@ -163,6 +166,7 @@ export function ProductUpsertModal({
             cost_price: "",
             supplier_id: "",
             giftable: false,
+            includes_iva: false,
             giftable_from: "",
             tenant_id: "",
           },
@@ -287,6 +291,7 @@ export function ProductUpsertModal({
             cost_price: costPrice,
             supplier_id: editSupplierId,
             giftable: data.giftable ?? false,
+            includes_iva: data.includes_iva ?? false,
             giftable_from: giftableFrom,
             attribute_value_ids,
             group_ids: groupIds,
@@ -306,6 +311,7 @@ export function ProductUpsertModal({
               productApi.update(child.child_product_variant_id, {
                 supplier_id: editSupplierId,
                 giftable: data.giftable ?? false,
+                includes_iva: data.includes_iva ?? false,
                 attribute_value_ids,
                 group_ids: groupIds,
               }),
@@ -367,6 +373,7 @@ export function ProductUpsertModal({
           cost_price: costPrice,
           supplier_id: supplierId,
           giftable: data.giftable ?? false,
+          includes_iva: data.includes_iva ?? false,
           giftable_from: giftableFrom,
           cabys_code: data.category_id,
           attribute_value_ids,
@@ -434,6 +441,16 @@ export function ProductUpsertModal({
               {...register("sku")}
             />
             <Input
+              label="Costo unitario"
+              type="number"
+              placeholder="Ej: 12000.00"
+              step="0.01"
+              min="0"
+              hint="Costo de adquisición. Se actualiza al recibir compras."
+              error={errors.cost_price?.message}
+              {...register("cost_price")}
+            />
+            <Input
               label="Precio Unitario"
               type="number"
               placeholder="Ej: 25000.00"
@@ -445,18 +462,23 @@ export function ProductUpsertModal({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Costo unitario"
-              type="number"
-              placeholder="Ej: 12000.00"
-              step="0.01"
-              min="0"
-              hint="Costo de adquisición. Se actualiza al recibir compras."
-              error={errors.cost_price?.message}
-              {...register("cost_price")}
-            />
-          </div>
+          <Controller
+            name="includes_iva"
+            control={control}
+            render={({ field }) => (
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  checked={field.value ?? false}
+                  onChange={(e) => field.onChange(e.target.checked)}
+                />
+                <span className="text-sm text-gray-700 font-medium">
+                  Precio de venta incluye IVA
+                </span>
+              </label>
+            )}
+          />
 
           <Input
             label="Nombre del Producto"
@@ -511,7 +533,7 @@ export function ProductUpsertModal({
             )}
           />
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3">
             <Controller
               name="giftable"
               control={control}
