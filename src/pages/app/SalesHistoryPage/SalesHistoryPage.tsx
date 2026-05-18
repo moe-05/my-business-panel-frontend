@@ -11,6 +11,7 @@ import { Toast } from "@/components/ui/Toast";
 import {
   SALES_PAGE_LIMIT,
   getSalesByBranch,
+  getSalesByTenant,
   type SalesHistoryPageLoaderData,
 } from "@/router/loaders/sale.loaders";
 
@@ -102,7 +103,11 @@ export function SalesHistoryPage() {
     }
     let cancelled = false;
     setIsLoading(true);
-    getSalesByBranch(branchId, page, SALES_PAGE_LIMIT)
+    const fetchFn =
+      branchId === "all"
+        ? getSalesByTenant(page, SALES_PAGE_LIMIT)
+        : getSalesByBranch(branchId, page, SALES_PAGE_LIMIT);
+    fetchFn
       .then((res) => {
         if (cancelled) return;
         const sorted = [...(res.results ?? [])].sort(
@@ -146,6 +151,7 @@ export function SalesHistoryPage() {
 
   const branchOptions = [
     { value: "", label: "Seleccione una sucursal" },
+    { value: "all", label: "Todas las sucursales" },
     ...branches.map((b) => ({ value: b.branch_id, label: b.branch_name })),
   ];
 

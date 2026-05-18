@@ -14,7 +14,6 @@ import {
   getOpenCashSessionsByBranch,
   startCashRegisterSession,
 } from "@/router/actions/cashRegister.actions";
-import { cashRegisterApi } from "@/api/cashRegister.api";
 
 import type {
   CashRegister,
@@ -49,7 +48,6 @@ export function QuickCashRegisterModal({
   const roleName = user?.role.role_name ?? "";
   // Admin and superuser bypass the key check both client-side and server-side.
   const requiresKey = roleName !== "admin" && roleName !== "superuser";
-  const canDelete = roleName === "admin" || roleName === "superuser";
 
   const [rows, setRows] = useState<RegisterRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -57,8 +55,17 @@ export function QuickCashRegisterModal({
   const [amountByRegister, setAmountByRegister] = useState<
     Record<string, string>
   >({});
+  const [breakdownByRegister, setBreakdownByRegister] = useState<
+    Record<
+      string,
+      { cash: string; debit: string; credit: string; transfer: string }
+    >
+  >({});
   const [keyByRegister, setKeyByRegister] = useState<Record<string, string>>(
     {},
+  );
+  const [closedReport, setClosedReport] = useState<CashRegisterSession | null>(
+    null,
   );
   const [toast, setToast] = useState<{
     mode: ToastMode;
@@ -96,8 +103,12 @@ export function QuickCashRegisterModal({
   };
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setClosedReport(null);
+      return;
+    }
     setAmountByRegister({});
+    setBreakdownByRegister({});
     setKeyByRegister({});
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,6 +116,42 @@ export function QuickCashRegisterModal({
 
   const setAmount = (registerId: string, value: string) =>
     setAmountByRegister((prev) => ({ ...prev, [registerId]: value }));
+
+  const setBreakdown = (
+    registerId: string,
+    method: "cash" | "debit" | "credit" | "transfer",
+    value: string,
+  ) =>
+    setBreakdownByRegister((prev) => ({
+      ...prev,
+      [registerId]: {
+        ...(prev[registerId] || {
+          cash: "",
+          debit: "",
+          credit: "",
+          transfer: "",
+        }),
+        [method]: value,
+      },
+    }));
+
+  const getBreakdown = (registerId: string) =>
+    breakdownByRegister[registerId] || {
+      cash: "",
+      debit: "",
+      credit: "",
+      transfer: "",
+    };
+
+  const calculateTotal = (registerId: string) => {
+    const b = getBreakdown(registerId);
+    return (
+      (parseAmount(b.cash) || 0) +
+      (parseAmount(b.debit) || 0) +
+      (parseAmount(b.credit) || 0) +
+      (parseAmount(b.transfer) || 0)
+    );
+  };
 
   const setKey = (registerId: string, value: string) =>
     setKeyByRegister((prev) => ({ ...prev, [registerId]: value }));
@@ -161,14 +208,17 @@ export function QuickCashRegisterModal({
 
   const handleClose = async (row: RegisterRow) => {
     if (!row.session) return;
-    const amount = parseAmount(amountByRegister[row.register.cash_register_id]);
-    if (amount === null) {
+    const b = getBreakdown(row.register.cash_register_id);
+    const total = calculateTotal(row.register.cash_register_id);
+
+    if (total <= 0) {
       setToast({
         mode: "error",
-        message: "Ingrese un monto de cierre válido",
+        message: "Ingrese los montos de cierre por método de pago",
       });
       return;
     }
+
     const key = (keyByRegister[row.register.cash_register_id] ?? "").trim();
     if (requiresKey && !key) {
       setToast({
@@ -182,50 +232,31 @@ export function QuickCashRegisterModal({
 
     setBusyRegisterId(row.register.cash_register_id);
     try {
-      await closeCashRegisterSession(
+      const closed = await closeCashRegisterSession(
         row.session.cash_register_session_id,
-        amount,
+        total,
+        {
+          cash: parseAmount(b.cash) || 0,
+          debit: parseAmount(b.debit) || 0,
+          credit: parseAmount(b.credit) || 0,
+          transfer: parseAmount(b.transfer) || 0,
+        },
         undefined,
         requiresKey ? key : undefined,
       );
+      setKey(row.register.cash_register_id, "");
+      await refresh();
+      await onSessionsChanged();
+      if (closed) setClosedReport(closed);
       setToast({
         mode: "success",
         message: `Sesión cerrada en ${row.register.register_name}`,
       });
-      setKey(row.register.cash_register_id, "");
-      await refresh();
-      await onSessionsChanged();
     } catch (error) {
       setToast({
         mode: "error",
         message:
           error instanceof Error ? error.message : "Error al cerrar la sesión",
-      });
-    } finally {
-      setBusyRegisterId(null);
-    }
-  };
-
-  const handleDelete = async (row: RegisterRow) => {
-    if (row.session) {
-      setToast({
-        mode: "error",
-        message: "No se puede eliminar una caja con sesión activa.",
-      });
-      return;
-    }
-    if (!confirm(`¿Eliminar la caja "${row.register.register_name}"? Esta acción no se puede deshacer.`))
-      return;
-    setBusyRegisterId(row.register.cash_register_id);
-    try {
-      await cashRegisterApi.remove(row.register.cash_register_id);
-      setToast({ mode: "success", message: "Caja eliminada" });
-      await refresh();
-      await onSessionsChanged();
-    } catch (error) {
-      setToast({
-        mode: "error",
-        message: error instanceof Error ? error.message : "Error al eliminar la caja",
       });
     } finally {
       setBusyRegisterId(null);
@@ -258,8 +289,7 @@ export function QuickCashRegisterModal({
       ) : (
         <div className="space-y-3">
           {rows.map((row) => {
-            const isBusy =
-              busyRegisterId === row.register.cash_register_id;
+            const isBusy = busyRegisterId === row.register.cash_register_id;
             const isActive = !!row.session;
             const amountValue =
               amountByRegister[row.register.cash_register_id] ?? "";
@@ -290,61 +320,136 @@ export function QuickCashRegisterModal({
                     ) : (
                       <Badge variant="gray">Cerrada</Badge>
                     )}
-                    {canDelete && !isActive && (
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(row)}
-                        disabled={isBusy}
-                        className="text-xs font-medium text-red-500 hover:text-red-700 disabled:opacity-40"
-                        title="Eliminar caja"
-                      >
-                        Eliminar
-                      </button>
-                    )}
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex items-end gap-3">
-                    <div className="flex-1">
+                  {isActive ? (
+                    <div className="grid grid-cols-2 gap-2">
                       <Input
-                        label={
-                          isActive ? "Monto de cierre" : "Monto de apertura"
-                        }
+                        label="Efectivo"
                         type="number"
                         min={0}
                         step="0.01"
                         placeholder="0.00"
-                        value={amountValue}
+                        value={getBreakdown(row.register.cash_register_id).cash}
                         onChange={(e) =>
-                          setAmount(
+                          setBreakdown(
                             row.register.cash_register_id,
+                            "cash",
                             e.target.value,
                           )
                         }
                         disabled={isBusy}
-                        required
+                      />
+                      <Input
+                        label="T. Débito"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="0.00"
+                        value={
+                          getBreakdown(row.register.cash_register_id).debit
+                        }
+                        onChange={(e) =>
+                          setBreakdown(
+                            row.register.cash_register_id,
+                            "debit",
+                            e.target.value,
+                          )
+                        }
+                        disabled={isBusy}
+                      />
+                      <Input
+                        label="T. Crédito"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="0.00"
+                        value={
+                          getBreakdown(row.register.cash_register_id).credit
+                        }
+                        onChange={(e) =>
+                          setBreakdown(
+                            row.register.cash_register_id,
+                            "credit",
+                            e.target.value,
+                          )
+                        }
+                        disabled={isBusy}
+                      />
+                      <Input
+                        label="Transferencia"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="0.00"
+                        value={
+                          getBreakdown(row.register.cash_register_id).transfer
+                        }
+                        onChange={(e) =>
+                          setBreakdown(
+                            row.register.cash_register_id,
+                            "transfer",
+                            e.target.value,
+                          )
+                        }
+                        disabled={isBusy}
                       />
                     </div>
-                    {isActive ? (
-                      <Button
-                        type="button"
-                        variant="danger"
-                        onClick={() => handleClose(row)}
-                        loading={isBusy}
-                      >
-                        Cerrar
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="primary"
-                        onClick={() => handleOpen(row)}
-                        loading={isBusy}
-                      >
-                        Abrir
-                      </Button>
+                  ) : (
+                    <Input
+                      label="Monto de apertura"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      value={amountValue}
+                      onChange={(e) =>
+                        setAmount(row.register.cash_register_id, e.target.value)
+                      }
+                      disabled={isBusy}
+                      required
+                    />
+                  )}
+
+                  <div className="flex items-center justify-between gap-4">
+                    {isActive && (
+                      <div className="text-sm font-medium text-gray-700">
+                        Total cierre:{" "}
+                        <span className="font-mono text-gray-900">
+                          ₡{" "}
+                          {calculateTotal(
+                            row.register.cash_register_id,
+                          ).toLocaleString("es-CR", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
                     )}
+                    <div className="flex-1 flex justify-end">
+                      {isActive ? (
+                        <Button
+                          type="button"
+                          variant="danger"
+                          onClick={() => handleClose(row)}
+                          loading={isBusy}
+                          fullWidth
+                        >
+                          Cerrar Caja
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="primary"
+                          onClick={() => handleOpen(row)}
+                          loading={isBusy}
+                          fullWidth
+                        >
+                          Abrir Caja
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   {requiresKey && (
                     <Input
@@ -363,6 +468,98 @@ export function QuickCashRegisterModal({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {closedReport && (
+        <div className="mt-4 border-t border-gray-100 pt-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-800">
+              Reporte de arqueo — {closedReport.register_name ?? ""}
+            </p>
+            <button
+              type="button"
+              onClick={() => setClosedReport(null)}
+              className="text-gray-400 hover:text-gray-600 text-xs"
+            >
+              Ocultar
+            </button>
+          </div>
+
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-1.5 text-sm">
+            {closedReport.payment_method_sales &&
+            closedReport.payment_method_sales.length > 0
+              ? closedReport.payment_method_sales.map((method) => (
+                  <div
+                    key={method.payment_method_id}
+                    className="flex justify-between"
+                  >
+                    <span className="text-gray-500 capitalize">
+                      {method.payment_method_name.replace(/_/g, " ")}
+                    </span>
+                    <span className="font-mono text-gray-800">
+                      ₡{" "}
+                      {Number(method.total_amount).toLocaleString("es-CR", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                ))
+              : [
+                  ["Efectivo", closedReport.cash_sales_amount],
+                  ["Tarjeta débito", closedReport.debit_sales_amount],
+                  ["Tarjeta crédito", closedReport.credit_sales_amount],
+                  ["Transferencia", closedReport.transfer_sales_amount],
+                  ["Puntos de fidelidad", closedReport.points_sales_amount],
+                ].map(([label, val]) => (
+                  <div key={String(label)} className="flex justify-between">
+                    <span className="text-gray-500">{label}</span>
+                    <span className="font-mono text-gray-800">
+                      {val == null
+                        ? "—"
+                        : `₡ ${Number(val).toLocaleString("es-CR", { minimumFractionDigits: 2 })}`}
+                    </span>
+                  </div>
+                ))}
+            <div className="flex justify-between border-t border-gray-200 pt-1.5 font-semibold">
+              <span className="text-gray-700">Total ventas</span>
+              <span className="font-mono text-gray-900">
+                {closedReport.total_sales_amount == null
+                  ? "—"
+                  : `₡ ${Number(closedReport.total_sales_amount).toLocaleString("es-CR", { minimumFractionDigits: 2 })}`}
+              </span>
+            </div>
+          </div>
+
+          {closedReport.mismatch && (
+            <div
+              className={`rounded-xl border p-3 text-sm ${
+                closedReport.mismatch_type === "surplus"
+                  ? "bg-blue-50 border-blue-200 text-blue-800"
+                  : "bg-red-50 border-red-200 text-red-800"
+              }`}
+            >
+              <p className="font-semibold">
+                Discrepancia:{" "}
+                {closedReport.mismatch_type === "surplus"
+                  ? "Excedente"
+                  : "Faltante"}
+              </p>
+              <p className="font-mono text-lg font-bold mt-0.5">
+                {closedReport.mismatch_type === "surplus" ? "+" : "-"}₡{" "}
+                {Number(closedReport.mismatch_amount ?? 0).toLocaleString(
+                  "es-CR",
+                  { minimumFractionDigits: 2 },
+                )}
+              </p>
+            </div>
+          )}
+
+          {closedReport.mismatch === false && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+              Arqueo cuadrado — sin discrepancias
+            </div>
+          )}
         </div>
       )}
 

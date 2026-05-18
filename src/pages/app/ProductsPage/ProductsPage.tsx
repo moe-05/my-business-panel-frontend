@@ -118,6 +118,9 @@ export function ProductsPage() {
     mode: "create",
   });
   const [isBulkPackageOpen, setIsBulkPackageOpen] = useState(false);
+  const [editingCompositeId, setEditingCompositeId] = useState<string | null>(
+    null,
+  );
   const [toast, setToast] = useState<{
     mode: ToastMode;
     message: string;
@@ -376,8 +379,14 @@ export function ProductsPage() {
 
   const openCreate = () => setUpsertModal({ open: true, mode: "create" });
 
-  const openEdit = (p: ProductWithVariant) =>
+  const openEdit = (p: ProductWithVariant) => {
+    if (p.is_composite && p.product_variant_id) {
+      setEditingCompositeId(p.product_variant_id);
+      setIsBulkPackageOpen(true);
+      return;
+    }
     setUpsertModal({ open: true, mode: "edit", product: p });
+  };
 
   const closeModal = () => setUpsertModal({ open: false, mode: "create" });
 
@@ -758,7 +767,21 @@ export function ProductsPage() {
       <BulkPackageModal
         isOpen={isBulkPackageOpen}
         tenantId={tenantId}
-        onClose={() => setIsBulkPackageOpen(false)}
+        mode={editingCompositeId ? "edit" : "create"}
+        editingProductId={editingCompositeId ?? undefined}
+        onClose={() => {
+          setIsBulkPackageOpen(false);
+          setEditingCompositeId(null);
+        }}
+        onEditSuccess={() => {
+          setIsBulkPackageOpen(false);
+          setEditingCompositeId(null);
+          setToast({
+            mode: "success",
+            message:
+              "Lote actualizado. Recarga la página para ver los cambios.",
+          });
+        }}
         onOptimisticCreate={(product) => {
           setProducts((prev) => [
             {

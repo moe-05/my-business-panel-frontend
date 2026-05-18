@@ -9,6 +9,7 @@ export interface ProductVariantSelection {
   sku?: string;
   unit_price: number;
   group_ids?: string[];
+  includes_iva?: boolean;
 }
 
 interface ProductVariantComboBoxProps {

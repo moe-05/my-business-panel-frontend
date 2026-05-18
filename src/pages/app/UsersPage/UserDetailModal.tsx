@@ -33,7 +33,6 @@ export function UserDetailModal({
 
     getUserById(user.user_id, true)
       .then((fetchedUser) => {
-        console.log(fetchedUser);
         setDetailUser(fetchedUser);
       })
       .catch(() => {

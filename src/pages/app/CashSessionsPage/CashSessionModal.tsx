@@ -6,6 +6,7 @@ import { cashRegisterApi } from "@/api/cashRegister.api";
 import type {
   CashRegisterSession,
   SessionGroupSale,
+  SessionPaymentMethodSale,
 } from "@/interfaces/entities/CashRegister.interface";
 
 interface Props {
@@ -71,20 +72,68 @@ function Field({
   );
 }
 
+const RowWithComparison = ({
+  label,
+  system,
+  user,
+  userOptional,
+}: {
+  label: string;
+  system: number | string | null | undefined;
+  user?: number | string | null;
+  userOptional?: boolean;
+}) => {
+  const fmtAmt = (val: number | string | null | undefined) => {
+    if (val === undefined || val === null) return userOptional ? "—" : "₡ 0,00";
+    const num = Number(val);
+    if (isNaN(num)) return "—";
+    return `₡ ${num.toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
+  };
+
+  const fmtSys = (val: number | string | null | undefined) => {
+    if (val === undefined || val === null) return "₡ 0,00";
+    const num = Number(val);
+    if (isNaN(num)) return "₡ 0,00";
+    return `₡ ${num.toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
+  };
+
+  return (
+    <div className="grid grid-cols-3 items-center py-1 border-b border-gray-50 last:border-0">
+      <span className="text-xs text-gray-500">{label}</span>
+      <span className="text-right font-mono text-xs text-gray-800">
+        {fmtSys(system)}
+      </span>
+      <span className="text-right font-mono text-xs text-indigo-600 font-semibold">
+        {fmtAmt(user)}
+      </span>
+    </div>
+  );
+};
+
 export function CashSessionModal({ session, onClose }: Props) {
   const [groupSales, setGroupSales] = useState<SessionGroupSale[]>([]);
+  const [, setPaymentSales] = useState<SessionPaymentMethodSale[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (!session || session.is_active) {
       setGroupSales([]);
+      setPaymentSales([]);
       return;
     }
     setIsLoading(true);
-    cashRegisterApi
-      .getSessionReport(session.cash_register_session_id)
-      .then(setGroupSales)
-      .catch(() => setGroupSales([]))
+    Promise.all([
+      cashRegisterApi.getSessionReport(session.cash_register_session_id),
+      cashRegisterApi.getPaymentMethods(session.cash_register_session_id),
+    ])
+      .then(([groups, payments]) => {
+        setGroupSales(groups);
+        setPaymentSales(payments);
+      })
+      .catch(() => {
+        setGroupSales([]);
+        setPaymentSales([]);
+      })
       .finally(() => setIsLoading(false));
   }, [session]);
 
@@ -141,12 +190,43 @@ export function CashSessionModal({ session, onClose }: Props) {
         <div>
           <SectionTitle>Ventas por método de pago</SectionTitle>
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-1">
-            <Row label="Efectivo (cash)" value={fmt(session.cash_sales_amount)} />
-            <Row label="Tarjeta de débito" value={fmt(session.debit_sales_amount)} />
-            <Row label="Tarjeta de crédito" value={fmt(session.credit_sales_amount)} />
-            <Row label="Transferencia" value={fmt(session.transfer_sales_amount)} />
-            <Row label="Puntos de fidelidad" value={fmt(session.points_sales_amount)} />
-            <Row label="Total ventas" value={fmt(session.total_sales_amount)} highlight />
+            <div className="grid grid-cols-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider pb-1 mb-2 border-b border-gray-100">
+              <span>Método</span>
+              <span className="text-right">Sistema</span>
+              <span className="text-right">Cajero</span>
+            </div>
+
+            <RowWithComparison
+              label="Efectivo (cash)"
+              system={session.cash_sales_amount}
+              user={session.user_cash_amount}
+            />
+            <RowWithComparison
+              label="Tarjeta de débito"
+              system={session.debit_sales_amount}
+              user={session.user_debit_amount}
+            />
+            <RowWithComparison
+              label="Tarjeta de crédito"
+              system={session.credit_sales_amount}
+              user={session.user_credit_amount}
+            />
+            <RowWithComparison
+              label="Transferencia"
+              system={session.transfer_sales_amount}
+              user={session.user_transfer_amount}
+            />
+            <RowWithComparison
+              label="Puntos de fidelidad"
+              system={session.points_sales_amount}
+              user={undefined}
+              userOptional
+            />
+            <Row
+              label="Total ventas"
+              value={fmt(session.total_sales_amount)}
+              highlight
+            />
           </div>
         </div>
 
@@ -196,8 +276,9 @@ export function CashSessionModal({ session, onClose }: Props) {
                 session.mismatch_type === "surplus" ? "text-blue-900" : "text-red-900"
               }`}
             >
-              {session.mismatch_type === "surplus" ? "+" : "-"}
-              {fmt(session.mismatch_amount)}
+              {session.mismatch_amount != null
+                ? `${session.mismatch_type === "surplus" ? "+" : "-"}${fmt(session.mismatch_amount)}`
+                : "—"}
             </p>
             <p className="text-xs text-gray-500 mt-1">
               Cierre ingresado: {fmt(session.closing_amount)} · Esperado: {fmt(expectedCash)}

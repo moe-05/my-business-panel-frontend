@@ -7,6 +7,7 @@ import type {
   InventoryItem,
 } from "@/interfaces/entities/InventoryItem.interface";
 import type { InventoryTransfer } from "@/interfaces/entities/InventoryTransfer.interface";
+import type { InventoryTransferDetail, InventoryTransferRequestDetail } from "@/interfaces/entities/InventoryTransferDetail.interface";
 import type { DiscrepancyReport } from "@/interfaces/entities/DiscrepancyReport.interface";
 import type { CreateWarehouseRequest } from "@/interfaces/api/requests/CreateWarehouseRequest.interface";
 import type { UpdateWarehouseRequest } from "@/interfaces/api/requests/UpdateWarehouseRequest.interface";
@@ -218,6 +219,29 @@ export const warehouseApi = {
       body: JSON.stringify({ warehouse_id, product_variant_id, amount }),
     });
     return json<{ message: string }>(res, "Error al desagrupar lote");
+  },
+
+  async getTransferDetail(transferId: string): Promise<InventoryTransferDetail> {
+    const res = await fetch(`${url}/warehouse/transfer/${transferId}`, {
+      credentials: "include",
+    });
+    return json<InventoryTransferDetail>(
+      res,
+      "Error al obtener detalle de transferencia",
+    );
+  },
+
+  async getTransferRequestDetail(
+    requestId: string,
+  ): Promise<InventoryTransferRequestDetail> {
+    const res = await fetch(
+      `${url}/warehouse/transfer-request/${requestId}`,
+      { credentials: "include" },
+    );
+    return json<InventoryTransferRequestDetail>(
+      res,
+      "Error al obtener detalle de solicitud",
+    );
   },
 
   async listTransferRequests(): Promise<any[]> {

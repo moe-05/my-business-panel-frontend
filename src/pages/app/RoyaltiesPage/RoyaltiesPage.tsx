@@ -1,82 +1,124 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLoaderData } from "react-router-dom";
 
 import { royaltyApi } from "@/api/royalty.api";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
 import { Toast } from "@/components/ui/Toast";
-import { Badge } from "@/components/ui/Badge";
 
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
 import type {
-  GiftableProduct,
+  TenantProductGroup,
+  TenantProductGroupType,
+} from "@/interfaces/entities/ProductGroup.interface";
+import type {
   RoyaltyOption,
   RoyaltyRule,
 } from "@/interfaces/entities/Royalty.interface";
 import type { RoyaltiesPageLoaderData } from "@/router/loaders/royalties.loaders";
 
 const fmt = (v: number) =>
-  `₡ ${Number(v).toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
-
-interface OptionDraft {
-  tenant_product_group_id: string;
-  quantity: number;
-  scope: "any" | "specific";
-  selectedProductIds: string[];
-}
-
-const emptyDraft = (): OptionDraft => ({
-  tenant_product_group_id: "",
-  quantity: 1,
-  scope: "any",
-  selectedProductIds: [],
-});
+  `CRC ${Number(v).toLocaleString("es-CR", { minimumFractionDigits: 2 })}`;
 
 export function RoyaltiesPage() {
   const {
     rules: initialRules,
     productGroups,
+    productGroupTypes,
     tenantId,
   } = useLoaderData() as RoyaltiesPageLoaderData;
 
   const [rules, setRules] = useState<RoyaltyRule[]>(initialRules);
-  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(
-    initialRules[0]?.royalty_rule_id ?? null,
+  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ mode: ToastMode; message: string } | null>(
+    null,
   );
-  const [toast, setToast] = useState<{
-    mode: ToastMode;
-    message: string;
-  } | null>(null);
 
-  // New rule form
   const [showNewRule, setShowNewRule] = useState(false);
   const [newRuleAmount, setNewRuleAmount] = useState("");
   const [isSavingRule, setIsSavingRule] = useState(false);
 
-  // Option draft (adding new option to selected rule)
-  const [optionDraft, setOptionDraft] = useState<OptionDraft | null>(null);
-  const [isSavingOption, setIsSavingOption] = useState(false);
-  const [giftableCache, setGiftableCache] = useState<
-    Record<string, GiftableProduct[]>
-  >({});
-  const [loadingGiftable, setLoadingGiftable] = useState<string | null>(null);
-
-  // Inline option editing
-  const [editingOptionId, setEditingOptionId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState<Pick<
-    OptionDraft,
-    "quantity" | "scope" | "selectedProductIds"
-  > | null>(null);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [activeTypeId, setActiveTypeId] = useState<string | null>(null);
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, number>>({});
 
   const selectedRule =
     rules.find((r) => r.royalty_rule_id === selectedRuleId) ?? null;
 
-  const sortedRules = [...rules].sort((a, b) => a.min_amount - b.min_amount);
+  const sortedRules = useMemo(
+    () => [...rules].sort((a, b) => a.min_amount - b.min_amount),
+    [rules],
+  );
+
+  const groupById = useMemo(() => {
+    const m = new Map<string, TenantProductGroup>();
+    for (const g of productGroups) m.set(g.tenant_product_group_id, g);
+    return m;
+  }, [productGroups]);
+
+  const childrenOf = useMemo(() => {
+    const m = new Map<string | null, TenantProductGroup[]>();
+    for (const g of productGroups) {
+      if (!g.is_active) continue;
+      const key = g.parent_group_id ?? null;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(g);
+    }
+    for (const arr of m.values())
+      arr.sort((a, b) => a.group_name.localeCompare(b.group_name));
+    return m;
+  }, [productGroups]);
+
+  const activeTypes = useMemo<TenantProductGroupType[]>(
+    () => productGroupTypes.filter((t) => t.is_active),
+    [productGroupTypes],
+  );
+
+  // Dimensions actually attached to the selected rule
+  const ruleDimensionTypeIds = useMemo(() => {
+    if (!selectedRule) return new Set<string>();
+    return new Set(
+      selectedRule.dimensions.map((d) => d.tenant_product_group_type_id),
+    );
+  }, [selectedRule]);
+
+  const ruleActiveTypes = useMemo<TenantProductGroupType[]>(
+    () =>
+      activeTypes.filter((t) =>
+        ruleDimensionTypeIds.has(t.tenant_product_group_type_id),
+      ),
+    [activeTypes, ruleDimensionTypeIds],
+  );
+
+  // Effective tab: pick a still-active dimension
+  const effectiveTypeId =
+    activeTypeId &&
+    ruleActiveTypes.some((t) => t.tenant_product_group_type_id === activeTypeId)
+      ? activeTypeId
+      : ruleActiveTypes[0]?.tenant_product_group_type_id ?? null;
+
+  const optionByGroupId = useMemo(() => {
+    const m = new Map<string, RoyaltyOption>();
+    if (selectedRule) {
+      for (const o of selectedRule.options) m.set(o.tenant_product_group_id, o);
+    }
+    return m;
+  }, [selectedRule]);
+
+  const ancestorCoverage = (groupId: string): RoyaltyOption | null => {
+    let current = groupById.get(groupId);
+    while (current?.parent_group_id) {
+      const parentOpt = optionByGroupId.get(current.parent_group_id);
+      if (parentOpt) return parentOpt;
+      current = groupById.get(current.parent_group_id);
+    }
+    return null;
+  };
 
   const notify = (mode: ToastMode, message: string) =>
     setToast({ mode, message });
+
+  // ── API helpers ─────────────────────────────────────────────────────────────
 
   const reloadRules = async () => {
     const fresh = await royaltyApi.listRules(tenantId);
@@ -84,64 +126,50 @@ export function RoyaltiesPage() {
     return fresh;
   };
 
-  // ── Load giftable products for a group ─────────────────────────────────────
-
-  const loadGiftable = async (groupId: string): Promise<GiftableProduct[]> => {
-    if (giftableCache[groupId]) return giftableCache[groupId];
-    setLoadingGiftable(groupId);
-    try {
-      const products = await royaltyApi.getGiftableProducts(groupId);
-      setGiftableCache((prev) => ({ ...prev, [groupId]: products }));
-      return products;
-    } finally {
-      setLoadingGiftable(null);
-    }
-  };
-
-  // ── Create rule ─────────────────────────────────────────────────────────────
+  // ── Rule actions ────────────────────────────────────────────────────────────
 
   const handleCreateRule = async () => {
     const amount = parseFloat(newRuleAmount.replace(",", "."));
     if (!Number.isFinite(amount) || amount <= 0) {
-      notify("error", "Ingresa un monto válido mayor a 0");
+      notify("error", "Ingresa un monto valido mayor a 0");
       return;
     }
     setIsSavingRule(true);
     try {
       const created = await royaltyApi.createRule(tenantId, amount);
 
-      // Pre-populate options from the predecessor rule (rule with highest min_amount < new amount)
       const predecessor = [...rules]
         .filter((r) => r.min_amount < amount)
         .sort((a, b) => b.min_amount - a.min_amount)[0];
 
-      if (predecessor && predecessor.options.length > 0) {
+      if (predecessor) {
+        // Inherit dimensions from predecessor (if any)
+        if (predecessor.dimensions.length > 0) {
+          await royaltyApi.setRuleDimensions(
+            created.royalty_rule_id,
+            predecessor.dimensions.map((d) => d.tenant_product_group_type_id),
+          );
+        }
+        // Inherit options from predecessor
         for (const opt of predecessor.options) {
-          const newOpt = await royaltyApi.createOption({
+          await royaltyApi.createOption({
             royalty_rule_id: created.royalty_rule_id,
             tenant_product_group_id: opt.tenant_product_group_id,
             quantity: opt.quantity,
-            scope: opt.scope,
           });
-          if (opt.scope === "specific" && opt.products.length > 0) {
-            await royaltyApi.setOptionProducts(
-              newOpt.royalty_option_id,
-              opt.products.map((p) => p.product_variant_id),
-            );
-          }
         }
       }
 
-      const fresh = await reloadRules();
+      await reloadRules();
       setSelectedRuleId(created.royalty_rule_id);
       setShowNewRule(false);
       setNewRuleAmount("");
-      const msg =
+      notify(
+        "success",
         predecessor && predecessor.options.length > 0
-          ? `Regla creada con ${predecessor.options.length} opción(es) heredadas del nivel anterior`
-          : "Regla de regalía creada";
-      notify("success", msg);
-      return fresh;
+          ? `Regla creada con ${predecessor.options.length} grupo(s) heredados`
+          : "Regla de regalia creada",
+      );
     } catch (e) {
       notify("error", e instanceof Error ? e.message : "Error al crear regla");
     } finally {
@@ -149,13 +177,9 @@ export function RoyaltiesPage() {
     }
   };
 
-  // ── Delete rule ─────────────────────────────────────────────────────────────
-
   const handleDeleteRule = async (ruleId: string) => {
     if (
-      !confirm(
-        "¿Eliminar esta regla de regalía? Esta acción no se puede deshacer.",
-      )
+      !confirm("Eliminar esta regla de regalia? Esta accion no se puede deshacer.")
     )
       return;
     try {
@@ -173,134 +197,197 @@ export function RoyaltiesPage() {
     }
   };
 
-  // ── Add option ──────────────────────────────────────────────────────────────
+  // ── Dimension toggle ────────────────────────────────────────────────────────
 
-  const handleDraftGroupChange = async (groupId: string) => {
-    setOptionDraft((prev) =>
-      prev
-        ? { ...prev, tenant_product_group_id: groupId, selectedProductIds: [] }
-        : prev,
+  const handleToggleDimension = async (
+    typeId: string,
+    enable: boolean,
+  ) => {
+    if (!selectedRule) return;
+    const currentIds = selectedRule.dimensions.map(
+      (d) => d.tenant_product_group_type_id,
     );
-    if (groupId) await loadGiftable(groupId);
-  };
+    const nextIds = enable
+      ? Array.from(new Set([...currentIds, typeId]))
+      : currentIds.filter((id) => id !== typeId);
 
-  const handleSaveOption = async () => {
-    if (!selectedRule || !optionDraft) return;
-    if (!optionDraft.tenant_product_group_id) {
-      notify("error", "Selecciona un departamento");
-      return;
-    }
-    setIsSavingOption(true);
-    try {
-      const created = await royaltyApi.createOption({
-        royalty_rule_id: selectedRule.royalty_rule_id,
-        tenant_product_group_id: optionDraft.tenant_product_group_id,
-        quantity: optionDraft.quantity,
-        scope: optionDraft.scope,
-      });
+    if (!enable && selectedRule.options.some((o) => o.tenant_product_group_type_id === typeId)) {
       if (
-        optionDraft.scope === "specific" &&
-        optionDraft.selectedProductIds.length > 0
+        !confirm(
+          "Desactivar esta dimension eliminara todos sus grupos seleccionados. Continuar?",
+        )
       ) {
-        await royaltyApi.setOptionProducts(
-          created.royalty_option_id,
-          optionDraft.selectedProductIds,
-        );
+        return;
       }
+    }
+
+    try {
+      await royaltyApi.setRuleDimensions(selectedRule.royalty_rule_id, nextIds);
       await reloadRules();
-      setOptionDraft(null);
-      notify("success", "Opción agregada");
+      if (!enable && activeTypeId === typeId) setActiveTypeId(null);
     } catch (e) {
       notify(
         "error",
-        e instanceof Error ? e.message : "Error al guardar opción",
+        e instanceof Error ? e.message : "Error al actualizar dimensiones",
       );
-    } finally {
-      setIsSavingOption(false);
     }
   };
 
-  // ── Edit option ─────────────────────────────────────────────────────────────
+  // ── Option actions ──────────────────────────────────────────────────────────
 
-  const startEditOption = async (opt: RoyaltyOption) => {
-    setEditingOptionId(opt.royalty_option_id);
-    setEditDraft({
-      quantity: opt.quantity,
-      scope: opt.scope,
-      selectedProductIds: opt.products.map((p) => p.product_variant_id),
-    });
-    if (opt.scope === "specific" || true) {
-      await loadGiftable(opt.tenant_product_group_id);
-    }
-  };
-
-  const handleSaveEdit = async (opt: RoyaltyOption) => {
-    if (!editDraft) return;
-    setIsSavingEdit(true);
+  const handleToggleGroup = async (
+    group: TenantProductGroup,
+    enable: boolean,
+  ) => {
+    if (!selectedRule) return;
     try {
-      await royaltyApi.updateOption(opt.royalty_option_id, {
-        quantity: editDraft.quantity,
-        scope: editDraft.scope,
-      });
-      if (editDraft.scope === "specific") {
-        await royaltyApi.setOptionProducts(
-          opt.royalty_option_id,
-          editDraft.selectedProductIds,
-        );
+      if (enable) {
+        await royaltyApi.createOption({
+          royalty_rule_id: selectedRule.royalty_rule_id,
+          tenant_product_group_id: group.tenant_product_group_id,
+          quantity: 1,
+        });
       } else {
-        await royaltyApi.setOptionProducts(opt.royalty_option_id, []);
+        const opt = optionByGroupId.get(group.tenant_product_group_id);
+        if (!opt) return;
+        await royaltyApi.deleteOption(opt.royalty_option_id);
       }
       await reloadRules();
-      setEditingOptionId(null);
-      setEditDraft(null);
-      notify("success", "Opción actualizada");
     } catch (e) {
       notify(
         "error",
-        e instanceof Error ? e.message : "Error al actualizar opción",
+        e instanceof Error ? e.message : "Error al actualizar grupo",
       );
-    } finally {
-      setIsSavingEdit(false);
     }
   };
 
-  const handleDeleteOption = async (optionId: string) => {
-    if (!confirm("¿Eliminar esta opción?")) return;
+  const handleQuantityCommit = async (opt: RoyaltyOption) => {
+    const draft = quantityDrafts[opt.royalty_option_id];
+    if (draft === undefined || draft === opt.quantity) return;
+    const next = Math.max(1, Math.floor(draft));
     try {
-      await royaltyApi.deleteOption(optionId);
+      await royaltyApi.updateOption(opt.royalty_option_id, { quantity: next });
+      setQuantityDrafts((prev) => {
+        const { [opt.royalty_option_id]: _omit, ...rest } = prev;
+        void _omit;
+        return rest;
+      });
       await reloadRules();
-      notify("success", "Opción eliminada");
     } catch (e) {
       notify(
         "error",
-        e instanceof Error ? e.message : "Error al eliminar opción",
+        e instanceof Error ? e.message : "Error al actualizar cantidad",
       );
     }
   };
 
-  // ── Group selector options ──────────────────────────────────────────────────
+  // ── Group tree row ─────────────────────────────────────────────────────────
 
-  const usedGroupIds = new Set(
-    selectedRule?.options.map((o) => o.tenant_product_group_id) ?? [],
-  );
+  const renderGroup = (
+    group: TenantProductGroup,
+    depth: number,
+  ): React.ReactNode => {
+    const opt = optionByGroupId.get(group.tenant_product_group_id);
+    const inheritedFrom = !opt ? ancestorCoverage(group.tenant_product_group_id) : null;
+    const inheritedFromGroup = inheritedFrom
+      ? groupById.get(inheritedFrom.tenant_product_group_id)
+      : null;
+    const children = childrenOf.get(group.tenant_product_group_id) ?? [];
+    const draftQty = opt ? quantityDrafts[opt.royalty_option_id] ?? opt.quantity : 1;
 
-  const groupOptions = (excludeId?: string) => [
-    { value: "", label: "Seleccionar departamento" },
-    ...productGroups
-      .filter(
-        (g) =>
-          g.is_active &&
-          (!usedGroupIds.has(g.tenant_product_group_id) ||
-            g.tenant_product_group_id === excludeId),
-      )
-      .map((g) => ({
-        value: g.tenant_product_group_id,
-        label: g.group_name,
-      })),
-  ];
+    return (
+      <div key={group.tenant_product_group_id} className="flex flex-col">
+        <div
+          className={`flex items-center gap-3 py-2 px-3 rounded-lg border ${
+            opt
+              ? "border-blue-300 bg-blue-50"
+              : inheritedFrom
+                ? "border-amber-200 bg-amber-50"
+                : "border-gray-200 bg-white hover:bg-gray-50"
+          }`}
+          style={{ marginLeft: depth * 20 }}
+        >
+          <input
+            type="checkbox"
+            disabled={!!inheritedFrom}
+            checked={!!opt}
+            onChange={(e) =>
+              void handleToggleGroup(group, e.target.checked)
+            }
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className={`text-sm font-medium ${
+                  inheritedFrom ? "text-amber-800" : "text-gray-800"
+                }`}
+              >
+                {group.group_name}
+              </span>
+              {children.length > 0 && (
+                <Badge variant="secondary">
+                  {children.length} subgrupo{children.length !== 1 ? "s" : ""}
+                </Badge>
+              )}
+              {inheritedFrom && (
+                <span className="text-xs text-amber-700">
+                  Heredado de {inheritedFromGroup?.group_name ?? "grupo padre"}
+                </span>
+              )}
+            </div>
+          </div>
+          {opt && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-600">Cantidad</label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={draftQty}
+                onChange={(e) =>
+                  setQuantityDrafts((prev) => ({
+                    ...prev,
+                    [opt.royalty_option_id]: parseInt(e.target.value) || 1,
+                  }))
+                }
+                onBlur={() => void handleQuantityCommit(opt)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleQuantityCommit(opt);
+                }}
+                className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          )}
+        </div>
+        {children.length > 0 && (
+          <div className="flex flex-col gap-1 mt-1">
+            {children.map((child) => renderGroup(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
-  const toggleProductId = (list: string[], id: string): string[] =>
-    list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+  const rootGroupsForActiveType = useMemo(() => {
+    if (!effectiveTypeId) return [];
+    return (childrenOf.get(null) ?? []).filter(
+      (g) => g.tenant_product_group_type_id === effectiveTypeId,
+    );
+  }, [childrenOf, effectiveTypeId]);
+
+  const optionsByTypeId = useMemo(() => {
+    const m = new Map<string, number>();
+    if (selectedRule) {
+      for (const o of selectedRule.options) {
+        m.set(
+          o.tenant_product_group_type_id,
+          (m.get(o.tenant_product_group_type_id) ?? 0) + 1,
+        );
+      }
+    }
+    return m;
+  }, [selectedRule]);
 
   return (
     <div className="p-6 lg:p-8">
@@ -313,10 +400,11 @@ export function RoyaltiesPage() {
       )}
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Regalías</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Regalias</h1>
         <p className="text-gray-600">
-          Configura bonificaciones automáticas para clientes mayoristas según
-          monto de compra.
+          Configura bonificaciones automaticas para clientes mayoristas segun
+          monto de compra. Cada regla puede aplicar a multiples dimensiones; en
+          cada dimension se eligen los grupos (los subgrupos se heredan).
         </p>
       </div>
 
@@ -343,7 +431,7 @@ export function RoyaltiesPage() {
             {showNewRule && (
               <div className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200 flex flex-col gap-2">
                 <Input
-                  label="Monto mínimo (₡)"
+                  label="Monto minimo (CRC)"
                   type="number"
                   min={0.01}
                   step="0.01"
@@ -375,8 +463,8 @@ export function RoyaltiesPage() {
                     key={rule.royalty_rule_id}
                     onClick={() => {
                       setSelectedRuleId(rule.royalty_rule_id);
-                      setOptionDraft(null);
-                      setEditingOptionId(null);
+                      setQuantityDrafts({});
+                      setActiveTypeId(null);
                     }}
                     className={`w-full text-left rounded-xl border px-4 py-3 transition-colors ${
                       selectedRuleId === rule.royalty_rule_id
@@ -389,12 +477,13 @@ export function RoyaltiesPage() {
                         {fmt(rule.min_amount)}
                       </span>
                       <Badge variant="secondary">
-                        {rule.options.length} opción
-                        {rule.options.length !== 1 ? "es" : ""}
+                        {rule.dimensions.length} dim
                       </Badge>
                     </div>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      Aplica desde este monto
+                      {rule.options.length} grupo
+                      {rule.options.length !== 1 ? "s" : ""} seleccionado
+                      {rule.options.length !== 1 ? "s" : ""}
                     </p>
                   </button>
                 ))}
@@ -422,7 +511,7 @@ export function RoyaltiesPage() {
                   <p className="text-xs text-gray-500 mt-0.5">
                     El cliente aplica{" "}
                     <span className="font-medium">
-                      floor(compra ÷ {fmt(selectedRule.min_amount)})
+                      floor(compra / {fmt(selectedRule.min_amount)})
                     </span>{" "}
                     veces a esta regla.
                   </p>
@@ -438,374 +527,112 @@ export function RoyaltiesPage() {
                 </Button>
               </div>
 
-              {/* Options list */}
-              <div className="flex flex-col gap-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Opciones por departamento
+              {/* Dimension toggle bank */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Dimensiones que aplican
                 </p>
-                <p className="text-xs text-gray-400 -mt-2">
-                  El cliente mayorista elige una opción al aplicar a esta regla.
-                </p>
-
-                {selectedRule.options.length === 0 && (
+                {activeTypes.length === 0 ? (
                   <p className="text-sm text-gray-400">
-                    Sin opciones configuradas
+                    No hay dimensiones activas en el tenant.
                   </p>
-                )}
-
-                {selectedRule.options.map((opt) => {
-                  const isEditing = editingOptionId === opt.royalty_option_id;
-                  const giftable =
-                    giftableCache[opt.tenant_product_group_id] ?? [];
-
-                  return (
-                    <div
-                      key={opt.royalty_option_id}
-                      className="border border-gray-200 rounded-xl p-4 bg-gray-50"
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-2">
-                        <div>
-                          <span className="font-semibold text-gray-800 text-sm">
-                            {opt.group_name}
-                          </span>
-                          {!isEditing && (
-                            <span className="ml-2 text-xs text-gray-500">
-                              {opt.quantity} unidad
-                              {opt.quantity !== 1 ? "es" : ""} ·{" "}
-                              {opt.scope === "any"
-                                ? "Cualquier producto"
-                                : "Productos específicos"}
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {activeTypes.map((t) => {
+                      const enabled = ruleDimensionTypeIds.has(
+                        t.tenant_product_group_type_id,
+                      );
+                      const count =
+                        optionsByTypeId.get(t.tenant_product_group_type_id) ?? 0;
+                      return (
+                        <button
+                          key={t.tenant_product_group_type_id}
+                          type="button"
+                          onClick={() =>
+                            void handleToggleDimension(
+                              t.tenant_product_group_type_id,
+                              !enabled,
+                            )
+                          }
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                            enabled
+                              ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
+                              : "bg-white text-gray-600 border-gray-300 hover:border-emerald-400"
+                          }`}
+                        >
+                          <span className="mr-1">{enabled ? "x" : "+"}</span>
+                          {t.type_name}
+                          {enabled && count > 0 && (
+                            <span className="ml-2 text-xs rounded-full px-1.5 bg-white/20 text-white">
+                              {count}
                             </span>
                           )}
-                        </div>
-                        {!isEditing && (
-                          <div className="flex gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void startEditOption(opt)}
-                            >
-                              Editar
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() =>
-                                void handleDeleteOption(opt.royalty_option_id)
-                              }
-                            >
-                              ×
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* View mode: product list */}
-                      {!isEditing &&
-                        opt.scope === "specific" &&
-                        opt.products.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {opt.products.map((p) => (
-                              <span
-                                key={p.product_variant_id}
-                                className="text-xs bg-white border border-gray-200 rounded-md px-2 py-0.5 text-gray-700"
-                              >
-                                {p.variant_name}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      {!isEditing && opt.scope === "any" && (
-                        <p className="text-xs text-gray-400 mt-1">
-                          Cualquier producto con regalía activa del departamento
-                        </p>
-                      )}
-
-                      {/* Edit mode */}
-                      {isEditing && editDraft && (
-                        <div className="flex flex-col gap-3 mt-2">
-                          <div className="grid grid-cols-2 gap-3">
-                            <Input
-                              label="Cantidad"
-                              type="number"
-                              min={1}
-                              step={1}
-                              value={editDraft.quantity}
-                              onChange={(e) =>
-                                setEditDraft((prev) =>
-                                  prev
-                                    ? {
-                                        ...prev,
-                                        quantity: parseInt(e.target.value) || 1,
-                                      }
-                                    : prev,
-                                )
-                              }
-                            />
-                            <Select
-                              label="Tipo de selección"
-                              value={editDraft.scope}
-                              onChange={(e) =>
-                                setEditDraft((prev) =>
-                                  prev
-                                    ? {
-                                        ...prev,
-                                        scope: e.target.value as
-                                          | "any"
-                                          | "specific",
-                                        selectedProductIds:
-                                          e.target.value === "any"
-                                            ? []
-                                            : prev.selectedProductIds,
-                                      }
-                                    : prev,
-                                )
-                              }
-                              options={[
-                                { value: "any", label: "Cualquier producto" },
-                                {
-                                  value: "specific",
-                                  label: "Productos específicos",
-                                },
-                              ]}
-                            />
-                          </div>
-
-                          {editDraft.scope === "specific" && (
-                            <div>
-                              <p className="text-xs font-medium text-gray-600 mb-1">
-                                Productos regalables del departamento
-                              </p>
-                              {loadingGiftable ===
-                              opt.tenant_product_group_id ? (
-                                <p className="text-xs text-gray-400">
-                                  Cargando...
-                                </p>
-                              ) : giftable.length === 0 ? (
-                                <p className="text-xs text-gray-400">
-                                  Sin productos regalables en este departamento
-                                </p>
-                              ) : (
-                                <div className="flex flex-wrap gap-1">
-                                  {giftable.map((p) => {
-                                    const selected =
-                                      editDraft.selectedProductIds.includes(
-                                        p.product_variant_id,
-                                      );
-                                    return (
-                                      <button
-                                        key={p.product_variant_id}
-                                        type="button"
-                                        onClick={() =>
-                                          setEditDraft((prev) =>
-                                            prev
-                                              ? {
-                                                  ...prev,
-                                                  selectedProductIds:
-                                                    toggleProductId(
-                                                      prev.selectedProductIds,
-                                                      p.product_variant_id,
-                                                    ),
-                                                }
-                                              : prev,
-                                          )
-                                        }
-                                        className={`text-xs rounded-md px-2 py-1 border transition-colors ${
-                                          selected
-                                            ? "bg-blue-600 text-white border-blue-600"
-                                            : "bg-white text-gray-700 border-gray-200 hover:border-blue-400"
-                                        }`}
-                                      >
-                                        {p.variant_name}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="flex gap-2">
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              loading={isSavingEdit}
-                              onClick={() => void handleSaveEdit(opt)}
-                            >
-                              Guardar
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => {
-                                setEditingOptionId(null);
-                                setEditDraft(null);
-                              }}
-                            >
-                              Cancelar
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* Add option form */}
-                {optionDraft ? (
-                  <div className="border border-blue-200 rounded-xl p-4 bg-blue-50 flex flex-col gap-3">
-                    <p className="text-sm font-semibold text-blue-800">
-                      Nueva opción de departamento
-                    </p>
-                    <Select
-                      label="Departamento"
-                      value={optionDraft.tenant_product_group_id}
-                      onChange={(e) =>
-                        void handleDraftGroupChange(e.target.value)
-                      }
-                      options={groupOptions()}
-                      required
-                    />
-                    <div className="grid grid-cols-2 gap-3">
-                      <Input
-                        label="Cantidad a regalar"
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={optionDraft.quantity}
-                        onChange={(e) =>
-                          setOptionDraft((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  quantity: parseInt(e.target.value) || 1,
-                                }
-                              : prev,
-                          )
-                        }
-                      />
-                      <Select
-                        label="Tipo de selección"
-                        value={optionDraft.scope}
-                        onChange={(e) =>
-                          setOptionDraft((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  scope: e.target.value as "any" | "specific",
-                                  selectedProductIds:
-                                    e.target.value === "any"
-                                      ? []
-                                      : prev.selectedProductIds,
-                                }
-                              : prev,
-                          )
-                        }
-                        options={[
-                          { value: "any", label: "Cualquier producto" },
-                          { value: "specific", label: "Productos específicos" },
-                        ]}
-                      />
-                    </div>
-
-                    {optionDraft.scope === "specific" &&
-                      optionDraft.tenant_product_group_id && (
-                        <div>
-                          <p className="text-xs font-medium text-gray-700 mb-1">
-                            Selecciona productos giftable
-                          </p>
-                          {loadingGiftable ===
-                          optionDraft.tenant_product_group_id ? (
-                            <p className="text-xs text-gray-400">Cargando...</p>
-                          ) : (
-                              giftableCache[
-                                optionDraft.tenant_product_group_id
-                              ] ?? []
-                            ).length === 0 ? (
-                            <p className="text-xs text-gray-400">
-                              Sin productos giftable en este departamento
-                            </p>
-                          ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {(
-                                giftableCache[
-                                  optionDraft.tenant_product_group_id
-                                ] ?? []
-                              ).map((p) => {
-                                const selected =
-                                  optionDraft.selectedProductIds.includes(
-                                    p.product_variant_id,
-                                  );
-                                return (
-                                  <button
-                                    key={p.product_variant_id}
-                                    type="button"
-                                    onClick={() =>
-                                      setOptionDraft((prev) =>
-                                        prev
-                                          ? {
-                                              ...prev,
-                                              selectedProductIds:
-                                                toggleProductId(
-                                                  prev.selectedProductIds,
-                                                  p.product_variant_id,
-                                                ),
-                                            }
-                                          : prev,
-                                      )
-                                    }
-                                    className={`text-xs rounded-md px-2 py-1 border transition-colors ${
-                                      selected
-                                        ? "bg-blue-600 text-white border-blue-600"
-                                        : "bg-white text-gray-700 border-gray-200 hover:border-blue-400"
-                                    }`}
-                                  >
-                                    {p.variant_name}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                    <div className="flex gap-2">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        loading={isSavingOption}
-                        onClick={() => void handleSaveOption()}
-                        disabled={
-                          !optionDraft.tenant_product_group_id || isSavingOption
-                        }
-                      >
-                        Agregar opción
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setOptionDraft(null)}
-                      >
-                        Cancelar
-                      </Button>
-                    </div>
+                        </button>
+                      );
+                    })}
                   </div>
-                ) : (
-                  productGroups.filter(
-                    (g) =>
-                      g.is_active &&
-                      !usedGroupIds.has(g.tenant_product_group_id),
-                  ).length > 0 && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setOptionDraft(emptyDraft())}
-                    >
-                      + Agregar opción de departamento
-                    </Button>
-                  )
                 )}
               </div>
+
+              {/* Dimension tabs + group tree */}
+              {ruleActiveTypes.length === 0 ? (
+                <p className="text-sm text-gray-400">
+                  Activa al menos una dimension para configurar grupos.
+                </p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
+                    {ruleActiveTypes.map((t) => {
+                      const active =
+                        t.tenant_product_group_type_id === effectiveTypeId;
+                      const count =
+                        optionsByTypeId.get(t.tenant_product_group_type_id) ?? 0;
+                      return (
+                        <button
+                          key={t.tenant_product_group_type_id}
+                          type="button"
+                          onClick={() =>
+                            setActiveTypeId(t.tenant_product_group_type_id)
+                          }
+                          className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                            active
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
+                          }`}
+                        >
+                          {t.type_name}
+                          {count > 0 && (
+                            <span
+                              className={`ml-2 text-xs rounded-full px-1.5 ${
+                                active
+                                  ? "bg-white/20 text-white"
+                                  : "bg-blue-100 text-blue-700"
+                              }`}
+                            >
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-gray-500 mb-1">
+                      Marca los grupos que aplican. Al marcar un grupo padre,
+                      sus subgrupos se incluyen automaticamente. Solo
+                      productos con regalable = true reciben regalia.
+                    </p>
+                    {rootGroupsForActiveType.length === 0 ? (
+                      <p className="text-sm text-gray-400 py-3">
+                        Sin grupos activos en esta dimension
+                      </p>
+                    ) : (
+                      rootGroupsForActiveType.map((g) => renderGroup(g, 0))
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

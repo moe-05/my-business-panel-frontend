@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/AttributeAssignmentEditor";
 
 import { productApi, type BulkProductInput } from "@/api/product.api";
+import type { UpdateProductRequest } from "@/interfaces/api/requests/UpdateProductRequest.interface";
 import { productCompositionApi } from "@/api/productComposition.api";
 import { purchaseApi } from "@/api/purchase.api";
 import type { Supplier } from "@/interfaces/entities/Purchase.interface";
@@ -19,6 +20,10 @@ import type { Supplier } from "@/interfaces/entities/Purchase.interface";
 interface BulkPackageModalProps {
   isOpen: boolean;
   tenantId: string;
+  /** "create" (default) opens an empty form; "edit" pre-fills from editingProductId. */
+  mode?: "create" | "edit";
+  /** Required when mode === "edit". The parent (lote) product_variant_id. */
+  editingProductId?: string;
   onClose: () => void;
   onOptimisticCreate: (product: {
     tempId: string;
@@ -32,6 +37,8 @@ interface BulkPackageModalProps {
   }) => void;
   onConfirmCreate: (tempId: string, createdParentId: string) => void;
   onRollbackCreate: (tempId: string) => void;
+  /** Fired when an edit submit succeeds. Receives the parent variant id. */
+  onEditSuccess?: (parentVariantId: string) => void;
 }
 
 interface ParentForm {
@@ -45,6 +52,8 @@ interface ParentForm {
 interface ComponentForm {
   /** Local UI key — not sent to the backend. */
   key: string;
+  /** Existing child product_variant_id. Present only for edit-mode rows. */
+  existingId?: string;
   sku: string;
   name: string;
   unit_price: string;
@@ -81,11 +90,15 @@ const MAX_COMPONENTS = 50;
 export function BulkPackageModal({
   isOpen,
   tenantId,
+  mode = "create",
+  editingProductId,
   onClose,
   onOptimisticCreate,
   onConfirmCreate,
   onRollbackCreate,
+  onEditSuccess,
 }: BulkPackageModalProps) {
+  const isEdit = mode === "edit";
   const [parent, setParent] = useState<ParentForm>(EMPTY_PARENT);
   const [parentGroupIds, setParentGroupIds] = useState<string[]>([]);
   const [parentAttributes, setParentAttributes] = useState<AttributeAssignmentRow[]>(
@@ -96,9 +109,14 @@ export function BulkPackageModal({
   const [components, setComponents] = useState<ComponentForm[]>([
     newComponent(),
   ]);
+  const [isGiftable, setIsGiftable] = useState(false);
+  const [isIncludesIva, setIsIncludesIva] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [useUniformPricing, setUseUniformPricing] = useState(true);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+  // In edit mode each child has its own price/cost loaded from DB, so we
+  // default to non-uniform. The user can still flip the switch.
+  const [useUniformPricing, setUseUniformPricing] = useState(!isEdit);
   const [uniformPrice, setUniformPrice] = useState("");
   const [uniformCost, setUniformCost] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -132,6 +150,8 @@ export function BulkPackageModal({
     setUseParentSkuAsPrefix(true);
     setComponentCount(1);
     setComponents([newComponent()]);
+    setIsGiftable(false);
+    setIsIncludesIva(false);
     setError(null);
     setSubmitting(false);
     setUseUniformPricing(true);
@@ -146,6 +166,110 @@ export function BulkPackageModal({
       .then(setSuppliers)
       .catch(() => {});
   }, [isOpen]);
+
+  // Edit mode: load parent + composition + each child in parallel and prefill.
+  useEffect(() => {
+    if (!isOpen || !isEdit || !editingProductId || !tenantId) return;
+    let cancelled = false;
+    setLoadingEdit(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const [parentData, comps] = await Promise.all([
+          productApi.getByIdWithAttributes(tenantId, editingProductId),
+          productCompositionApi.byParent(tenantId, editingProductId),
+        ]);
+        if (cancelled) return;
+
+        setParent({
+          sku: parentData.sku ?? "",
+          name:
+            (parentData as { variant_name?: string }).variant_name ??
+            parentData.product_name ??
+            "",
+          cabys_code: parentData.cabys_code ?? "",
+          cabys_name: (parentData as { product_name?: string }).product_name ?? "",
+          supplier_id: parentData.supplier_id ?? "",
+        });
+        setParentGroupIds(
+          parentData.groups?.map((g) => g.tenant_product_group_id) ?? [],
+        );
+        setParentAttributes(
+          parentData.attributes?.map((a) => ({
+            tenant_attribute_id: a.tenant_attribute_id,
+            attribute_name: a.attribute_name,
+            selected_value_ids: [a.attribute_value_id],
+          })) ?? [],
+        );
+        setIsGiftable(
+          (parentData as { giftable?: boolean }).giftable ?? false,
+        );
+        setIsIncludesIva(
+          (parentData as { includes_iva?: boolean }).includes_iva ?? false,
+        );
+        setUseParentSkuAsPrefix(false);
+
+        const childDetails = await Promise.all(
+          comps.map((c) =>
+            productApi
+              .getByIdWithAttributes(tenantId, c.child_product_variant_id)
+              .catch(() => null),
+          ),
+        );
+        if (cancelled) return;
+
+        const toStr = (v: unknown): string => {
+          if (v === null || v === undefined || v === "") return "0";
+          const n = Number(v);
+          return Number.isFinite(n) ? String(n) : "0";
+        };
+        const rows: ComponentForm[] = comps.map((c, i) => {
+          const child = childDetails[i] as
+            | (Record<string, unknown> & {
+                attributes?: Array<{
+                  attribute_value_id: string;
+                  tenant_attribute_id: string;
+                  attribute_name: string;
+                }>;
+              })
+            | null;
+          return {
+            key: `c-${c.child_product_variant_id}`,
+            existingId: c.child_product_variant_id,
+            sku: (child?.sku as string | undefined) ?? c.child_sku ?? "",
+            name:
+              (child?.variant_name as string | undefined) ??
+              c.child_variant_name ??
+              "",
+            unit_price: toStr(child?.unit_price),
+            cost_price: toStr(child?.cost_price),
+            quantity_per_parent: toStr(c.quantity) || "1",
+            attributes:
+              child?.attributes?.map((a) => ({
+                tenant_attribute_id: a.tenant_attribute_id,
+                attribute_name: a.attribute_name,
+                selected_value_ids: [a.attribute_value_id],
+              })) ?? [],
+          };
+        });
+        setComponents(rows);
+        setComponentCount(rows.length);
+      } catch (e) {
+        if (!cancelled) {
+          setError(
+            e instanceof Error ? e.message : "Error al cargar el lote",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoadingEdit(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isEdit, editingProductId, tenantId]);
 
   // Sync components array length to componentCount.
   useEffect(() => {
@@ -165,8 +289,11 @@ export function BulkPackageModal({
     });
   }, [componentCount, useParentSkuAsPrefix, parent.sku]);
 
-  // Sync parent SKU prefix to existing components when checkbox changes
+  // Sync parent SKU prefix to existing components when checkbox changes.
+  // Skipped entirely in edit mode — SKUs are already valid and we don't want
+  // the auto-prefix logic to clobber them.
   useEffect(() => {
+    if (isEdit) return;
     if (componentCount === 0) return;
     setComponents((prev) =>
       prev.map((c) => {
@@ -277,6 +404,123 @@ export function BulkPackageModal({
     return null;
   };
 
+  const buildChildPayload = (
+    c: ComponentForm,
+    cabys: string,
+  ): BulkProductInput => {
+    const unitPrice = useUniformPricing
+      ? parseFloat(uniformPrice) || 0
+      : parseFloat(c.unit_price) || 0;
+    const costPrice = useUniformPricing
+      ? parseFloat(uniformCost) || 0
+      : parseFloat(c.cost_price) || 0;
+    return {
+      tenant_id: tenantId,
+      sku: c.sku.trim().toUpperCase(),
+      variant_name: c.name.trim(),
+      cabys_code: cabys,
+      unit_price: unitPrice,
+      cost_price: costPrice,
+      attribute_value_ids: c.attributes.flatMap((r) => r.selected_value_ids),
+      group_ids: parentGroupIds.length ? parentGroupIds : undefined,
+      supplier_id: parent.supplier_id || undefined,
+      giftable: isGiftable,
+      includes_iva: isIncludesIva,
+    };
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editingProductId) return;
+    const cabys = parent.cabys_code;
+
+    const parentTotalPrice = components.reduce((acc, c) => {
+      const price = useUniformPricing
+        ? parseFloat(uniformPrice) || 0
+        : parseFloat(c.unit_price) || 0;
+      return acc + price * (parseFloat(c.quantity_per_parent) || 0);
+    }, 0);
+    const parentTotalCost = components.reduce((acc, c) => {
+      const cost = useUniformPricing
+        ? parseFloat(uniformCost) || 0
+        : parseFloat(c.cost_price) || 0;
+      return acc + cost * (parseFloat(c.quantity_per_parent) || 0);
+    }, 0);
+
+    const parentUpdate: UpdateProductRequest = {
+      sku: parent.sku.trim().toUpperCase(),
+      variant_name: parent.name.trim(),
+      product_name: parent.name.trim(),
+      cabys_code: cabys,
+      category_id: cabys,
+      unit_price: Number(parentTotalPrice.toFixed(2)),
+      cost_price: Number(parentTotalCost.toFixed(2)),
+      supplier_id: parent.supplier_id || null,
+      giftable: isGiftable,
+      includes_iva: isIncludesIva,
+      group_ids: parentGroupIds,
+      attribute_value_ids: parentAttributes.flatMap((r) => r.selected_value_ids),
+    };
+
+    await productApi.update(editingProductId, parentUpdate);
+
+    const existingRows = components.filter((c) => c.existingId);
+    const newRows = components.filter((c) => !c.existingId);
+
+    await Promise.all(
+      existingRows.map((c) => {
+        const payload = buildChildPayload(c, cabys);
+        const update: UpdateProductRequest = {
+          sku: payload.sku,
+          variant_name: payload.variant_name,
+          product_name: payload.variant_name,
+          cabys_code: payload.cabys_code ?? undefined,
+          category_id: payload.cabys_code ?? undefined,
+          unit_price: payload.unit_price,
+          cost_price: payload.cost_price,
+          supplier_id: payload.supplier_id ?? null,
+          giftable: payload.giftable,
+          group_ids: payload.group_ids ?? [],
+          attribute_value_ids: payload.attribute_value_ids ?? [],
+        };
+        return productApi.update(c.existingId!, update);
+      }),
+    );
+
+    let createdNew: Array<{ product_variant_id: string }> = [];
+    if (newRows.length > 0) {
+      createdNew = await productApi.createBulk(
+        newRows.map((c) => buildChildPayload(c, cabys)),
+      );
+      if (createdNew.length !== newRows.length) {
+        throw new Error(
+          `Solo se crearon ${createdNew.length} de ${newRows.length} componentes nuevos`,
+        );
+      }
+    }
+
+    // Build the merged composition list in the order of `components`.
+    const newIdQueue = [...createdNew];
+    const compositionComponents = components.map((c) => {
+      const id = c.existingId ?? newIdQueue.shift()?.product_variant_id;
+      if (!id) {
+        throw new Error("No se pudo resolver el id de un componente nuevo");
+      }
+      return {
+        child_product_variant_id: id,
+        quantity: parseFloat(c.quantity_per_parent) || 1,
+      };
+    });
+
+    await productCompositionApi.replace({
+      tenant_id: tenantId,
+      parent_product_variant_id: editingProductId,
+      components: compositionComponents,
+    });
+
+    onEditSuccess?.(editingProductId);
+    close();
+  };
+
   const handleSubmit = async () => {
     const err = validate();
     if (err) {
@@ -286,29 +530,24 @@ export function BulkPackageModal({
     setError(null);
     setSubmitting(true);
 
+    if (isEdit) {
+      try {
+        await handleEditSubmit();
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : "Error al actualizar el lote",
+        );
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     const cabys = parent.cabys_code;
 
-    const childInputs: BulkProductInput[] = components.map((c) => {
-      const unitPrice = useUniformPricing
-        ? parseFloat(uniformPrice) || 0
-        : parseFloat(c.unit_price) || 0;
-      const costPrice = useUniformPricing
-        ? parseFloat(uniformCost) || 0
-        : parseFloat(c.cost_price) || 0;
-
-      return {
-        tenant_id: tenantId,
-        sku: c.sku.trim().toUpperCase(),
-        variant_name: c.name.trim(),
-        cabys_code: cabys,
-        unit_price: unitPrice,
-        cost_price: costPrice,
-        attribute_value_ids: c.attributes.flatMap((r) => r.selected_value_ids),
-        // Children inherit the parent's groups.
-        group_ids: parentGroupIds.length ? parentGroupIds : undefined,
-        supplier_id: parent.supplier_id || undefined,
-      };
-    });
+    const childInputs: BulkProductInput[] = components.map((c) =>
+      buildChildPayload(c, cabys),
+    );
 
     const optimisticTotalPrice = Number(
       childInputs
@@ -371,6 +610,8 @@ export function BulkPackageModal({
         cost_price: Number(parentTotalCost.toFixed(2)),
         supplier_id: parent.supplier_id || undefined,
         group_ids: parentGroupIds.length ? parentGroupIds : undefined,
+        giftable: isGiftable,
+        includes_iva: isIncludesIva,
       });
 
       // 3) Wire composition with each component's quantity_per_parent.
@@ -397,16 +638,18 @@ export function BulkPackageModal({
     <Modal
       isOpen={isOpen}
       onClose={close}
-      title="Crear lote de productos"
+      title={isEdit ? "Editar lote de productos" : "Crear lote de productos"}
       size="lg"
     >
       <div className="space-y-5">
         <p className="text-sm text-gray-600">
-          Crea un producto compuesto (lote) y sus componentes individuales en
-          una sola operación. Cada componente puede tener su propio SKU, precio,
-          costo y atributos. El lote no tiene precio propio — el valor se
-          distribuye entre los componentes.
+          {isEdit
+            ? "Edita el lote y todos sus productos individuales en una sola operación. Puedes modificar atributos, precios, cantidades y agregar nuevos componentes."
+            : "Crea un producto compuesto (lote) y sus componentes individuales en una sola operación. Cada componente puede tener su propio SKU, precio, costo y atributos. El lote no tiene precio propio — el valor se distribuye entre los componentes."}
         </p>
+        {loadingEdit && (
+          <p className="text-xs text-gray-500">Cargando datos del lote…</p>
+        )}
 
         {/* ─── Producto padre ─────────────────────────────────────────── */}
         <section className="space-y-3 rounded-2xl border border-gray-200 p-4">
@@ -490,6 +733,32 @@ export function BulkPackageModal({
               hint="Se asignará al lote y a todos los componentes"
             />
           </div>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isGiftable}
+              onChange={(e) => setIsGiftable(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              disabled={submitting}
+            />
+            <span className="text-sm text-gray-700 font-medium">
+              Marcar lote y todos sus componentes como regalables
+            </span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isIncludesIva}
+              onChange={(e) => setIsIncludesIva(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              disabled={submitting}
+            />
+            <span className="text-sm text-gray-700 font-medium">
+              El precio de venta ya incluye IVA (aplica al lote y a todos sus componentes)
+            </span>
+          </label>
 
           {/* Grupos/dimensiones del lote — los productos hijos los heredan */}
           <div className="space-y-1">
@@ -793,11 +1062,15 @@ export function BulkPackageModal({
             variant="primary"
             onClick={handleSubmit}
             loading={submitting}
-            disabled={components.length === 0 || submitting}
+            disabled={components.length === 0 || submitting || loadingEdit}
           >
             {submitting
-              ? "Creando lote..."
-              : `Crear lote y ${components.length} producto${components.length === 1 ? "" : "s"}`}
+              ? isEdit
+                ? "Guardando..."
+                : "Creando lote..."
+              : isEdit
+                ? `Guardar lote (${components.length} producto${components.length === 1 ? "" : "s"})`
+                : `Crear lote y ${components.length} producto${components.length === 1 ? "" : "s"}`}
           </Button>
         </div>
       </div>

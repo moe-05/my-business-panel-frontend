@@ -5,6 +5,7 @@ import type {
   CashRegister,
   CashRegisterSession,
   SessionGroupSale,
+  SessionPaymentMethodSale,
 } from "@/interfaces/entities/CashRegister.interface";
 
 interface ListWrapper<T> {
@@ -63,7 +64,8 @@ export const cashRegisterApi = {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
       });
-      const json: ApiResponse<ListWrapper<CashRegister>> = await response.json();
+      const json: ApiResponse<ListWrapper<CashRegister>> =
+        await response.json();
       return json.data?.results ?? [];
     } catch (error) {
       throw new Error(
@@ -79,7 +81,12 @@ export const cashRegisterApi = {
     isActive?: boolean;
     page?: number;
     limit?: number;
-  }): Promise<{ results: CashRegister[]; total: number; page: number; limit: number }> {
+  }): Promise<{
+    results: CashRegister[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     const params = new URLSearchParams();
     if (filters?.branchId) params.set("branch_id", filters.branchId);
     if (filters?.isActive !== undefined)
@@ -99,12 +106,25 @@ export const cashRegisterApi = {
     if (!response.ok) {
       throw new Error(json?.message ?? "Error al listar cajas");
     }
-    return (json as ApiResponse<{ results: CashRegister[]; total: number; page: number; limit: number }>).data ?? json;
+    return (
+      (
+        json as ApiResponse<{
+          results: CashRegister[];
+          total: number;
+          page: number;
+          limit: number;
+        }>
+      ).data ?? json
+    );
   },
 
   async update(
     cashRegisterId: string,
-    data: { register_name?: string; is_active?: boolean; cash_register_key?: string | null },
+    data: {
+      register_name?: string;
+      is_active?: boolean;
+      cash_register_key?: string | null;
+    },
   ): Promise<CashRegister> {
     const response = await fetch(`${url}/cash-register/${cashRegisterId}`, {
       method: "PUT",
@@ -129,7 +149,9 @@ export const cashRegisterApi = {
       credentials: "include",
     });
     if (!response.ok) {
-      const json = await response.json().catch(() => ({})) as { message?: string };
+      const json = (await response.json().catch(() => ({}))) as {
+        message?: string;
+      };
       throw new Error(json?.message ?? "Error al eliminar caja registradora");
     }
   },
@@ -160,7 +182,10 @@ export const cashRegisterApi = {
           : (json?.message ?? "Error al listar sesiones de caja");
         throw new Error(message);
       }
-      return (json as ApiResponse<ListWrapper<CashRegisterSession>>).data?.results ?? [];
+      return (
+        (json as ApiResponse<ListWrapper<CashRegisterSession>>).data?.results ??
+        []
+      );
     } catch (error) {
       throw new Error(
         error instanceof Error
@@ -226,6 +251,12 @@ export const cashRegisterApi = {
   async closeSession(
     sessionId: string,
     closingAmount: number,
+    amounts: {
+      cash?: number;
+      debit?: number;
+      credit?: number;
+      transfer?: number;
+    },
     closedAt?: string,
     cashRegisterKey?: string,
   ): Promise<CashRegisterSession> {
@@ -237,6 +268,10 @@ export const cashRegisterApi = {
         body: JSON.stringify({
           cash_register_session_id: sessionId,
           closing_amount: closingAmount,
+          cash_sales_amount: amounts.cash ?? 0,
+          debit_sales_amount: amounts.debit ?? 0,
+          credit_sales_amount: amounts.credit ?? 0,
+          transfer_sales_amount: amounts.transfer ?? 0,
           closed_at: closedAt ?? new Date().toISOString(),
           ...(cashRegisterKey ? { cash_register_key: cashRegisterKey } : {}),
         }),
@@ -264,5 +299,17 @@ export const cashRegisterApi = {
     const body = await res.json();
     if (!res.ok) throw new Error(body?.message ?? "Error al cargar reporte");
     return (body as ApiResponse<SessionGroupSale[]>).data;
+  },
+
+  async getPaymentMethods(
+    sessionId: string,
+  ): Promise<SessionPaymentMethodSale[]> {
+    const res = await fetch(
+      `${url}/cash-register/sessions/${sessionId}/payment-methods`,
+      { credentials: "include" },
+    );
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.message ?? "Error al cargar métodos");
+    return (body as ApiResponse<SessionPaymentMethodSale[]>).data;
   },
 };

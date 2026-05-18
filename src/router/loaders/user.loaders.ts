@@ -1,5 +1,6 @@
 import { userApi } from "@/api/user.api";
 import { authApi } from "@/api/auth.api";
+import { withAuthCheck } from "./utils/withAuthCheck";
 
 import type { User } from "@/interfaces/entities/User.interface";
 import type { Role } from "@/interfaces/entities/Role.interface";
@@ -9,15 +10,16 @@ export type UsersPageLoaderData = {
   initialUsers: UsersListResponse;
 };
 
-export const getUsersPageData = async (): Promise<UsersPageLoaderData> => {
-  const currentUser = await authApi.getCurrentUser();
-  const tenantId = currentUser?.tenant?.tenant_id;
-  const initialUsers = tenantId
-    ? await userApi.listByTenant(tenantId)
-    : { users: [], total: 0, page: 1, limit: 20 };
+export const getUsersPageData = async (): Promise<UsersPageLoaderData> =>
+  withAuthCheck(async () => {
+    const currentUser = await authApi.getCurrentUser();
+    const tenantId = currentUser?.tenant?.tenant_id;
+    const initialUsers = tenantId
+      ? await userApi.listByTenant(tenantId)
+      : { users: [], total: 0, page: 1, limit: 20 };
 
-  return { initialUsers };
-};
+    return { initialUsers };
+  });
 
 export const getUsers = async (
   tenantId?: string,
@@ -31,8 +33,10 @@ export const getUsersByTenant = async (
   limit = 20,
 ): Promise<UsersListResponse> => userApi.listByTenant(tenantId, page, limit);
 
-export const getUserById = async (userId: string, full?: boolean): Promise<User> =>
-  userApi.getById(userId, full);
+export const getUserById = async (
+  userId: string,
+  full?: boolean,
+): Promise<User> => userApi.getById(userId, full);
 
 export const getRoles = async (): Promise<Role[]> => userApi.getRoles();
 
