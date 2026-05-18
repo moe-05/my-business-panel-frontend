@@ -9,7 +9,7 @@ export interface PrintInvoiceData {
 }
 
 const fmt = (value: number | null | undefined, symbol: string) =>
-  `${symbol} ${Number(value ?? 0).toLocaleString("es-CR", {
+  `${symbol}${Number(value ?? 0).toLocaleString("es-CR", {
     minimumFractionDigits: 2,
   })}`;
 
@@ -39,53 +39,51 @@ function buildInvoiceHtml(data: PrintInvoiceData): string {
     ? `${inv.first_name ?? ""} ${inv.last_name ?? ""}`.trim()
     : "";
 
-  const rowStyle = `display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0f0;font-size:13px;`;
-  const labelStyle = `color:#6b7280;`;
-  const valueStyle = `color:#111827;font-weight:500;text-align:right;`;
-
+  // Compact label/value row for thermal ticket
   const row = (label: string, value: string) =>
-    `<div style="${rowStyle}"><span style="${labelStyle}">${esc(label)}</span><span style="${valueStyle}">${value}</span></div>`;
+    `<div class="row"><span class="lbl">${esc(label)}</span><span class="val">${value}</span></div>`;
+
+  const line = (text: string) => `<div class="line">${text}</div>`;
+
+  const sep = `<div class="sep"></div>`;
 
   const sectionTitle = (title: string) =>
-    `<p style="font-size:10px;text-transform:uppercase;color:#6b7280;letter-spacing:0.05em;margin-bottom:8px;">${esc(title)}</p>`;
-
-  const card = (innerHtml: string) =>
-    `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:16px;">${innerHtml}</div>`;
+    `<div class="sect-title">${esc(title)}</div>`;
 
   const tenantIdLabel =
     inv?.tenant_identification_type_code ||
     inv?.tenant_identification_type_name ||
-    "Identificación";
+    "ID";
   const customerIdLabel =
     inv?.customer_identification_type_code ||
     inv?.customer_identification_type_name ||
-    "Documento";
+    "Doc";
 
   const tenantHeader = inv
-    ? card(
-        `${sectionTitle("Emisor")}` +
-          (inv.tenant_name
-            ? `<p style="font-size:16px;font-weight:700;color:#111827;margin-bottom:4px;">${esc(inv.tenant_name)}</p>`
-            : "") +
-          (inv.branch_name
-            ? `<p style="font-size:13px;color:#374151;margin-bottom:6px;">${esc(inv.branch_name)}${inv.branch_address ? ` &mdash; ${esc(inv.branch_address)}` : ""}</p>`
-            : "") +
-          (inv.tenant_identification
-            ? row(esc(tenantIdLabel), esc(inv.tenant_identification))
-            : "") +
-          (inv.tenant_econ_activity
-            ? row("Actividad económica", esc(inv.tenant_econ_activity))
-            : "") +
-          (inv.tenant_contact_email
-            ? row("Email", esc(inv.tenant_contact_email))
-            : "") +
-          (inv.tenant_contact_phone
-            ? row("Teléfono", esc(inv.tenant_contact_phone))
-            : "") +
-          (inv.tenant_sign
-            ? `<p style="font-size:12px;color:#4b5563;font-style:italic;margin-top:8px;">${esc(inv.tenant_sign)}</p>`
-            : ""),
-      )
+    ? (inv.tenant_name
+        ? `<div class="title">${esc(inv.tenant_name)}</div>`
+        : "") +
+      (inv.branch_name
+        ? `<div class="subtitle">${esc(inv.branch_name)}</div>`
+        : "") +
+      (inv.branch_address
+        ? `<div class="muted-center">${esc(inv.branch_address)}</div>`
+        : "") +
+      (inv.tenant_identification
+        ? `<div class="muted-center">${esc(tenantIdLabel)}: ${esc(inv.tenant_identification)}</div>`
+        : "") +
+      (inv.tenant_econ_activity
+        ? `<div class="muted-center">Act. econ.: ${esc(inv.tenant_econ_activity)}</div>`
+        : "") +
+      (inv.tenant_contact_phone
+        ? `<div class="muted-center">Tel: ${esc(inv.tenant_contact_phone)}</div>`
+        : "") +
+      (inv.tenant_contact_email
+        ? `<div class="muted-center">${esc(inv.tenant_contact_email)}</div>`
+        : "") +
+      (inv.tenant_sign
+        ? `<div class="muted-center italic">${esc(inv.tenant_sign)}</div>`
+        : "")
     : "";
 
   const hasCustomer = !!(
@@ -101,187 +99,253 @@ function buildInvoiceHtml(data: PrintInvoiceData): string {
 
   const customerBlock =
     inv && hasCustomer
-      ? card(
-          `${sectionTitle("Cliente")}` +
-            (customerName ? row("Nombre", esc(customerName)) : "") +
-            (inv.document_number
-              ? row(esc(customerIdLabel), esc(inv.document_number))
-              : "") +
-            (inv.customer_econ_activity
-              ? row("Actividad económica", esc(inv.customer_econ_activity))
-              : "") +
-            (inv.email ? row("Email", esc(inv.email)) : "") +
-            (inv.customer_phone
-              ? row("Teléfono", esc(inv.customer_phone))
-              : "") +
-            (inv.customer_address
-              ? row("Dirección", esc(inv.customer_address))
-              : "") +
-            (inv.customer_birthdate
-              ? row(
-                  "Fecha de nacimiento",
-                  fmtDateOnly(inv.customer_birthdate),
-                )
-              : ""),
-        )
+      ? sectionTitle("Cliente") +
+        (customerName ? line(esc(customerName)) : "") +
+        (inv.document_number
+          ? line(`${esc(customerIdLabel)}: ${esc(inv.document_number)}`)
+          : "") +
+        (inv.customer_econ_activity
+          ? line(`Act. econ.: ${esc(inv.customer_econ_activity)}`)
+          : "") +
+        (inv.email ? line(esc(inv.email)) : "") +
+        (inv.customer_phone ? line(`Tel: ${esc(inv.customer_phone)}`) : "") +
+        (inv.customer_address ? line(esc(inv.customer_address)) : "") +
+        (inv.customer_birthdate
+          ? line(`Nac.: ${fmtDateOnly(inv.customer_birthdate)}`)
+          : "")
       : "";
 
   const saleBlock = inv
-    ? card(
-        `${sectionTitle("Datos de la venta")}` +
-          row(
-            "Condición de venta",
-            esc(inv.sale_condition_desc ?? inv.sale_condition ?? "—"),
-          ) +
-          row("Fecha de venta", fmtDate(inv.sale_date)) +
-          row("Fecha de factura", fmtDate(inv.invoiced_at)) +
-          (inv.due_date
-            ? row("Fecha límite pago", fmtDateOnly(inv.due_date))
-            : "") +
-          row(
-            "Moneda",
-            esc(
-              inv.currency_code
-                ? `${inv.currency_code} (${inv.currency_symbol ?? ""})`
-                : "—",
-            ),
-          ) +
-          row(
-            "Factura electrónica",
-            inv.has_electronic_invoice ? "Sí" : "No",
-          ) +
-          (inv.seller_email
-            ? row("Vendedor", esc(inv.seller_email))
-            : "") +
-          (saleId
-            ? `<div style="${rowStyle}"><span style="${labelStyle}">ID de venta</span><span style="font-family:monospace;font-size:11px;color:#374151;text-align:right;">${esc(saleId)}</span></div>`
-            : ""),
-      )
+    ? sectionTitle("Venta") +
+      row(
+        "Cond.",
+        esc(inv.sale_condition_desc ?? inv.sale_condition ?? "—"),
+      ) +
+      row("Fecha", fmtDate(inv.sale_date)) +
+      row("Factura", fmtDate(inv.invoiced_at)) +
+      (inv.due_date ? row("Vence", fmtDateOnly(inv.due_date)) : "") +
+      row("Moneda", esc(inv.currency_code ?? "—")) +
+      row("FE", inv.has_electronic_invoice ? "Sí" : "No") +
+      (inv.seller_email ? row("Vend.", esc(inv.seller_email)) : "") +
+      (saleId ? `<div class="mono-tiny">ID: ${esc(saleId)}</div>` : "")
     : "";
 
   const items = inv?.items ?? [];
   const itemsBlock =
     items.length > 0
-      ? card(
-          `${sectionTitle("Productos")}` +
-            `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;">
-            <thead>
-              <tr style="background:#f3f4f6;color:#6b7280;text-transform:uppercase;font-size:10px;">
-                <th style="text-align:left;padding:6px 4px;">Descripción</th>
-                <th style="text-align:left;padding:6px 4px;">SKU</th>
-                <th style="text-align:left;padding:6px 4px;">CABYS</th>
-                <th style="text-align:right;padding:6px 4px;">Cant.</th>
-                <th style="text-align:right;padding:6px 4px;">P. unit.</th>
-                <th style="text-align:right;padding:6px 4px;">Subtotal</th>
-                <th style="text-align:right;padding:6px 4px;">IVA %</th>
-                <th style="text-align:right;padding:6px 4px;">IVA</th>
-                <th style="text-align:right;padding:6px 4px;">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${items
-                .map((it) => {
-                  const label = it.description || it.variant_name || "—";
-                  return `<tr style="border-top:1px solid #f0f0f0;">
-                    <td style="padding:5px 4px;color:#111827;">${esc(label)}</td>
-                    <td style="padding:5px 4px;font-family:monospace;color:#6b7280;font-size:11px;">${esc(it.sku ?? "—")}</td>
-                    <td style="padding:5px 4px;font-family:monospace;color:#6b7280;font-size:11px;">${esc(it.cabys_code ?? "—")}</td>
-                    <td style="padding:5px 4px;text-align:right;color:#374151;">${esc(it.quantity)}</td>
-                    <td style="padding:5px 4px;text-align:right;color:#374151;">${fmt(it.unit_price, symbol)}</td>
-                    <td style="padding:5px 4px;text-align:right;color:#374151;">${fmt(it.subtotal, symbol)}</td>
-                    <td style="padding:5px 4px;text-align:right;color:#6b7280;">${esc(Number(it.tax_rate_percentage ?? 0))}%</td>
-                    <td style="padding:5px 4px;text-align:right;color:#374151;">${fmt(it.tax_amount, symbol)}</td>
-                    <td style="padding:5px 4px;text-align:right;font-weight:600;color:#111827;">${fmt(it.total_price, symbol)}</td>
-                  </tr>`;
-                })
-                .join("")}
-            </tbody>
-          </table>`,
-        )
+      ? sectionTitle("Productos") +
+        items
+          .map((it) => {
+            const label = it.description || it.variant_name || "—";
+            const codes = [
+              it.sku ? `SKU ${esc(it.sku)}` : "",
+              it.cabys_code ? `CABYS ${esc(it.cabys_code)}` : "",
+            ]
+              .filter(Boolean)
+              .join(" | ");
+            const qtyLine = `${esc(it.quantity)} x ${fmt(it.unit_price, symbol)}`;
+            return `<div class="item">
+              <div class="item-name">${esc(label)}</div>
+              ${codes ? `<div class="item-meta">${codes}</div>` : ""}
+              <div class="row"><span class="lbl">${qtyLine}</span><span class="val">${fmt(it.subtotal, symbol)}</span></div>
+              ${
+                Number(it.tax_amount) > 0
+                  ? `<div class="row"><span class="lbl">IVA ${esc(Number(it.tax_rate_percentage ?? 0))}%</span><span class="val">${fmt(it.tax_amount, symbol)}</span></div>`
+                  : ""
+              }
+              <div class="row strong"><span class="lbl">Total</span><span class="val">${fmt(it.total_price, symbol)}</span></div>
+            </div>`;
+          })
+          .join("")
       : "";
 
   const payments = inv?.payments ?? [];
   const paymentsBlock =
     payments.length > 0
-      ? card(
-          `${sectionTitle("Métodos de pago")}` +
-            payments
-              .map((p) => {
-                const sym = p.currency_symbol ?? symbol;
-                const label = p.is_points_redemption
-                  ? `${p.payment_method_name ?? "Puntos"} (puntos canjeados: ${p.points_redeemed})`
-                  : (p.payment_method_name ?? "Método");
-                return `<div style="${rowStyle}"><span style="${labelStyle}">${esc(label)}</span><span style="${valueStyle}">${fmt(p.payment_amount, sym)}</span></div>`;
-              })
-              .join(""),
-        )
+      ? sectionTitle("Pagos") +
+        payments
+          .map((p) => {
+            const sym = p.currency_symbol ?? symbol;
+            const label = p.is_points_redemption
+              ? `${p.payment_method_name ?? "Puntos"} (${p.points_redeemed} pts)`
+              : (p.payment_method_name ?? "Método");
+            return row(label, fmt(p.payment_amount, sym));
+          })
+          .join("")
       : "";
 
   const pointsHtml =
     pointsRedeemed && pointsRedeemed > 0 && pointsRate && pointsRate > 0
-      ? `<div style="${rowStyle}"><span style="${labelStyle}">Puntos canjeados</span><span style="color:#92400e;font-weight:600;text-align:right;">-${pointsRedeemed.toLocaleString("es-CR")} pts &asymp; ${fmt(Math.floor(pointsRedeemed / pointsRate), "₡")}</span></div>`
+      ? row(
+          "Puntos canjeados",
+          `-${pointsRedeemed.toLocaleString("es-CR")} pts`,
+        )
       : "";
 
   const loyaltyHtml =
     inv?.points_accumulated && inv.points_accumulated > 0
-      ? `<div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:10px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:13px;font-weight:600;color:#4c1d95;">Puntos de fidelidad otorgados</span>
-          <span style="font-size:16px;font-weight:700;color:#7c3aed;">+${esc(inv.points_accumulated)}</span>
-        </div>`
+      ? `<div class="loyalty">+${esc(inv.points_accumulated)} pts ganados</div>`
       : "";
 
   const totalsBlock = inv
-    ? card(
-        `${sectionTitle("Resumen")}` +
-          row("Subtotal", fmt(inv.subtotal_amount, symbol)) +
-          (inv.total_discount && inv.total_discount > 0
-            ? row("Descuentos", `-${fmt(inv.total_discount, symbol)}`)
-            : "") +
-          row("Impuestos", fmt(inv.tax_amount, symbol)) +
-          `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:15px;font-weight:700;border-top:2px solid #e5e7eb;margin-top:4px;">
-            <span>Total</span><span>${fmt(inv.total_amount, symbol)}</span>
-          </div>` +
-          (inv.amount_paid && inv.amount_paid > 0
-            ? row("Monto pagado", fmt(inv.amount_paid, symbol))
-            : "") +
-          (inv.change_amount && inv.change_amount > 0
-            ? row("Cambio", fmt(inv.change_amount, symbol))
-            : "") +
-          pointsHtml,
-      )
+    ? sectionTitle("Resumen") +
+      row("Subtotal", fmt(inv.subtotal_amount, symbol)) +
+      (inv.total_discount && inv.total_discount > 0
+        ? row("Descuentos", `-${fmt(inv.total_discount, symbol)}`)
+        : "") +
+      row("Impuestos", fmt(inv.tax_amount, symbol)) +
+      `<div class="total-row"><span>TOTAL</span><span>${fmt(inv.total_amount, symbol)}</span></div>` +
+      (inv.amount_paid && inv.amount_paid > 0
+        ? row("Pagado", fmt(inv.amount_paid, symbol))
+        : "") +
+      (inv.change_amount && inv.change_amount > 0
+        ? row("Cambio", fmt(inv.change_amount, symbol))
+        : "") +
+      pointsHtml
     : "";
 
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8"/>
-  <title>Factura Digital${saleId ? ` &mdash; ${esc(saleId)}` : ""}</title>
+  <title>Factura${saleId ? ` - ${esc(saleId)}` : ""}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827; padding: 24px; max-width: 720px; margin: 0 auto; }
+    html, body {
+      font-family: 'Courier New', Courier, monospace;
+      color: #000;
+      background: #f3f4f6;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .ticket {
+      width: 74mm;
+      margin: 16px auto;
+      padding: 4mm 3mm;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .title {
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .subtitle {
+      font-size: 11px;
+      text-align: center;
+      font-weight: 600;
+    }
+    .muted-center {
+      font-size: 10px;
+      text-align: center;
+      color: #333;
+    }
+    .italic { font-style: italic; }
+    .sect-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      text-align: center;
+      margin: 4px 0 2px;
+      border-top: 1px dashed #000;
+      border-bottom: 1px dashed #000;
+      padding: 2px 0;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 4px;
+      font-size: 11px;
+    }
+    .row .lbl { color: #000; }
+    .row .val { color: #000; text-align: right; white-space: nowrap; }
+    .row.strong { font-weight: 700; }
+    .line { font-size: 11px; word-break: break-word; }
+    .item { margin: 3px 0; padding: 2px 0; border-bottom: 1px dotted #999; }
+    .item:last-child { border-bottom: none; }
+    .item-name { font-weight: 700; font-size: 11px; word-break: break-word; }
+    .item-meta { font-size: 9px; color: #444; }
+    .mono-tiny {
+      font-size: 9px;
+      word-break: break-all;
+      margin-top: 2px;
+      color: #333;
+    }
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 700;
+      border-top: 1px solid #000;
+      border-bottom: 1px solid #000;
+      padding: 2px 0;
+      margin: 2px 0;
+    }
+    .loyalty {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 0;
+      border-top: 1px dashed #000;
+    }
+    .ad {
+      text-align: center;
+      font-size: 10px;
+      font-style: italic;
+      margin-top: 6px;
+      padding-top: 4px;
+      border-top: 1px dashed #000;
+    }
+    .footer {
+      text-align: center;
+      font-size: 10px;
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px dashed #000;
+    }
+    .no-print { text-align: center; padding: 10px; }
+    .no-print button {
+      background: #4f46e5;
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 18px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    @page {
+      size: 80mm auto;
+      margin: 0;
+    }
     @media print {
-      body { padding: 0; }
-      button { display: none !important; }
+      html, body { background: #fff; }
+      .ticket {
+        width: 80mm;
+        margin: 0;
+        padding: 2mm 3mm;
+        box-shadow: none;
+      }
+      .no-print { display: none !important; }
     }
   </style>
 </head>
 <body>
-  <div style="text-align:center;margin-bottom:16px;">
-    <p style="font-size:16px;font-weight:700;color:#111827;">Factura Digital</p>
-    ${saleId ? `<p style="font-family:monospace;font-size:11px;color:#6b7280;margin-top:2px;">${esc(saleId)}</p>` : ""}
+  <div class="ticket">
+    ${tenantHeader}
+    ${tenantHeader ? sep : ""}
+    ${customerBlock}
+    ${saleBlock}
+    ${itemsBlock}
+    ${paymentsBlock}
+    ${totalsBlock}
+    ${loyaltyHtml}
+    ${inv?.ad_message ? `<div class="ad">${esc(inv.ad_message)}</div>` : ""}
+    <div class="footer">¡Gracias por su compra!</div>
   </div>
-
-  ${tenantHeader}
-  ${customerBlock}
-  ${saleBlock}
-  ${itemsBlock}
-  ${paymentsBlock}
-  ${totalsBlock}
-  ${loyaltyHtml}
-  ${inv?.ad_message ? `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-top:12px;font-size:12px;color:#6b7280;font-style:italic;">${esc(inv.ad_message)}</div>` : ""}
-
-  <div style="text-align:center;margin-top:20px;">
-    <button onclick="window.print()" style="background:#4f46e5;color:white;border:none;border-radius:8px;padding:10px 24px;font-size:14px;cursor:pointer;">Imprimir</button>
+  <div class="no-print">
+    <button onclick="window.print()">Imprimir</button>
   </div>
 </body>
 </html>`;
@@ -290,7 +354,7 @@ function buildInvoiceHtml(data: PrintInvoiceData): string {
 export function usePrintInvoice() {
   const printInvoice = useCallback((data: PrintInvoiceData) => {
     const html = buildInvoiceHtml(data);
-    const win = window.open("", "_blank", "width=720,height=900");
+    const win = window.open("", "_blank", "width=360,height=720");
     if (!win) return;
     win.document.write(html);
     win.document.close();
