@@ -97,15 +97,7 @@ export function SaleDetailModal({
   const handlePrint = () => {
     printInvoice({
       saleId: sale.sale_id,
-      symbol,
       digitalInvoice,
-      items: billedItems.map((item) => ({
-        name: item.product_name,
-        sku: item.sku,
-        quantity: item.quantity,
-        unit_price: Number(item.unit_price),
-        total_price: Number(item.total_price),
-      })),
     });
   };
 

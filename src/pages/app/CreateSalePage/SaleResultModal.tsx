@@ -2,7 +2,6 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { IconCheckCircle } from "@/assets/icons";
 import type { DigitalInvoiceInfo } from "@/interfaces/entities/Sale.interface";
-import { currencies, paymentMethods } from "@/constants/payment-methods";
 import { usePrintInvoice } from "@/hooks/usePrintInvoice";
 
 interface PaymentSplit {
@@ -41,6 +40,9 @@ const fmt = (value: number | null | undefined, symbol: string) =>
 const fmtDate = (value?: string | null) =>
   value ? new Date(value).toLocaleString("es-CR") : "—";
 
+const fmtDateOnly = (value?: string | null) =>
+  value ? new Date(value).toLocaleDateString("es-CR") : "—";
+
 export function SaleResultModal({
   isOpen,
   saleId,
@@ -50,51 +52,51 @@ export function SaleResultModal({
   eInvoiceWarning,
   items,
   digitalInvoice,
-  paymentSplits,
   pointsRedeemed,
   pointsRate,
   onNewSale,
 }: SaleResultModalProps) {
-  const symbol = currencySymbol;
+  const symbol = digitalInvoice?.currency_symbol ?? currencySymbol;
   const { printInvoice } = usePrintInvoice();
 
   const handlePrint = () => {
     printInvoice({
       saleId,
-      symbol,
       digitalInvoice: digitalInvoice ?? null,
-      items: (items ?? []).map((i) => ({
-        name: i.variant_name,
-        sku: i.sku,
-        quantity: i.quantity,
-        unit_price: i.unit_price,
-        total_price: i.total_price,
-      })),
-      paymentSplits: (paymentSplits ?? [])
-        .filter((s) => parseFloat(s.amount) > 0)
-        .map((s) => {
-          const currency = currencies.find((c) => c.value === s.currencyId);
-          const method = paymentMethods.find((m) => m.value === s.methodId);
-          return {
-            methodLabel: method?.label ?? `Método`,
-            amount: parseFloat(s.amount) || 0,
-            currencySymbol: currency?.symbol ?? symbol,
-          };
-        }),
       pointsRedeemed,
       pointsRate,
     });
   };
+
+  const tenantIdLabel =
+    digitalInvoice?.tenant_identification_type_code ||
+    digitalInvoice?.tenant_identification_type_name ||
+    "Identificación";
+  const customerIdLabel =
+    digitalInvoice?.customer_identification_type_code ||
+    digitalInvoice?.customer_identification_type_name ||
+    "Documento";
+
+  const hasCustomer = !!(
+    digitalInvoice &&
+    (digitalInvoice.first_name ||
+      digitalInvoice.last_name ||
+      digitalInvoice.document_number ||
+      digitalInvoice.customer_econ_activity ||
+      digitalInvoice.email ||
+      digitalInvoice.customer_phone ||
+      digitalInvoice.customer_address ||
+      digitalInvoice.customer_birthdate)
+  );
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onNewSale}
       title="Venta registrada"
-      size="sm"
+      size="md"
     >
       <div className="flex flex-col gap-4">
-        {/* Éxito */}
         <div className="flex flex-col items-center text-center gap-2">
           <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
             <IconCheckCircle />
@@ -106,7 +108,6 @@ export function SaleResultModal({
           </div>
         </div>
 
-        {/* Resumen básico */}
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-left space-y-2">
           <Row
             label="ID de venta"
@@ -138,25 +139,221 @@ export function SaleResultModal({
           />
         </div>
 
-        {/* Factura digital */}
         {digitalInvoice && (
-          <div className="text-left">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-              Factura digital
-            </p>
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
-              {(digitalInvoice.first_name || digitalInvoice.last_name) && (
+          <>
+            <Section title="Emisor">
+              {digitalInvoice.tenant_name && (
+                <p className="text-base font-semibold text-gray-900 mb-1">
+                  {digitalInvoice.tenant_name}
+                </p>
+              )}
+              {(digitalInvoice.branch_name ||
+                digitalInvoice.branch_address) && (
+                <p className="text-sm text-gray-700 mb-2">
+                  {digitalInvoice.branch_name ?? ""}
+                  {digitalInvoice.branch_name &&
+                  digitalInvoice.branch_address
+                    ? " — "
+                    : ""}
+                  {digitalInvoice.branch_address ?? ""}
+                </p>
+              )}
+              {digitalInvoice.tenant_identification && (
                 <Row
-                  label="Cliente"
-                  value={`${digitalInvoice.first_name ?? ""} ${digitalInvoice.last_name ?? ""}`.trim()}
+                  label={tenantIdLabel}
+                  value={digitalInvoice.tenant_identification}
                 />
               )}
-              {digitalInvoice.document_number && (
-                <Row label="Documento" value={digitalInvoice.document_number} />
+              {digitalInvoice.tenant_econ_activity && (
+                <Row
+                  label="Actividad económica"
+                  value={digitalInvoice.tenant_econ_activity}
+                />
               )}
-              {digitalInvoice.email && (
-                <Row label="Email" value={digitalInvoice.email} />
+              {digitalInvoice.tenant_contact_email && (
+                <Row label="Email" value={digitalInvoice.tenant_contact_email} />
               )}
+              {digitalInvoice.tenant_contact_phone && (
+                <Row
+                  label="Teléfono"
+                  value={digitalInvoice.tenant_contact_phone}
+                />
+              )}
+              {digitalInvoice.tenant_sign && (
+                <p className="text-xs text-gray-500 italic mt-2">
+                  {digitalInvoice.tenant_sign}
+                </p>
+              )}
+            </Section>
+
+            {hasCustomer && (
+              <Section title="Cliente">
+                {(digitalInvoice.first_name || digitalInvoice.last_name) && (
+                  <Row
+                    label="Nombre"
+                    value={`${digitalInvoice.first_name ?? ""} ${digitalInvoice.last_name ?? ""}`.trim()}
+                  />
+                )}
+                {digitalInvoice.document_number && (
+                  <Row
+                    label={customerIdLabel}
+                    value={digitalInvoice.document_number}
+                  />
+                )}
+                {digitalInvoice.customer_econ_activity && (
+                  <Row
+                    label="Actividad económica"
+                    value={digitalInvoice.customer_econ_activity}
+                  />
+                )}
+                {digitalInvoice.email && (
+                  <Row label="Email" value={digitalInvoice.email} />
+                )}
+                {digitalInvoice.customer_phone && (
+                  <Row label="Teléfono" value={digitalInvoice.customer_phone} />
+                )}
+                {digitalInvoice.customer_address && (
+                  <Row
+                    label="Dirección"
+                    value={digitalInvoice.customer_address}
+                  />
+                )}
+                {digitalInvoice.customer_birthdate && (
+                  <Row
+                    label="Fecha de nacimiento"
+                    value={fmtDateOnly(digitalInvoice.customer_birthdate)}
+                  />
+                )}
+              </Section>
+            )}
+
+            <Section title="Datos de la venta">
+              <Row
+                label="Condición de venta"
+                value={
+                  digitalInvoice.sale_condition_desc ??
+                  digitalInvoice.sale_condition ??
+                  "—"
+                }
+              />
+              <Row
+                label="Fecha de venta"
+                value={fmtDate(digitalInvoice.sale_date)}
+              />
+              <Row
+                label="Fecha de factura"
+                value={fmtDate(digitalInvoice.invoiced_at)}
+              />
+              {digitalInvoice.due_date && (
+                <Row
+                  label="Fecha límite pago"
+                  value={fmtDateOnly(digitalInvoice.due_date)}
+                />
+              )}
+              <Row
+                label="Moneda"
+                value={
+                  digitalInvoice.currency_code
+                    ? `${digitalInvoice.currency_code} (${digitalInvoice.currency_symbol ?? ""})`
+                    : "—"
+                }
+              />
+              <Row
+                label="Factura electrónica"
+                value={digitalInvoice.has_electronic_invoice ? "Sí" : "No"}
+              />
+              {digitalInvoice.seller_email && (
+                <Row label="Vendedor" value={digitalInvoice.seller_email} />
+              )}
+            </Section>
+
+            {digitalInvoice.items && digitalInvoice.items.length > 0 && (
+              <div className="text-left">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Productos
+                </p>
+                <div className="rounded-xl border border-gray-200 overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 uppercase tracking-wide text-gray-500">
+                      <tr>
+                        <th className="px-2 py-2 text-left">Descripción</th>
+                        <th className="px-2 py-2 text-left">SKU</th>
+                        <th className="px-2 py-2 text-left">CABYS</th>
+                        <th className="px-2 py-2 text-right">Cant.</th>
+                        <th className="px-2 py-2 text-right">P. unit.</th>
+                        <th className="px-2 py-2 text-right">Subtotal</th>
+                        <th className="px-2 py-2 text-right">IVA %</th>
+                        <th className="px-2 py-2 text-right">IVA</th>
+                        <th className="px-2 py-2 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {digitalInvoice.items.map((it) => (
+                        <tr
+                          key={it.digital_sale_invoice_item_id}
+                          className="bg-white"
+                        >
+                          <td className="px-2 py-2 text-gray-900">
+                            {it.description || it.variant_name || "—"}
+                          </td>
+                          <td className="px-2 py-2 font-mono text-gray-500">
+                            {it.sku ?? "—"}
+                          </td>
+                          <td className="px-2 py-2 font-mono text-gray-500">
+                            {it.cabys_code ?? "—"}
+                          </td>
+                          <td className="px-2 py-2 text-right text-gray-700">
+                            {it.quantity}
+                          </td>
+                          <td className="px-2 py-2 text-right text-gray-700">
+                            {fmt(it.unit_price, symbol)}
+                          </td>
+                          <td className="px-2 py-2 text-right text-gray-700">
+                            {fmt(it.subtotal, symbol)}
+                          </td>
+                          <td className="px-2 py-2 text-right text-gray-500">
+                            {Number(it.tax_rate_percentage ?? 0)}%
+                          </td>
+                          <td className="px-2 py-2 text-right text-gray-700">
+                            {fmt(it.tax_amount, symbol)}
+                          </td>
+                          <td className="px-2 py-2 text-right font-semibold text-gray-900">
+                            {fmt(it.total_price, symbol)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {digitalInvoice.payments &&
+              digitalInvoice.payments.length > 0 && (
+                <Section title="Métodos de pago">
+                  <div className="space-y-1">
+                    {digitalInvoice.payments.map((p) => {
+                      const sym = p.currency_symbol ?? symbol;
+                      const label = p.is_points_redemption
+                        ? `${p.payment_method_name ?? "Puntos"} (puntos: ${p.points_redeemed})`
+                        : (p.payment_method_name ?? "Método");
+                      return (
+                        <div
+                          key={p.customer_payment_id}
+                          className="flex justify-between gap-2 text-sm"
+                        >
+                          <span className="text-gray-700">{label}</span>
+                          <span className="font-semibold text-gray-900">
+                            {fmt(p.payment_amount, sym)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Section>
+              )}
+
+            <Section title="Resumen">
               <Row
                 label="Subtotal"
                 value={fmt(digitalInvoice.subtotal_amount, symbol)}
@@ -223,69 +420,17 @@ export function SaleResultModal({
                   </div>
                 </div>
               )}
-              <Row label="Fecha" value={fmtDate(digitalInvoice.invoiced_at)} />
-              {digitalInvoice.due_date && (
-                <Row
-                  label="Fecha límite pago"
-                  value={new Date(digitalInvoice.due_date).toLocaleDateString(
-                    "es-CR",
-                  )}
-                />
-              )}
-              {digitalInvoice.ad_message && (
-                <div className="border-t border-gray-200 pt-2 mt-2">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                    Mensaje
-                  </p>
-                  <p className="text-sm text-gray-700 italic">
-                    {digitalInvoice.ad_message}
-                  </p>
-                </div>
-              )}
+            </Section>
 
-              {/* Payment methods section */}
-              {paymentSplits && paymentSplits.length > 0 && (
-                <>
-                  <div className="border-t border-gray-200 pt-2 mt-2" />
-                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Métodos de pago
-                  </div>
-                  <div className="space-y-1">
-                    {paymentSplits.map((split, idx) => {
-                      const currency = currencies.find(
-                        (c) => c.value === split.currencyId,
-                      );
-                      const method = paymentMethods.find(
-                        (m) => m.value === split.methodId,
-                      );
-                      return (
-                        <div
-                          key={split.id}
-                          className="bg-white border border-gray-100 rounded px-2 py-1.5 text-xs"
-                        >
-                          <div className="flex justify-between gap-2">
-                            <span className="text-gray-700">
-                              {method?.label || `Método ${idx + 1}`}
-                            </span>
-                            <span className="font-semibold text-gray-900">
-                              {fmt(
-                                parseFloat(split.amount) || 0,
-                                currency?.symbol || "$",
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+            {digitalInvoice.ad_message && (
+              <div className="text-left border border-gray-200 rounded-xl p-3 text-sm text-gray-600 italic bg-white">
+                {digitalInvoice.ad_message}
+              </div>
+            )}
+          </>
         )}
 
-        {/* Productos vendidos */}
-        {items && items.length > 0 && (
+        {!digitalInvoice && items && items.length > 0 && (
           <div className="text-left">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
               Productos vendidos
@@ -345,6 +490,25 @@ export function SaleResultModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="text-left">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+        {title}
+      </p>
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+        {children}
+      </div>
+    </div>
   );
 }
 
