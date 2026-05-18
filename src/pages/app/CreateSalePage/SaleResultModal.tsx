@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/Button";
 import { IconCheckCircle } from "@/assets/icons";
 import type { DigitalInvoiceInfo } from "@/interfaces/entities/Sale.interface";
 import { currencies, paymentMethods } from "@/constants/payment-methods";
+import { usePrintInvoice } from "@/hooks/usePrintInvoice";
 
 interface PaymentSplit {
   id: string;
@@ -55,6 +56,35 @@ export function SaleResultModal({
   onNewSale,
 }: SaleResultModalProps) {
   const symbol = currencySymbol;
+  const { printInvoice } = usePrintInvoice();
+
+  const handlePrint = () => {
+    printInvoice({
+      saleId,
+      symbol,
+      digitalInvoice: digitalInvoice ?? null,
+      items: (items ?? []).map((i) => ({
+        name: i.variant_name,
+        sku: i.sku,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total_price: i.total_price,
+      })),
+      paymentSplits: (paymentSplits ?? [])
+        .filter((s) => parseFloat(s.amount) > 0)
+        .map((s) => {
+          const currency = currencies.find((c) => c.value === s.currencyId);
+          const method = paymentMethods.find((m) => m.value === s.methodId);
+          return {
+            methodLabel: method?.label ?? `Método`,
+            amount: parseFloat(s.amount) || 0,
+            currencySymbol: currency?.symbol ?? symbol,
+          };
+        }),
+      pointsRedeemed,
+      pointsRate,
+    });
+  };
 
   return (
     <Modal
@@ -124,10 +154,19 @@ export function SaleResultModal({
               {digitalInvoice.document_number && (
                 <Row label="Documento" value={digitalInvoice.document_number} />
               )}
+              {digitalInvoice.email && (
+                <Row label="Email" value={digitalInvoice.email} />
+              )}
               <Row
                 label="Subtotal"
                 value={fmt(digitalInvoice.subtotal_amount, symbol)}
               />
+              {digitalInvoice.total_discount > 0 && (
+                <Row
+                  label="Descuentos"
+                  value={`-${fmt(digitalInvoice.total_discount, symbol)}`}
+                />
+              )}
               <Row
                 label="Impuestos"
                 value={fmt(digitalInvoice.tax_amount, symbol)}
@@ -292,6 +331,14 @@ export function SaleResultModal({
         )}
 
         <div className="flex flex-col sm:flex-row gap-2 pt-2">
+          <Button
+            variant="secondary"
+            onClick={handlePrint}
+            disabled={!digitalInvoice}
+            className="flex-1"
+          >
+            Imprimir
+          </Button>
           <Button variant="primary" onClick={onNewSale} className="flex-1">
             Aceptar
           </Button>

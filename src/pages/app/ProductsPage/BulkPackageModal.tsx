@@ -110,6 +110,7 @@ export function BulkPackageModal({
     newComponent(),
   ]);
   const [isGiftable, setIsGiftable] = useState(false);
+  const [isIncludesIva, setIsIncludesIva] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
@@ -150,6 +151,7 @@ export function BulkPackageModal({
     setComponentCount(1);
     setComponents([newComponent()]);
     setIsGiftable(false);
+    setIsIncludesIva(false);
     setError(null);
     setSubmitting(false);
     setUseUniformPricing(true);
@@ -202,6 +204,9 @@ export function BulkPackageModal({
         );
         setIsGiftable(
           (parentData as { giftable?: boolean }).giftable ?? false,
+        );
+        setIsIncludesIva(
+          (parentData as { includes_iva?: boolean }).includes_iva ?? false,
         );
         setUseParentSkuAsPrefix(false);
 
@@ -420,6 +425,7 @@ export function BulkPackageModal({
       group_ids: parentGroupIds.length ? parentGroupIds : undefined,
       supplier_id: parent.supplier_id || undefined,
       giftable: isGiftable,
+      includes_iva: isIncludesIva,
     };
   };
 
@@ -450,6 +456,7 @@ export function BulkPackageModal({
       cost_price: Number(parentTotalCost.toFixed(2)),
       supplier_id: parent.supplier_id || null,
       giftable: isGiftable,
+      includes_iva: isIncludesIva,
       group_ids: parentGroupIds,
       attribute_value_ids: parentAttributes.flatMap((r) => r.selected_value_ids),
     };
@@ -604,6 +611,7 @@ export function BulkPackageModal({
         supplier_id: parent.supplier_id || undefined,
         group_ids: parentGroupIds.length ? parentGroupIds : undefined,
         giftable: isGiftable,
+        includes_iva: isIncludesIva,
       });
 
       // 3) Wire composition with each component's quantity_per_parent.
@@ -736,6 +744,19 @@ export function BulkPackageModal({
             />
             <span className="text-sm text-gray-700 font-medium">
               Marcar lote y todos sus componentes como regalables
+            </span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isIncludesIva}
+              onChange={(e) => setIsIncludesIva(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              disabled={submitting}
+            />
+            <span className="text-sm text-gray-700 font-medium">
+              El precio de venta ya incluye IVA (aplica al lote y a todos sus componentes)
             </span>
           </label>
 

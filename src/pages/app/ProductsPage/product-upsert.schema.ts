@@ -26,6 +26,7 @@ export function buildProductUpsertSchema(requireTenant: boolean) {
       ),
     supplier_id: z.string().optional().or(z.literal("")),
     giftable: z.boolean().optional(),
+    includes_iva: z.boolean().optional(),
     giftable_from: z
       .string()
       .optional()

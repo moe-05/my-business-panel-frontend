@@ -41,6 +41,7 @@ import { warehouseApi } from "@/api/warehouse.api";
 import { promotionApi } from "@/api/promotion.api";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
+import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import {
   calculatePromotionDiscount,
   isPromotionWithinDate,
@@ -97,6 +98,7 @@ interface CartItem {
   quantity: number;
   unit_price: number;
   total_price: number;
+  includes_iva?: boolean;
   sale_price_type?: "NORMAL" | "PROMO" | "SEGMENT" | "MANUAL" | "ROYALTY";
   royalty_option_id?: string | null;
   royalty_rule_id?: string | null;
@@ -413,10 +415,18 @@ export function CreateSalePage() {
     () => Number(Math.max(grossSubtotal - discountAmount, 0).toFixed(2)),
     [grossSubtotal, discountAmount],
   );
-  const taxAmount = useMemo(
-    () => Number((subtotal * TAX_RATE).toFixed(2)),
-    [subtotal],
+  // Only apply IVA to items where includes_iva is false (price doesn't include tax).
+  // Discount is applied proportionally to the taxable portion.
+  const taxableGross = useMemo(
+    () => items.reduce((acc, item) => (!item.includes_iva ? acc + item.total_price : acc), 0),
+    [items],
   );
+  const taxAmount = useMemo(() => {
+    if (grossSubtotal <= 0) return 0;
+    const discountRatio = discountAmount / grossSubtotal;
+    const taxableNet = taxableGross * (1 - discountRatio);
+    return Number((taxableNet * TAX_RATE).toFixed(2));
+  }, [taxableGross, grossSubtotal, discountAmount]);
   const totalAmount = useMemo(
     () => subtotal + taxAmount,
     [subtotal, taxAmount],
@@ -935,6 +945,7 @@ export function CreateSalePage() {
         quantity: data.quantity,
         unit_price: data.unit_price,
         total_price: total,
+        includes_iva: selectedVariant.includes_iva ?? false,
       };
       setItems((prev) => [...prev, newItem]);
       setLastItemAmount(total);
@@ -969,6 +980,7 @@ export function CreateSalePage() {
 
   const handleVariantSelect = async (selection: ProductVariantSelection) => {
     let groupIds: string[] = [];
+    let includes_iva = false;
 
     try {
       const detail = await productApi.getByIdWithAttributes(
@@ -978,11 +990,12 @@ export function CreateSalePage() {
       groupIds = (detail.groups ?? []).map(
         (group) => group.tenant_product_group_id,
       );
+      includes_iva = detail.includes_iva ?? false;
     } catch {
       groupIds = [];
     }
 
-    setSelectedVariant({ ...selection, group_ids: groupIds });
+    setSelectedVariant({ ...selection, group_ids: groupIds, includes_iva });
     itemForm.setValue("product_variant_id", selection.product_variant_id, {
       shouldValidate: true,
     });
@@ -996,6 +1009,91 @@ export function CreateSalePage() {
     itemForm.setValue("product_variant_id", "");
     itemForm.setValue("unit_price", 0);
   };
+
+  const handleQuantityChange = useCallback(
+    (itemId: string, newQty: number) => {
+      if (newQty < 1) return;
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                quantity: newQty,
+                total_price: Number((newQty * item.unit_price).toFixed(2)),
+              }
+            : item,
+        ),
+      );
+    },
+    [],
+  );
+
+  const handleBarcodeScan = useCallback(
+    async (sku: string) => {
+      try {
+        const found = await productApi.getBySku(sku);
+        if (!found?.product_variant_id) {
+          setToast({ mode: "error", message: `SKU no encontrado: ${sku}` });
+          return;
+        }
+
+        let groupIds: string[] = [];
+        try {
+          const detail = await productApi.getByIdWithAttributes(
+            tenantId,
+            found.product_variant_id,
+          );
+          groupIds = (detail.groups ?? []).map(
+            (g) => g.tenant_product_group_id,
+          );
+        } catch {
+          groupIds = [];
+        }
+
+        const variantId = found.product_variant_id;
+        const variantName = found.variant_name ?? found.product_name ?? "—";
+        const unitPrice = Number(found.unit_price ?? found.price ?? 0);
+
+        setItems((prev) => {
+          const existingIndex = prev.findIndex(
+            (i) => i.product_variant_id === variantId,
+          );
+          if (existingIndex >= 0) {
+            return prev.map((item, idx) => {
+              if (idx !== existingIndex) return item;
+              const newQty = item.quantity + 1;
+              return {
+                ...item,
+                quantity: newQty,
+                total_price: Number((newQty * item.unit_price).toFixed(2)),
+              };
+            });
+          }
+          const newItem: CartItem = {
+            id: `${variantId}-${Date.now()}`,
+            product_variant_id: variantId,
+            variant_name: variantName,
+            sku: found.sku,
+            group_ids: groupIds,
+            quantity: 1,
+            unit_price: unitPrice,
+            total_price: unitPrice,
+            includes_iva: found.includes_iva ?? false,
+          };
+          return [...prev, newItem];
+        });
+
+        setAppliedPromotion(null);
+        setLastItemAmount(unitPrice);
+        setToast({ mode: "success", message: `Agregado: ${variantName}` });
+      } catch {
+        setToast({ mode: "error", message: `Error al buscar SKU: ${sku}` });
+      }
+    },
+    [tenantId],
+  );
+
+  useBarcodeScanner(handleBarcodeScan, step === "items");
 
   // ─── Submit ─────────────────────────────────────────────────────────────────
 
@@ -1338,7 +1436,17 @@ export function CreateSalePage() {
       key: "quantity",
       label: "Cant.",
       width: "10%",
-      render: (v) => <span className="font-mono">{v}</span>,
+      render: (_: number, row: CartItem) => (
+        <input
+          type="number"
+          min={1}
+          value={row.quantity}
+          onChange={(e) =>
+            handleQuantityChange(row.id, parseInt(e.target.value, 10) || 1)
+          }
+          className="w-16 rounded border border-gray-300 px-2 py-1 text-center font-mono text-sm focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
+        />
+      ),
     },
     {
       key: "unit_price",

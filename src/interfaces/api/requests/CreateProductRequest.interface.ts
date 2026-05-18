@@ -10,6 +10,7 @@ export interface CreateProductRequest {
   supplier_id?: string;
   giftable?: boolean;
   giftable_from?: number;
+  includes_iva?: boolean;
   attribute_value_ids?: string[];
   group_ids?: string[];
 }

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { usePrintInvoice } from "@/hooks/usePrintInvoice";
 import {
   getDigitalInvoiceForSale,
   getElectronicInvoiceForSale,
@@ -74,6 +76,8 @@ export function SaleDetailModal({
     };
   }, [isOpen, sale]);
 
+  const { printInvoice } = usePrintInvoice();
+
   if (!sale) return null;
   const symbol = sale.symbol ?? "";
 
@@ -89,6 +93,21 @@ export function SaleDetailModal({
       item.sale_price_type === "PROMO" &&
       Number(item.discount_applied ?? 0) > 0,
   );
+
+  const handlePrint = () => {
+    printInvoice({
+      saleId: sale.sale_id,
+      symbol,
+      digitalInvoice,
+      items: billedItems.map((item) => ({
+        name: item.product_name,
+        sku: item.sku,
+        quantity: item.quantity,
+        unit_price: Number(item.unit_price),
+        total_price: Number(item.total_price),
+      })),
+    });
+  };
 
   return (
     <Modal
@@ -346,6 +365,15 @@ export function SaleDetailModal({
             </div>
           </div>
         )}
+        <div className="flex justify-end pt-2">
+          <Button
+            variant="secondary"
+            onClick={handlePrint}
+            disabled={isLoading || !digitalInvoice}
+          >
+            Imprimir
+          </Button>
+        </div>
       </div>
     </Modal>
   );

@@ -17,6 +17,7 @@ export interface BulkProductInput {
   group_ids?: string[];
   supplier_id?: string;
   giftable?: boolean;
+  includes_iva?: boolean;
 }
 
 export const productApi = {
