@@ -23,6 +23,7 @@ import {
   calculatePromotionDiscount,
   findMatchingTier,
   isPromotionWithinDate,
+  promotionAppliesToItem,
   promotionTypeLabel,
 } from "@/utils/promotion";
 
@@ -46,6 +47,7 @@ export interface CartItemForPromo {
   quantity: number;
   unit_price: number;
   total_price: number;
+  group_ids?: string[];
 }
 
 export interface RoyaltyGiftItem {
@@ -326,17 +328,30 @@ export function ApplyPromotionModal({
     }
   };
 
+  const selectedPromotion = useMemo(
+    () =>
+      activePromotions.find((p) => p.promotion_id === selectedPromotionId) ??
+      null,
+    [activePromotions, selectedPromotionId],
+  );
+
   const preview = useMemo(() => {
     if (!selectedTypeName) return null;
     let total = 0;
     const perItem: Record<string, number> = {};
+    const matchedTierByItem: Record<string, PromotionRule> = {};
 
     for (const item of cartItems) {
+      if (selectedPromotion && !promotionAppliesToItem(selectedPromotion, item))
+        continue;
+
       let result;
+      let usedRule: PromotionRule = rule;
 
       if (isTieredPricing) {
         const matchingTier = findMatchingTier(tiers, item.quantity);
         if (!matchingTier) continue;
+        usedRule = matchingTier;
         result = calculatePromotionDiscount({
           type: selectedTypeName,
           rule: matchingTier,
@@ -357,6 +372,7 @@ export function ApplyPromotionModal({
       if (result.success && result.discount_amount > 0) {
         const capped = Math.min(result.discount_amount, item.total_price);
         perItem[item.id] = Number(capped.toFixed(2));
+        matchedTierByItem[item.id] = usedRule;
         total += capped;
       }
     }
@@ -364,8 +380,17 @@ export function ApplyPromotionModal({
     return {
       total: Number(total.toFixed(2)),
       perItem,
+      matchedTierByItem,
     };
-  }, [cartItems, cartSubtotal, rule, tiers, selectedTypeName, isTieredPricing]);
+  }, [
+    cartItems,
+    cartSubtotal,
+    rule,
+    tiers,
+    selectedTypeName,
+    isTieredPricing,
+    selectedPromotion,
+  ]);
 
   const selectedRoyaltyItems = useMemo<RoyaltyGiftItem[]>(() => {
     const result: RoyaltyGiftItem[] = [];
@@ -415,7 +440,12 @@ export function ApplyPromotionModal({
         const promo = activePromotions.find(
           (p) => p.promotion_id === selectedPromotionId,
         );
-        const effectiveRule = isTieredPricing ? (tiers[0] ?? {}) : rule;
+        const firstMatchedTier = Object.values(
+          preview.matchedTierByItem ?? {},
+        )[0];
+        const effectiveRule = isTieredPricing
+          ? (firstMatchedTier ?? tiers[0] ?? {})
+          : rule;
         onApply({
           promotionId: selectedPromotionId || undefined,
           promotionName: promo?.promotion_name,
