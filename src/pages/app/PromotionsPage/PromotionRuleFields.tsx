@@ -272,18 +272,22 @@ export function PromotionRuleFields({
                   hint="Vacío = sin límite superior"
                 />
                 <Input
-                  label="Precio unitario del nivel"
+                  label="Descuento por unidad (%)"
                   type="number"
                   min={0}
+                  max={100}
                   step="0.01"
-                  value={tier.tier_price ?? ""}
+                  value={tier.tier_discount_percentage ?? ""}
                   onChange={(e) =>
                     updateTier(index, {
-                      tier_price: numberOrUndefined(e.target.value),
+                      tier_discount_percentage: numberOrUndefined(
+                        e.target.value,
+                      ),
                     })
                   }
                   disabled={disabled}
                   required
+                  hint="Aplica a cada unidad del nivel"
                 />
               </div>
             </div>

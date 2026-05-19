@@ -13,6 +13,7 @@ export const promotionRuleSchema = z
     tier_min_quantity: z.coerce.number().int().min(0).optional(),
     tier_max_quantity: z.coerce.number().int().min(0).optional(),
     tier_price: z.coerce.number().min(0).optional(),
+    tier_discount_percentage: z.coerce.number().min(0).max(100).optional(),
     min_purchase_amount: z.coerce.number().min(0).optional(),
   })
   .partial();

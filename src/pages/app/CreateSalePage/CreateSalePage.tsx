@@ -44,6 +44,7 @@ import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import {
   calculatePromotionDiscount,
+  findMatchingTier,
   isPromotionWithinDate,
   promotionAppliesToItem,
 } from "@/utils/promotion";
@@ -365,8 +366,12 @@ export function CreateSalePage() {
       let bestDiscount = 0;
       for (const promo of defaultPromotions) {
         if (!promotionAppliesToItem(promo, item)) continue;
-        const rule = promo.rule ?? promo.rules?.[0];
-        if (!rule || !promo.type_name) continue;
+        if (!promo.type_name) continue;
+        const rule =
+          promo.type_name === "tiered_pricing"
+            ? findMatchingTier(promo.rules ?? [], item.quantity)
+            : (promo.rule ?? promo.rules?.[0]);
+        if (!rule) continue;
         const result = calculatePromotionDiscount({
           type: promo.type_name,
           rule,
@@ -2515,6 +2520,7 @@ export function CreateSalePage() {
           quantity: i.quantity,
           unit_price: i.unit_price,
           total_price: i.total_price,
+          group_ids: i.group_ids ?? [],
         }))}
         cartSubtotal={grossSubtotal}
         currencySymbol={currencySymbol}

@@ -56,7 +56,6 @@ const normalizeRule = (rule?: PromotionRule | null): PromotionRule => ({
   tier_level: toNumberOrUndefined(rule?.tier_level),
   tier_min_quantity: toNumberOrUndefined(rule?.tier_min_quantity),
   tier_max_quantity: toNumberOrUndefined(rule?.tier_max_quantity),
-  tier_price: toNumberOrUndefined(rule?.tier_price),
   tier_discount_percentage: toNumberOrUndefined(rule?.tier_discount_percentage),
   min_purchase_amount: toNumberOrUndefined(rule?.min_purchase_amount),
 });
@@ -214,8 +213,12 @@ export function PromotionUpsertModal({
             next.tiers = `Nivel ${i + 1}: la cantidad mínima debe ser ≥ 1.`;
             break;
           }
-          if (t.tier_price == null || t.tier_price < 0) {
-            next.tiers = `Nivel ${i + 1}: el precio unitario es requerido.`;
+          if (
+            t.tier_discount_percentage == null ||
+            t.tier_discount_percentage <= 0 ||
+            t.tier_discount_percentage > 100
+          ) {
+            next.tiers = `Nivel ${i + 1}: el descuento porcentual debe ser entre 0 y 100.`;
             break;
           }
         }
