@@ -539,7 +539,21 @@ function GroupsSection({ tenantId, onError, onSuccess }: SectionProps) {
       if (selectedTypeId === id) setSelectedTypeId(null);
       onSuccess("Dimensión eliminada");
     } catch (err) {
-      onError(err, "Error al eliminar dimensión");
+      const msg =
+        err instanceof Error ? err.message : "";
+      if (
+        msg.includes("fk_royalty_option_group") ||
+        msg.includes("royalty_option")
+      ) {
+        onError(
+          new Error(
+            "No se puede eliminar esta dimensión porque tiene reglas de regalía asociadas. Elimine las reglas de regalía vinculadas a esta dimensión antes de continuar.",
+          ),
+          "",
+        );
+      } else {
+        onError(err, "Error al eliminar dimensión");
+      }
     }
   };
 
