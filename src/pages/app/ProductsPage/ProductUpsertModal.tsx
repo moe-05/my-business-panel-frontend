@@ -223,6 +223,11 @@ export function ProductUpsertModal({
         setGroupIds(
           (detail.groups ?? []).map((g) => g.tenant_product_group_id),
         );
+
+        // Sync boolean flags from the authoritative detail response, since the
+        // product list queries may not include all fields.
+        setValue('includes_iva', (detail as any).includes_iva ?? false);
+        setValue('giftable', (detail as any).giftable ?? false);
       } catch (err) {
         if (!cancelled) {
           setSaveError(
