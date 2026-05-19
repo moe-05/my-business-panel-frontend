@@ -479,6 +479,7 @@ export function BulkPackageModal({
           cost_price: payload.cost_price,
           supplier_id: payload.supplier_id ?? null,
           giftable: payload.giftable,
+          includes_iva: payload.includes_iva,
           group_ids: payload.group_ids ?? [],
           attribute_value_ids: payload.attribute_value_ids ?? [],
         };
