@@ -174,6 +174,20 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "gift",
         rolesAllowed: [1, 2],
       },
+      {
+        id: "receivables",
+        label: "Cuentas por cobrar",
+        path: "/app/pos/receivables",
+        icon: "credit-card",
+        rolesAllowed: [1, 2, 3],
+      },
+      {
+        id: "collection-alerts",
+        label: "Alertas de cobro",
+        path: "/app/pos/collection-alerts",
+        icon: "calendar",
+        rolesAllowed: [1, 2, 3],
+      },
     ],
   },
 

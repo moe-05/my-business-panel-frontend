@@ -49,6 +49,10 @@ import {
   getSuppliersPageData,
 } from "@/router/loaders/purchase.loaders";
 import {
+  getAccountsReceivablePageData,
+  getCollectionAlertsPageData,
+} from "@/router/loaders/accounts-receivable.loaders";
+import {
   getHrAmonestacionesPageData,
   getHrAttendancePageData,
   getHrContractsPageData,
@@ -204,6 +208,26 @@ export const privateRoutes: RouteObject[] = [
               const { RoyaltiesPage } =
                 await import("@/pages/app/RoyaltiesPage/RoyaltiesPage");
               return { Component: RoyaltiesPage };
+            },
+          },
+          {
+            path: "pos/receivables",
+            loader: getAccountsReceivablePageData,
+            lazy: async () => {
+              const { AccountsReceivablePage } = await import(
+                "@/pages/app/AccountsReceivablePage/AccountsReceivablePage"
+              );
+              return { Component: AccountsReceivablePage };
+            },
+          },
+          {
+            path: "pos/collection-alerts",
+            loader: getCollectionAlertsPageData,
+            lazy: async () => {
+              const { CollectionAlertsPage } = await import(
+                "@/pages/app/CollectionAlertsPage/CollectionAlertsPage"
+              );
+              return { Component: CollectionAlertsPage };
             },
           },
           {
