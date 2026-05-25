@@ -181,7 +181,7 @@ export function CreateSalePage() {
   );
   const [usePoints, setUsePoints] = useState(false);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
-  const [apartadoPayment, setApartadoPayment] = useState<string>("");
+  // Apartado abono now flows through the payment splits panel — same as credit.
 
   const [items, setItems] = useState<CartItem[]>([]);
   const [lastItemAmount, setLastItemAmount] = useState(0);
@@ -423,7 +423,11 @@ export function CreateSalePage() {
   // Only apply IVA to items where includes_iva is false (price doesn't include tax).
   // Discount is applied proportionally to the taxable portion.
   const taxableGross = useMemo(
-    () => items.reduce((acc, item) => (!item.includes_iva ? acc + item.total_price : acc), 0),
+    () =>
+      items.reduce(
+        (acc, item) => (!item.includes_iva ? acc + item.total_price : acc),
+        0,
+      ),
     [items],
   );
   const taxAmount = useMemo(() => {
@@ -733,6 +737,7 @@ export function CreateSalePage() {
   ]);
 
   const isApartado = saleCondition === "04";
+  const isCredit = saleCondition === "02";
 
   const cashRegisterSessionId = useMemo(
     () =>
@@ -740,17 +745,17 @@ export function CreateSalePage() {
         ?.cash_register_session_id ?? "",
     [openSessions, cashRegisterId],
   );
-  const apartadoAmount = isApartado ? parseFloat(apartadoPayment) || 0 : 0;
-  const apartadoAmountDisplay = convertCrcToSaleCurrency(apartadoAmount);
+  const apartadoAmountDisplay = isApartado ? splitTotalInSaleCurrency : 0;
   const apartadoBalance = isApartado
     ? round2(totalAmountDisplay - apartadoAmountDisplay)
     : 0;
 
-  const targetPayment = isApartado
-    ? apartadoAmountDisplay
-    : usePoints && actualPointsRedeemed > 0
-      ? remainderDisplay
-      : totalAmountDisplay;
+  const targetPayment =
+    isApartado
+      ? totalAmountDisplay
+      : usePoints && actualPointsRedeemed > 0
+        ? remainderDisplay
+        : totalAmountDisplay;
   const paymentBalance = round2(targetPayment - splitTotalInSaleCurrency);
 
   // Calculate which payment currencies are being used
@@ -1015,23 +1020,20 @@ export function CreateSalePage() {
     itemForm.setValue("unit_price", 0);
   };
 
-  const handleQuantityChange = useCallback(
-    (itemId: string, newQty: number) => {
-      if (newQty < 1) return;
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === itemId
-            ? {
-                ...item,
-                quantity: newQty,
-                total_price: Number((newQty * item.unit_price).toFixed(2)),
-              }
-            : item,
-        ),
-      );
-    },
-    [],
-  );
+  const handleQuantityChange = useCallback((itemId: string, newQty: number) => {
+    if (newQty < 1) return;
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              quantity: newQty,
+              total_price: Number((newQty * item.unit_price).toFixed(2)),
+            }
+          : item,
+      ),
+    );
+  }, []);
 
   const handleBarcodeScan = useCallback(
     async (sku: string) => {
@@ -1140,7 +1142,10 @@ export function CreateSalePage() {
       const totalLoyaltyAmount = paymentSplits
         .filter((s) => s.methodId === 5)
         .reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
-      if (totalLoyaltyAmount > 0 && (pointsRate === 0 || availablePoints === 0)) {
+      if (
+        totalLoyaltyAmount > 0 &&
+        (pointsRate === 0 || availablePoints === 0)
+      ) {
         setToast({
           mode: "error",
           message: "El cliente no tiene puntos disponibles para canjear.",
@@ -1160,15 +1165,15 @@ export function CreateSalePage() {
     }
 
     if (isApartado) {
-      const abono = parseFloat(apartadoPayment) || 0;
-      if (abono <= 0) {
+      if (splitTotalInSaleCurrency <= 0) {
         setToast({
           mode: "error",
-          message: "Ingrese el monto inicial de abono (debe ser mayor a 0).",
+          message:
+            "Ingrese el abono inicial en la sección de métodos de pago (debe ser mayor a 0).",
         });
         return;
       }
-      if (abono >= totalAmount) {
+      if (splitTotalInSaleCurrency >= totalAmountDisplay - 0.01) {
         setToast({
           mode: "error",
           message: "El abono inicial debe ser menor al total de la venta.",
@@ -1177,10 +1182,26 @@ export function CreateSalePage() {
       }
     }
 
-    if (paymentBalance > 0.01) {
+    if (!isCredit && !isApartado && paymentBalance > 0.01) {
       setToast({
         mode: "error",
         message: `Monto insuficiente. Falta: ${formatAmount(paymentBalance, currencySymbol)}`,
+      });
+      return;
+    }
+
+    if (isCredit && !dueDate) {
+      setToast({
+        mode: "error",
+        message: "Ingrese la fecha límite de pago para ventas a crédito.",
+      });
+      return;
+    }
+
+    if (isApartado && !dueDate) {
+      setToast({
+        mode: "error",
+        message: "Ingrese la fecha límite de pago para ventas en apartado.",
       });
       return;
     }
@@ -1255,7 +1276,9 @@ export function CreateSalePage() {
       has_electronic_invoice: hasElectronicInvoice,
       seller_user_id: user?.user_id,
       due_date:
-        isApartado && dueDate ? dueDate : new Date().toISOString().slice(0, 10),
+        (isApartado || isCredit) && dueDate
+          ? dueDate
+          : new Date().toISOString().slice(0, 10),
       ad_message: adMessage.trim() || undefined,
       amount_paid: amountPaid,
       change_amount: changeAmount,
@@ -1443,6 +1466,7 @@ export function CreateSalePage() {
       width: "10%",
       render: (_: number, row: CartItem) => (
         <input
+          aria-label="cantidad"
           type="number"
           min={1}
           value={row.quantity}
@@ -2147,7 +2171,41 @@ export function CreateSalePage() {
         );
       })()}
 
-      {/* ── Apartado (layaway) abono panel ──────────────────────────────── */}
+      {/* ── Crédito — fecha límite de pago ──────────────────────────────── */}
+      {isCredit && step === "items" && (
+        <div className="bg-blue-50 rounded-2xl border border-blue-200 p-6 mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-8 h-8 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center font-semibold text-sm">
+              C
+            </span>
+            <h2 className="text-lg font-semibold text-blue-900">
+              Venta a crédito
+            </h2>
+          </div>
+          <p className="text-sm text-blue-800 mb-4">
+            El saldo pendiente se registrará como cuenta por cobrar al procesar
+            la venta.
+          </p>
+          <Input
+            label="Fecha límite de pago"
+            type="date"
+            value={dueDate}
+            min={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setDueDate(e.target.value)}
+            hint="Fecha en que el cliente debe liquidar el saldo"
+            required
+          />
+          {paymentBalance > 0.01 && (
+            <p className="mt-3 text-sm text-blue-700">
+              Saldo pendiente{" "}
+              <strong>{formatAmount(paymentBalance, currencySymbol)}</strong> se
+              registrará en cuentas por cobrar.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── Apartado (layaway) panel ─────────────────────────────────────── */}
       {isApartado && step === "items" && (
         <div className="bg-amber-50 rounded-2xl border border-amber-200 p-6 mb-6">
           <div className="flex items-center gap-2 mb-4">
@@ -2155,45 +2213,35 @@ export function CreateSalePage() {
               A
             </span>
             <h2 className="text-lg font-semibold text-amber-900">
-              Apartado — Abono inicial
+              Venta en apartado
             </h2>
           </div>
           <p className="text-sm text-amber-800 mb-4">
-            El cliente paga un abono hoy. La mercancía queda reservada y el
-            saldo restante se liquida en un pago futuro.
+            Registre el abono inicial en la sección de métodos de pago. La
+            mercancía queda reservada y el saldo restante se liquida en un
+            pago futuro.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label={`Monto de abono (${currencySymbol})`}
-              type="number"
-              min={0}
-              step="0.01"
-              placeholder="0.00"
-              value={apartadoPayment}
-              onChange={(e) => setApartadoPayment(e.target.value)}
-              hint="Debe ser mayor a 0 y menor al total de la venta"
-              required
-            />
-            <Input
-              label="Fecha límite de pago"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              min={new Date().toISOString().slice(0, 10)}
-              hint="Fecha en que el cliente debe liquidar el saldo"
-              required
-            />
-            <div className="bg-white rounded-xl border border-amber-200 p-4 md:col-span-2">
-              <p className="text-xs uppercase tracking-wider text-amber-700">
-                Saldo pendiente
-              </p>
-              <p className="text-2xl font-bold text-amber-900 mt-1">
-                {formatAmount(Math.max(apartadoBalance, 0), currencySymbol)}
-              </p>
-              <p className="text-xs text-amber-700 mt-1">
-                Total: {formatAmount(totalAmountDisplay, currencySymbol)}
-              </p>
-            </div>
+          <Input
+            label="Fecha límite de pago"
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            min={new Date().toISOString().slice(0, 10)}
+            hint="Fecha en que el cliente debe liquidar el saldo"
+            required
+          />
+          <div className="mt-4 bg-white rounded-xl border border-amber-200 p-4">
+            <p className="text-xs uppercase tracking-wider text-amber-700">
+              Saldo pendiente
+            </p>
+            <p className="text-2xl font-bold text-amber-900 mt-1">
+              {formatAmount(Math.max(apartadoBalance, 0), currencySymbol)}
+            </p>
+            <p className="text-xs text-amber-700 mt-1">
+              Total: {formatAmount(totalAmountDisplay, currencySymbol)} · Abono
+              ingresado:{" "}
+              {formatAmount(apartadoAmountDisplay, currencySymbol)}
+            </p>
           </div>
         </div>
       )}
