@@ -1378,7 +1378,6 @@ export function CreateSalePage() {
     setLastItemAmount(0);
     setHasElectronicInvoice(false);
     setAppliedPromotion(null);
-    setApartadoPayment("");
     setAdMessage("");
     setDueDate("");
     setPaymentSplits([
