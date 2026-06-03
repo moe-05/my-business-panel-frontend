@@ -42,6 +42,7 @@ import { promotionApi } from "@/api/promotion.api";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useUniqueAvailability } from "@/hooks/useUniqueAvailability";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
+import { useCashDrawer } from "@/hooks/useCashDrawer";
 import {
   calculatePromotionDiscount,
   findMatchingTier,
@@ -82,6 +83,7 @@ import {
 } from "./create-sale.schema";
 
 import { SaleResultModal, type SaleReceiptItem } from "./SaleResultModal";
+import { CashDrawerStatus } from "@/components/ui/CashDrawerStatus";
 import { getCustomerByDocNumber } from "@/router/loaders/customer.loaders";
 import {
   ApplyPromotionModal,
@@ -145,7 +147,8 @@ export function CreateSalePage() {
   const defaultBranchId = branches[0]?.branch_id ?? "";
   const defaultCondition = saleConditions[0]?.condition_code ?? "01";
   const defaultCurrency = currencies[0];
-  const defaultPaymentMethod = paymentMethods[0];
+  const defaultPaymentMethod =
+    paymentMethods.find((m) => m.code === "debit_card") ?? paymentMethods[0];
 
   const [branchId, setBranchId] = useState(defaultBranchId);
   const [saleCondition, setSaleCondition] = useState(defaultCondition);
@@ -1102,6 +1105,8 @@ export function CreateSalePage() {
 
   useBarcodeScanner(handleBarcodeScan, step === "items");
 
+  const { openDrawer } = useCashDrawer();
+
   // ─── Submit ─────────────────────────────────────────────────────────────────
 
   const handleSubmitSale = async () => {
@@ -1325,6 +1330,10 @@ export function CreateSalePage() {
 
     try {
       const result: CreateSaleResult = await createFullSale(payload);
+
+      const hasCashPayment = paymentSplits.some((s) => s.methodId === 1);
+      if (hasCashPayment) openDrawer();
+
       const [digitalInvoice] = await Promise.all([
         getDigitalInvoiceForSale(result.saleId),
       ]);
@@ -2257,6 +2266,7 @@ export function CreateSalePage() {
                 Métodos de pago
               </h2>
             </div>
+            <CashDrawerStatus />
           </div>
 
           {/* Partial payment checkbox */}

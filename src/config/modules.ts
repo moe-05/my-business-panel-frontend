@@ -324,6 +324,12 @@ export const MODULES: Record<ModuleId, Module> = {
     rolesAllowed: [1, 2, 3],
     submodules: [
       {
+        id: "accounts",
+        label: "Cuentas",
+        path: "/app/fnz/accounts",
+        icon: "credit-card",
+      },
+      {
         id: "accounting",
         label: "Contabilidad",
         path: "/app/fnz/accounting",

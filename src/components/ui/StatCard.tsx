@@ -10,7 +10,7 @@ export function StatCard({
   return (
     <div
       className={[
-        "rounded-2xl border p-5 flex items-start gap-4 transition-shadow hover:shadow-md",
+        "rounded-2xl border border-gray-200 p-5 flex items-start gap-4 transition-shadow hover:shadow-md",
         accent
           ? "bg-accent-600 border-accent-600 text-white"
           : "bg-white border-gray-100 text-gray-900",
