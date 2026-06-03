@@ -52,6 +52,7 @@ import {
   getAccountsReceivablePageData,
   getCollectionAlertsPageData,
 } from "@/router/loaders/accounts-receivable.loaders";
+import { getAccountsOverviewPageData } from "@/router/loaders/finances.loaders";
 import {
   getHrAmonestacionesPageData,
   getHrAttendancePageData,
@@ -379,6 +380,16 @@ export const privateRoutes: RouteObject[] = [
           },
 
           // FNZ (Finances) Module
+          {
+            path: "fnz/accounts",
+            loader: getAccountsOverviewPageData,
+            lazy: async () => {
+              const { AccountsOverviewPage } = await import(
+                "@/pages/app/AccountsOverviewPage/AccountsOverviewPage"
+              );
+              return { Component: AccountsOverviewPage };
+            },
+          },
           {
             path: "fnz/accounting",
             element: <ComingSoon title="FNZ - Contabilidad" />,
