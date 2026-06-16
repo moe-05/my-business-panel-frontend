@@ -61,6 +61,7 @@ import {
   getHrEmployeesPageData,
   getHrPayrollPageData,
 } from "@/router/loaders/hr.loaders";
+import { getFnzExpensePageData } from "@/router/loaders/fnzExpense.loaders";
 
 export const privateRoutes: RouteObject[] = [
   {
@@ -216,9 +217,8 @@ export const privateRoutes: RouteObject[] = [
             path: "pos/receivables",
             loader: getAccountsReceivablePageData,
             lazy: async () => {
-              const { AccountsReceivablePage } = await import(
-                "@/pages/app/AccountsReceivablePage/AccountsReceivablePage"
-              );
+              const { AccountsReceivablePage } =
+                await import("@/pages/app/AccountsReceivablePage/AccountsReceivablePage");
               return { Component: AccountsReceivablePage };
             },
           },
@@ -226,9 +226,8 @@ export const privateRoutes: RouteObject[] = [
             path: "pos/collection-alerts",
             loader: getCollectionAlertsPageData,
             lazy: async () => {
-              const { CollectionAlertsPage } = await import(
-                "@/pages/app/CollectionAlertsPage/CollectionAlertsPage"
-              );
+              const { CollectionAlertsPage } =
+                await import("@/pages/app/CollectionAlertsPage/CollectionAlertsPage");
               return { Component: CollectionAlertsPage };
             },
           },
@@ -385,9 +384,8 @@ export const privateRoutes: RouteObject[] = [
             path: "fnz/accounts",
             loader: getAccountsOverviewPageData,
             lazy: async () => {
-              const { AccountsOverviewPage } = await import(
-                "@/pages/app/AccountsOverviewPage/AccountsOverviewPage"
-              );
+              const { AccountsOverviewPage } =
+                await import("@/pages/app/AccountsOverviewPage/AccountsOverviewPage");
               return { Component: AccountsOverviewPage };
             },
           },
@@ -395,10 +393,18 @@ export const privateRoutes: RouteObject[] = [
             path: "fnz/profitability",
             loader: getProfitabilityPageData,
             lazy: async () => {
-              const { ProfitabilityPage } = await import(
-                "@/pages/app/ProfitabilityPage/ProfitabilityPage"
-              );
+              const { ProfitabilityPage } =
+                await import("@/pages/app/ProfitabilityPage/ProfitabilityPage");
               return { Component: ProfitabilityPage };
+            },
+          },
+          {
+            path: "fnz/expenses",
+            loader: getFnzExpensePageData,
+            lazy: async () => {
+              const { FnzExpensePage } =
+                await import("@/pages/app/FnzExpensePage/FnzExpensePage");
+              return { Component: FnzExpensePage };
             },
           },
           {
