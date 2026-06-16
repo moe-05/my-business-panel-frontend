@@ -330,6 +330,12 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "credit-card",
       },
       {
+        id: "profitability",
+        label: "Rentabilidad",
+        path: "/app/fnz/profitability",
+        icon: "trending-up",
+      },
+      {
         id: "accounting",
         label: "Contabilidad",
         path: "/app/fnz/accounting",

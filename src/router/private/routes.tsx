@@ -53,6 +53,7 @@ import {
   getCollectionAlertsPageData,
 } from "@/router/loaders/accounts-receivable.loaders";
 import { getAccountsOverviewPageData } from "@/router/loaders/finances.loaders";
+import { getProfitabilityPageData } from "@/router/loaders/profitability.loaders";
 import {
   getHrAmonestacionesPageData,
   getHrAttendancePageData,
@@ -388,6 +389,16 @@ export const privateRoutes: RouteObject[] = [
                 "@/pages/app/AccountsOverviewPage/AccountsOverviewPage"
               );
               return { Component: AccountsOverviewPage };
+            },
+          },
+          {
+            path: "fnz/profitability",
+            loader: getProfitabilityPageData,
+            lazy: async () => {
+              const { ProfitabilityPage } = await import(
+                "@/pages/app/ProfitabilityPage/ProfitabilityPage"
+              );
+              return { Component: ProfitabilityPage };
             },
           },
           {
