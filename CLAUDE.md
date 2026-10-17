@@ -18,15 +18,16 @@ Workspace context (sibling repos, cross-repo feature order, branching) lives in 
 
 React 19 + TypeScript 5.9 + `rolldown-vite` (alias `vite` vía `package.json` overrides) + `@vitejs/plugin-react-swc` + Tailwind v4 (`@tailwindcss/vite`) + react-router-dom 7 (Data Router con loaders/actions) + axios + react-hook-form + zod (`@hookform/resolvers`) + Stripe (`@stripe/react-stripe-js`).
 
-**React Compiler es incompatible con SWC** — no lo habilites. `verbatimModuleSyntax` está activado — usa siempre `import type` para imports solo-tipo. No hay test runner configurado.
+**React Compiler es incompatible con SWC** — no lo habilites. `verbatimModuleSyntax` está activado — usa siempre `import type` para imports solo-tipo. Tests: vitest (`pnpm test`) para lógica pura (utils y helpers, specs `*.spec.ts` junto al código); no hay pruebas de componentes.
 
 ## Commands
 
 ```bash
-npm run dev       # vite dev server con HMR
-npm run build     # tsc -b && vite build
-npm run lint      # eslint .
-npm run preview   # sirve el build de producción
+pnpm dev       # vite dev server con HMR
+pnpm build     # tsc -b && vite build
+pnpm lint      # eslint .
+pnpm test      # vitest run (lógica pura: utils/ y helpers/)
+pnpm preview   # sirve el build de producción
 ```
 
 Backend dev por defecto en `http://localhost:3000`. Override con `VITE_API_BASE_URL` en `.env`.

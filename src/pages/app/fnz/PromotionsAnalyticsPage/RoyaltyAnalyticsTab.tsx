@@ -47,20 +47,20 @@ const CATEGORY_COLORS = [
 
 const fmtMoney = (value: number) => formatMoney(value, "VES", "Bs.");
 const fmtUnits = (value: number) =>
-  `${Number(value ?? 0).toLocaleString("es-CR")} u`;
+  `${Number(value ?? 0).toLocaleString("es-VE")} u`;
 
 function formatBucketLabel(iso: string, unit: RoyaltyBucketUnit): string {
   const d = new Date(iso);
   switch (unit) {
     case "hour":
-      return d.toLocaleTimeString("es-CR", {
+      return d.toLocaleTimeString("es-VE", {
         hour: "2-digit",
         minute: "2-digit",
       });
     case "month":
-      return d.toLocaleDateString("es-CR", { month: "short", year: "2-digit" });
+      return d.toLocaleDateString("es-VE", { month: "short", year: "2-digit" });
     default:
-      return d.toLocaleDateString("es-CR", { day: "2-digit", month: "2-digit" });
+      return d.toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit" });
   }
 }
 

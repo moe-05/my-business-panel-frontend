@@ -4,6 +4,8 @@ export interface AccountPayableOverview {
   purchase_account_payable_id: string;
   purchase_order_id: string;
   supplier_name: string;
+  /** Moneda de los montos de la fila (CxP: USD). */
+  currency_id: number;
   total_amount: NumericLike;
   balance_due: NumericLike;
   amount_paid: NumericLike;
@@ -24,6 +26,10 @@ export interface AccountReceivableOverview {
   customer_name: string | null;
   customer_document: string | null;
   digital_sale_invoice_id: string | null;
+  /** Correlativo SENIAT de la factura; null en facturas anteriores a la numeracion por tenant. */
+  invoice_number: string | number | null;
+  /** Moneda de los montos de la fila (la de la venta). */
+  currency_id: number;
   total_amount: NumericLike;
   balance_due: NumericLike;
   amount_paid: NumericLike;
@@ -68,6 +74,10 @@ export interface PayablePayment {
   payment_method_id: number | null;
   payment_method_name: string | null;
   amount_paid: string | number;
+  currency_id: number;
+  /** Con la tasa de la fecha del pago (FNZ-X-02). */
+  amount_paid_usd: string;
+  amount_paid_ves: string;
   payment_reference: string | null;
   notes: string | null;
   payment_date: string;
@@ -83,6 +93,9 @@ export interface ReceivableCollection {
   original_amount: string | number | null;
   exchange_rate: string | number | null;
   currency_id: number;
+  /** Con la tasa de la fecha del cobro (FNZ-X-02). */
+  amount_paid_usd: string;
+  amount_paid_ves: string;
   payment_reference: string | null;
   notes: string | null;
   payment_date: string;

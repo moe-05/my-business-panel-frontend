@@ -289,17 +289,17 @@ export function CustomerDetailModal({
                   </div>
                   <div className="grid grid-cols-3 gap-4">
                     {field(
-                      "Puntos por unidad de moneda",
+                      "Puntos por USD gastado",
                       detail.points_earned_per_currency_unit,
                     )}
                     {field(
-                      "Unidades por punto al canjear",
+                      "Puntos por USD al canjear",
                       detail.points_redeemed_per_currency_unit,
                     )}
                     {field(
                       "Compra mínima para ganar puntos",
                       detail.minimum_purchase_for_points != null
-                        ? `Bs. ${Number(detail.minimum_purchase_for_points).toLocaleString()}`
+                        ? `USD ${Number(detail.minimum_purchase_for_points).toLocaleString()}`
                         : null,
                     )}
                   </div>

@@ -12,8 +12,7 @@ import { Select } from "@/components/ui/Select";
 import type { SalesVsExpensesPoint } from "@/interfaces/entities/FnzExpense.interface";
 import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type { Currency } from "@/interfaces/entities/Currency.interface";
-import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
-import { formatInCurrency, convertAmount, BASE_CURRENCY } from "@/utils/purchase";
+import { formatInCurrency } from "@/utils/purchase";
 
 interface Props {
   data: SalesVsExpensesPoint[];
@@ -21,7 +20,6 @@ interface Props {
   selectedBranchId: string | null;
   onBranchChange: (id: string | null) => void;
   displayCurrency: Currency;
-  exchangeRates: ExchangeRate[];
   isLoading: boolean;
 }
 
@@ -31,7 +29,6 @@ export function SalesVsExpensesChart({
   selectedBranchId,
   onBranchChange,
   displayCurrency,
-  exchangeRates,
   isLoading,
 }: Props) {
   const branchOptions = [
@@ -39,18 +36,11 @@ export function SalesVsExpensesChart({
     ...branches.map((b) => ({ value: b.branch_id, label: b.branch_name })),
   ];
 
-  const toDisplay = (v: number) =>
-    convertAmount(
-      v,
-      BASE_CURRENCY.currency_id,
-      displayCurrency.currency_id,
-      exchangeRates,
-    );
-
+  // data llega ya convertido a displayCurrency (ver helpers/fnzExpenseAnalytics).
   const chartData = data.map((d) => ({
     period: d.period.slice(0, 10),
-    ventas: toDisplay(Number(d.total_sales)),
-    gastos: toDisplay(Number(d.total_expenses)),
+    ventas: Number(d.total_sales),
+    gastos: Number(d.total_expenses),
   }));
 
   return (

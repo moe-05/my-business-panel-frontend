@@ -105,7 +105,7 @@ export function ExpenseHistoryTable({
       width: "12%",
       sortable: true,
       render: (value: unknown) =>
-        new Date(value as string).toLocaleDateString("es-CR"),
+        new Date(value as string).toLocaleDateString("es-VE"),
     },
     { key: "branch_name", label: "Sucursal", width: "15%" },
     {

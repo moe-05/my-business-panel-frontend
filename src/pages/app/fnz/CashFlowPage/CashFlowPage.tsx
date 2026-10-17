@@ -19,10 +19,15 @@ import { PageHeaderBanner } from "@/components/layout/PageHeaderBanner";
 import { IconTrendingUp, IconCreditCard, IconCheckCircle } from "@/assets/icons";
 
 import { financesApi } from "@/api/finances.api";
-import { convertCurrency, formatMoney } from "@/utils/currency";
+import { convertCurrency, formatMoney, pickAmount } from "@/utils/currency";
 import { useDisplayCurrency } from "@/context/CurrencyContext";
 import { DeferredPage } from "@/components/routing/DeferredPage";
 
+import {
+  businessDate,
+  businessDaysAgo,
+  formatDateOnly,
+} from "@/utils/businessDate";
 import type { CashFlowPageLoaderData } from "@/router/loaders/cashFlow.loaders";
 import type {
   CashFlowBucket,
@@ -46,21 +51,72 @@ function sumItems(
   items: (CashFlowSummaryItem | CashFlowAvailableItem)[],
   direction: "entrada" | "salida",
   targetCurrencyId: number,
-  rates: ExchangeRate[],
 ): number {
   return items
     .filter((i) => i.direction === direction)
     .reduce(
       (acc, i) =>
         acc +
-        convertCurrency(
-          toNum(i.total_amount),
-          Number(i.currency_id),
-          targetCurrencyId,
-          rates,
-        ),
+        pickAmount(i, "total", targetCurrencyId),
       0,
     );
+}
+
+interface BranchFlowRow {
+  key: string;
+  branch_name: string;
+  entradas: number;
+  salidas: number;
+  neto: number;
+  isTotal?: boolean;
+}
+
+// Consolidado + una fila por sucursal a partir del resumen del backend, que ya
+// trae `branch_id` en cada fila (FNZ-CF-08).
+function computeBranchRows(
+  summary: CashFlowSummaryItem[],
+  branches: { branch_id: string; branch_name: string }[],
+  targetCurrencyId: number,
+): BranchFlowRow[] {
+  const byBranch = new Map<string, { entradas: number; salidas: number }>();
+  for (const item of summary) {
+    const branchKey = item.branch_id ?? "";
+    const acc = byBranch.get(branchKey) ?? { entradas: 0, salidas: 0 };
+    const amount = pickAmount(item, "total", targetCurrencyId);
+    if (item.direction === "entrada") acc.entradas += amount;
+    else acc.salidas += amount;
+    byBranch.set(branchKey, acc);
+  }
+
+  const rows: BranchFlowRow[] = branches.map((b) => {
+    const acc = byBranch.get(b.branch_id) ?? { entradas: 0, salidas: 0 };
+    return {
+      key: b.branch_id,
+      branch_name: b.branch_name,
+      entradas: acc.entradas,
+      salidas: acc.salidas,
+      neto: acc.entradas - acc.salidas,
+    };
+  });
+
+  // El consolidado suma todo el resumen, aunque una sucursal ya no figure en la lista.
+  let entradas = 0;
+  let salidas = 0;
+  for (const acc of byBranch.values()) {
+    entradas += acc.entradas;
+    salidas += acc.salidas;
+  }
+  return [
+    {
+      key: "consolidado",
+      branch_name: "Consolidado",
+      entradas,
+      salidas,
+      neto: entradas - salidas,
+      isTotal: true,
+    },
+    ...rows,
+  ];
 }
 
 interface BucketChartPoint {
@@ -85,19 +141,13 @@ function computeChartData(
   buckets: CashFlowBucket[],
   groupBy: CashFlowGroupBy,
   targetCurrencyId: number,
-  rates: ExchangeRate[],
 ): BucketChartPoint[] {
   const map = new Map<string, { entradas: number; salidas: number }>();
 
   for (const b of buckets) {
     const key = b.bucket_start;
     const existing = map.get(key) ?? { entradas: 0, salidas: 0 };
-    const converted = convertCurrency(
-      toNum(b.total_amount),
-      Number(b.currency_id),
-      targetCurrencyId,
-      rates,
-    );
+    const converted = pickAmount(b, "total", targetCurrencyId);
     if (b.direction === "entrada") {
       existing.entradas += converted;
     } else {
@@ -225,9 +275,19 @@ function ProjectionsTable({
       key: "projection_date",
       label: "Fecha",
       width: "16%",
-      render: (value) => (
-        <span className="font-mono text-xs text-gray-600">
-          {new Date(value as string).toLocaleDateString("es-VE")}
+      // Las proyecciones incluyen lo vencido y lo que vence hoy: son los pagos
+      // mas urgentes, se marcan en vez de ocultarse.
+      render: (value, row: CashFlowProjectionItem) => (
+        <span className="flex flex-col gap-0.5">
+          <span className="font-mono text-xs text-gray-600">
+            {/* projection_date viene de columnas date (due_date, period_end) */}
+            {formatDateOnly(value as string)}
+          </span>
+          {row.is_overdue && (
+            <span className="w-fit rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+              Vencida
+            </span>
+          )}
         </span>
       ),
     },
@@ -259,6 +319,7 @@ function ProjectionsTable({
       label: "Monto",
       width: "24%",
       align: "right",
+      // Pagos futuros/pendientes: a la tasa de hoy (no tienen fecha historica).
       render: (value, row: CashFlowProjectionItem) => {
         const converted = convertCurrency(
           toNum(value as string),
@@ -317,13 +378,10 @@ function CashFlowPageContent({
   );
   const [selectedBranchId, setSelectedBranchId] = useState<string>("");
   const [startDate, setStartDate] = useState<string>(
-    initialCashFlow.start_date ||
-      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10),
+    initialCashFlow.start_date || businessDaysAgo(30),
   );
   const [endDate, setEndDate] = useState<string>(
-    initialCashFlow.end_date || new Date().toISOString().slice(0, 10),
+    initialCashFlow.end_date || businessDate(),
   );
   // Moneda visualizada: toggle universal del header (ver CurrencyContext),
   // no un selector local -- default USD.
@@ -386,32 +444,39 @@ function CashFlowPageContent({
 
   // KPI cards
   const totalInflows = useMemo(
-    () => sumItems(cashFlow.summary, "entrada", selectedCurrencyId, exchangeRates),
-    [cashFlow.summary, selectedCurrencyId, exchangeRates],
+    () => sumItems(cashFlow.summary, "entrada", selectedCurrencyId),
+    [cashFlow.summary, selectedCurrencyId],
   );
   const totalOutflows = useMemo(
-    () => sumItems(cashFlow.summary, "salida", selectedCurrencyId, exchangeRates),
-    [cashFlow.summary, selectedCurrencyId, exchangeRates],
+    () => sumItems(cashFlow.summary, "salida", selectedCurrencyId),
+    [cashFlow.summary, selectedCurrencyId],
   );
   const netFlow = totalInflows - totalOutflows;
 
+  // Consolidado + desglose tienda por tienda (solo sin filtro de sucursal).
+  const branchRows = useMemo(
+    () => computeBranchRows(cashFlow.summary, branches, selectedCurrencyId),
+    [cashFlow.summary, branches, selectedCurrencyId],
+  );
+  const showBranchBreakdown = selectedBranchId === "" && branches.length > 1;
+
   const availableInflows = useMemo(
     () =>
-      sumItems(cashFlow.available_cash, "entrada", selectedCurrencyId, exchangeRates),
-    [cashFlow.available_cash, selectedCurrencyId, exchangeRates],
+      sumItems(cashFlow.available_cash, "entrada", selectedCurrencyId),
+    [cashFlow.available_cash, selectedCurrencyId],
   );
   const availableOutflows = useMemo(
     () =>
-      sumItems(cashFlow.available_cash, "salida", selectedCurrencyId, exchangeRates),
-    [cashFlow.available_cash, selectedCurrencyId, exchangeRates],
+      sumItems(cashFlow.available_cash, "salida", selectedCurrencyId),
+    [cashFlow.available_cash, selectedCurrencyId],
   );
   const availableCash = availableInflows - availableOutflows;
 
   // Chart
   const chartPoints = useMemo(
     () =>
-      computeChartData(cashFlow.buckets, groupBy, selectedCurrencyId, exchangeRates),
-    [cashFlow.buckets, groupBy, selectedCurrencyId, exchangeRates],
+      computeChartData(cashFlow.buckets, groupBy, selectedCurrencyId),
+    [cashFlow.buckets, groupBy, selectedCurrencyId],
   );
 
   const deficits = useMemo(() => detectDeficits(chartPoints), [chartPoints]);
@@ -428,12 +493,7 @@ function CashFlowPageContent({
         direction: item.direction,
         amount: 0,
       };
-      existing.amount += convertCurrency(
-        toNum(item.total_amount),
-        Number(item.currency_id),
-        selectedCurrencyId,
-        exchangeRates,
-      );
+      existing.amount += pickAmount(item, "total", selectedCurrencyId);
       byType.set(key, existing);
     }
     return Array.from(byType.entries()).map(([key, val]) => ({
@@ -442,7 +502,7 @@ function CashFlowPageContent({
       direction: val.direction as "entrada" | "salida",
       amount: val.amount,
     }));
-  }, [cashFlow.summary, selectedCurrencyId, exchangeRates]);
+  }, [cashFlow.summary, selectedCurrencyId]);
 
   const sortedBreakdownRows = useMemo(
     () => [...breakdownRows].sort((a, b) => b.amount - a.amount),
@@ -485,6 +545,59 @@ function CashFlowPageContent({
               ? "font-medium text-red-600"
               : "font-medium text-green-600"
           }
+        >
+          {fmt(value as number, currency)}
+        </span>
+      ),
+    },
+  ];
+
+  const branchColumns: Column[] = [
+    {
+      key: "branch_name",
+      label: "Sucursal",
+      width: "34%",
+      render: (value, row: BranchFlowRow) => (
+        <span
+          className={row.isTotal ? "font-semibold text-gray-900" : "text-gray-700"}
+        >
+          {value as string}
+        </span>
+      ),
+    },
+    {
+      key: "entradas",
+      label: "Entradas",
+      width: "22%",
+      align: "right",
+      render: (value) => (
+        <span className="font-medium text-green-600">
+          {fmt(value as number, currency)}
+        </span>
+      ),
+    },
+    {
+      key: "salidas",
+      label: "Salidas",
+      width: "22%",
+      align: "right",
+      render: (value) => (
+        <span className="font-medium text-red-600">
+          {fmt(value as number, currency)}
+        </span>
+      ),
+    },
+    {
+      key: "neto",
+      label: "Flujo neto",
+      width: "22%",
+      align: "right",
+      render: (value, row: BranchFlowRow) => (
+        <span
+          className={[
+            row.isTotal ? "font-semibold" : "font-medium",
+            (value as number) >= 0 ? "text-green-700" : "text-red-700",
+          ].join(" ")}
         >
           {fmt(value as number, currency)}
         </span>
@@ -576,12 +689,33 @@ function CashFlowPageContent({
           accent={netFlow >= 0}
         />
         <StatCard
-          label="Efectivo disponible"
+          label="Neto acumulado"
           value={fmt(availableCash, currency)}
           icon={<IconCheckCircle />}
-          sublabel="Acumulado historico"
+          sublabel={
+            selectedBranchId
+              ? "Entradas menos salidas historicas de la sucursal"
+              : "Entradas menos salidas historicas, sin saldo inicial de caja"
+          }
         />
       </section>
+
+      {/* Consolidado y desglose por sucursal */}
+      {showBranchBreakdown && (
+        <section className="mb-6 rounded-3xl border border-gray-200 bg-white p-6">
+          <h2 className="mb-1 text-base font-semibold text-gray-900">
+            Flujo por sucursal
+          </h2>
+          <p className="mb-4 text-sm text-gray-500">
+            Consolidado del negocio y flujo de cada tienda en el periodo.
+          </p>
+          <Table
+            columns={branchColumns}
+            data={branchRows}
+            emptyMessage="Sin sucursales"
+          />
+        </section>
+      )}
 
       {/* Tendencia */}
       <section className="mb-6 rounded-3xl border border-gray-200 bg-white p-6">

@@ -1,3 +1,5 @@
+import { businessDate } from "@/utils/businessDate";
+
 export type TimeInterval =
   | "24h"
   | "7d"
@@ -27,9 +29,17 @@ const INTERVAL_DAYS: Record<TimeInterval, number> = {
   "365d": 365,
 };
 
+/**
+ * start/end: instantes ISO (para filtros sobre columnas timestamp).
+ * startDate/endDate: dias YYYY-MM-DD en la zona del negocio (para filtros
+ * sobre columnas date, como expense_date); con toISOString() se corrian un
+ * dia despues de las 20:00 en Caracas.
+ */
 export function intervalToDates(interval: TimeInterval): {
   start: string;
   end: string;
+  startDate: string;
+  endDate: string;
 } {
   const end = new Date();
   const start = new Date();
@@ -37,6 +47,8 @@ export function intervalToDates(interval: TimeInterval): {
   return {
     start: start.toISOString(),
     end: end.toISOString(),
+    startDate: businessDate(start),
+    endDate: businessDate(end),
   };
 }
 

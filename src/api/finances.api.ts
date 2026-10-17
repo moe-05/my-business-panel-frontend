@@ -9,9 +9,10 @@ import type {
   ReceivableCollection,
 } from "@/interfaces/entities/Finances.interface";
 import type {
-  FixedVsVariableAnalytic,
-  CategoryAnalytic,
-  SalesVsExpensesPoint,
+  FixedVsVariableAnalyticRaw,
+  CategoryAnalyticRaw,
+  SalesVsExpensesRaw,
+  PayrollAnalytic,
   ExpenseCategory,
   CreateExpensePayload,
   CreateExpenseCategoryPayload,
@@ -73,10 +74,11 @@ export const financesApi = {
     tenantId: string,
     start: string,
     end: string,
-  ): Promise<FixedVsVariableAnalytic[]> {
-    const res = await api.get<ApiResponse<FixedVsVariableAnalytic[]>>(
+    branchId?: string | null,
+  ): Promise<FixedVsVariableAnalyticRaw[]> {
+    const res = await api.get<ApiResponse<FixedVsVariableAnalyticRaw[]>>(
       `/expense/analytics/fixed-vs-variable/${tenantId}`,
-      { params: { start, end } },
+      { params: { start, end, ...(branchId ? { branchId } : {}) } },
     );
     return res.data.data;
   },
@@ -85,10 +87,11 @@ export const financesApi = {
     tenantId: string,
     start: string,
     end: string,
-  ): Promise<CategoryAnalytic[]> {
-    const res = await api.get<ApiResponse<CategoryAnalytic[]>>(
+    branchId?: string | null,
+  ): Promise<CategoryAnalyticRaw[]> {
+    const res = await api.get<ApiResponse<CategoryAnalyticRaw[]>>(
       `/expense/analytics/fixed-breakdown/${tenantId}`,
-      { params: { start, end } },
+      { params: { start, end, ...(branchId ? { branchId } : {}) } },
     );
     return res.data.data;
   },
@@ -97,10 +100,25 @@ export const financesApi = {
     tenantId: string,
     start: string,
     end: string,
-  ): Promise<CategoryAnalytic[]> {
-    const res = await api.get<ApiResponse<CategoryAnalytic[]>>(
+    branchId?: string | null,
+  ): Promise<CategoryAnalyticRaw[]> {
+    const res = await api.get<ApiResponse<CategoryAnalyticRaw[]>>(
       `/expense/analytics/variable-breakdown/${tenantId}`,
-      { params: { start, end } },
+      { params: { start, end, ...(branchId ? { branchId } : {}) } },
+    );
+    return res.data.data;
+  },
+
+  /** Nomina pagada en los dias locales [start, end] (planillas cerradas). */
+  async getPayroll(
+    tenantId: string,
+    start: string,
+    end: string,
+    branchId?: string | null,
+  ): Promise<PayrollAnalytic> {
+    const res = await api.get<ApiResponse<PayrollAnalytic>>(
+      `/expense/analytics/payroll/${tenantId}`,
+      { params: { start, end, ...(branchId ? { branchId } : {}) } },
     );
     return res.data.data;
   },
@@ -110,8 +128,8 @@ export const financesApi = {
     start: string,
     end: string,
     branchId?: string | null,
-  ): Promise<SalesVsExpensesPoint[]> {
-    const res = await api.get<ApiResponse<SalesVsExpensesPoint[]>>(
+  ): Promise<SalesVsExpensesRaw[]> {
+    const res = await api.get<ApiResponse<SalesVsExpensesRaw[]>>(
       `/expense/analytics/sales-vs-expenses/${tenantId}`,
       {
         params: {

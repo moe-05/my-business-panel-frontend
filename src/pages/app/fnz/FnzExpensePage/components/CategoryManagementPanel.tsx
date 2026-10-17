@@ -10,11 +10,14 @@ import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface"
 interface Props {
   tenantId: string;
   initialCategories: ExpenseCategory[];
+  /** Solo superuser y admin pueden cargar el catalogo predeterminado (el backend lo exige). */
+  canProvision: boolean;
 }
 
 export function CategoryManagementPanel({
   tenantId,
   initialCategories,
+  canProvision,
 }: Props) {
   const [categories, setCategories] =
     useState<ExpenseCategory[]>(initialCategories);
@@ -100,7 +103,7 @@ export function CategoryManagementPanel({
           {categories.filter((c) => c.is_active).length} categorías activas
         </p>
         <div className="flex items-center gap-2">
-          {categories.length === 0 && (
+          {canProvision && categories.length === 0 && (
             <Button
               type="button"
               variant="secondary"

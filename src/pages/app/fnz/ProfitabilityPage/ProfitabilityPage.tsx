@@ -37,7 +37,7 @@ import type {
   ProfitabilitySeries,
 } from "@/interfaces/entities/Profitability.interface";
 
-// Desglose de gastos usados en el calculo de UN, con la utilidad neta final.
+// Desglose de gastos y nomina usados en el calculo de UN, con la utilidad neta final.
 function ExpenseBreakdown({
   series,
   fmt,
@@ -45,10 +45,10 @@ function ExpenseBreakdown({
   series: ProfitabilitySeries;
   fmt: (value: number) => string;
 }) {
-  if (series.expense_breakdown.length === 0) {
+  if (series.expense_breakdown.length === 0 && series.total_payroll === 0) {
     return (
       <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-400">
-        Sin gastos registrados en el periodo seleccionado
+        Sin gastos ni nomina registrados en el periodo seleccionado
       </div>
     );
   }
@@ -67,6 +67,14 @@ function ExpenseBreakdown({
             <span className="font-medium text-gray-900">{fmt(c.amount)}</span>
           </li>
         ))}
+        {series.total_payroll !== 0 && (
+          <li className="flex items-center justify-between border-t border-dashed border-gray-200 pt-1.5 text-sm">
+            <span className="text-gray-600">Nómina</span>
+            <span className="font-medium text-gray-900">
+              {fmt(series.total_payroll)}
+            </span>
+          </li>
+        )}
       </ul>
       <div className="mt-2 flex items-center justify-between border-t border-gray-200 pt-2 text-sm font-semibold">
         <span className="text-gray-700">Utilidad neta final</span>
@@ -144,7 +152,6 @@ function ProfitabilityPageContent({
   raw: initialRaw,
   branches,
   currencies,
-  exchangeRates,
   currentTenantName,
 }: ProfitabilityPageLoaderData) {
   const [raw, setRaw] = useState<ProfitabilityRawData>(initialRaw);
@@ -189,10 +196,11 @@ function ProfitabilityPageContent({
     currencies.find((c) => Number(c.currency_id) === selectedCurrencyId) ??
     currencies[0];
 
-  // Cambio de moneda NO re-consulta: el pipeline recalcula con las tasas cargadas.
+  // Cambio de moneda NO re-consulta: el backend ya trae cada monto en USD y VES
+  // con la tasa de su fecha (FNZ-X-02); el pipeline solo elige la columna.
   const result = useMemo(
-    () => computeProfitability(raw, selectedCurrencyId, exchangeRates),
-    [raw, selectedCurrencyId, exchangeRates],
+    () => computeProfitability(raw, selectedCurrencyId),
+    [raw, selectedCurrencyId],
   );
 
   const fmt = (value: number) =>

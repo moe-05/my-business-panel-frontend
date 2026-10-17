@@ -1,8 +1,7 @@
-﻿import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLoaderData } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { financesApi } from "@/api/finances.api";
-import { paysheetApi } from "@/api/paysheet.api";
 import {
   TimeIntervalSelector,
   intervalToDates,
@@ -15,18 +14,20 @@ import { ExpenseRegistrationForm } from "./components/ExpenseRegistrationForm";
 import { CategoryManagementPanel } from "./components/CategoryManagementPanel";
 import { ExpenseHistoryTable } from "@/components/finances/ExpenseHistoryTable";
 import { PageHeaderBanner } from "@/components/layout/PageHeaderBanner";
-import { formatInCurrency, convertAmount, BASE_CURRENCY } from "@/utils/purchase";
+import { formatInCurrency } from "@/utils/purchase";
+import { pickAmount } from "@/utils/currency";
+import { normalizeExpenseAnalytics } from "@/helpers/fnzExpenseAnalytics";
 import { useDisplayCurrency } from "@/context/CurrencyContext";
 import { DeferredPage } from "@/components/routing/DeferredPage";
 
 import type { TimeInterval } from "@/components/ui/TimeIntervalSelector";
-import type { ExpenseAnalyticsData } from "@/interfaces/entities/FnzExpense.interface";
+import type {
+  ExpenseAnalyticsRaw,
+  PayrollAnalytic,
+} from "@/interfaces/entities/FnzExpense.interface";
 import type { FnzExpensePageLoaderData } from "@/router/loaders/fnzExpense.loaders";
 import type { Currency } from "@/interfaces/entities/Currency.interface";
 
-// Nomina (hr_schema.paysheet.net_total) se liquida en bolivares (seed
-// 006-insert-currencies.sql: VES es currency_id 1).
-const PAYROLL_CURRENCY_ID = 1;
 
 export function FnzExpensePage() {
   const { data } = useLoaderData() as {
@@ -79,8 +80,8 @@ function FnzExpensePageContent({
   };
   const [interval, setInterval] = useState<TimeInterval>("30d");
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
-  const [analytics, setAnalytics] = useState<ExpenseAnalyticsData | null>(null);
-  const [payrollTotal, setPayrollTotal] = useState(0);
+  const [analytics, setAnalytics] = useState<ExpenseAnalyticsRaw | null>(null);
+  const [payroll, setPayroll] = useState<PayrollAnalytic | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [historyRefresh, setHistoryRefresh] = useState(0);
@@ -89,24 +90,44 @@ function FnzExpensePageContent({
     if (!tenantId) return;
     setLoading(true);
     setAnalyticsError(null);
-    const { start, end } = intervalToDates(interval);
+    const { startDate, endDate } = intervalToDates(interval);
     try {
       const [
         fixedVsVariable,
         fixedBreakdown,
         variableBreakdown,
         salesVsExpenses,
-        paysheets,
+        payrollData,
       ] = await Promise.all([
-        financesApi.getFixedVsVariable(tenantId, start, end),
-        financesApi.getFixedBreakdown(tenantId, start, end),
-        financesApi.getVariableBreakdown(tenantId, start, end),
-        financesApi.getSalesVsExpenses(tenantId, start, end, selectedBranchId),
+        // Los analiticos filtran por dia (expense_date es date): dias locales.
+        financesApi.getFixedVsVariable(
+          tenantId,
+          startDate,
+          endDate,
+          selectedBranchId,
+        ),
+        financesApi.getFixedBreakdown(
+          tenantId,
+          startDate,
+          endDate,
+          selectedBranchId,
+        ),
+        financesApi.getVariableBreakdown(
+          tenantId,
+          startDate,
+          endDate,
+          selectedBranchId,
+        ),
+        financesApi.getSalesVsExpenses(
+          tenantId,
+          startDate,
+          endDate,
+          selectedBranchId,
+        ),
         // La nomina se muestra diferenciada de gastos operativos/fijos/variables
-        // (no vive en accounting_schema.expense): se agrega aparte a partir de
-        // hr_schema.paysheet, filtrando por solape de periodo en el frontend
-        // porque paysheetApi.listByTenant no acepta rango de fechas.
-        paysheetApi.listByTenant(tenantId).catch(() => []),
+        // (no vive en accounting_schema.expense). El backend filtra planillas
+        // cerradas pagadas en el rango y por sucursal.
+        financesApi.getPayroll(tenantId, startDate, endDate, selectedBranchId),
       ]);
       setAnalytics({
         fixedVsVariable,
@@ -114,17 +135,7 @@ function FnzExpensePageContent({
         variableBreakdown,
         salesVsExpenses,
       });
-      const rangeStart = new Date(start);
-      const rangeEnd = new Date(end);
-      setPayrollTotal(
-        paysheets
-          .filter(
-            (p) =>
-              new Date(p.period_start) <= rangeEnd &&
-              new Date(p.period_end) >= rangeStart,
-          )
-          .reduce((sum, p) => sum + Number(p.net_total), 0),
-      );
+      setPayroll(payrollData);
     } catch (err) {
       setAnalyticsError(err instanceof Error ? err.message : 'Error al cargar analíticos');
     } finally {
@@ -142,43 +153,37 @@ function FnzExpensePageContent({
     setHistoryRefresh((n) => n + 1);
   }, [loadAnalytics]);
 
+  // Los analiticos llegan en USD y VES, convertidos con la tasa de la fecha de
+  // cada gasto o venta (FNZ-X-02); se elige la columna del toggle. Todo lo que
+  // sigue ya esta expresado en displayCurrency.
+  const display = useMemo(
+    () =>
+      analytics
+        ? normalizeExpenseAnalytics(analytics, displayCurrency.currency_id)
+        : null,
+    [analytics, displayCurrency.currency_id],
+  );
+
   const totalExpenses =
-    analytics?.fixedVsVariable.reduce(
+    display?.fixedVsVariable.reduce(
       (sum, d) => sum + Number(d.total_amount),
       0,
     ) ?? 0;
-  const fixedTotal =
-    Number(
-      analytics?.fixedVsVariable.find((d) => d.is_fixed)?.total_amount ?? 0,
-    );
-  const variableTotal =
-    Number(
-      analytics?.fixedVsVariable.find((d) => !d.is_fixed)?.total_amount ?? 0,
-    );
+  const fixedTotal = Number(
+    display?.fixedVsVariable.find((d) => d.is_fixed)?.total_amount ?? 0,
+  );
+  const variableTotal = Number(
+    display?.fixedVsVariable.find((d) => !d.is_fixed)?.total_amount ?? 0,
+  );
 
   const fmt = (v: number) =>
-    loading
-      ? "..."
-      : formatInCurrency(
-          convertAmount(
-            v,
-            BASE_CURRENCY.currency_id,
-            displayCurrency.currency_id,
-            exchangeRates,
-          ),
-          displayCurrency,
-        );
+    loading ? "..." : formatInCurrency(v, displayCurrency);
 
-  const fmtPayroll = (v: number) =>
-    loading
+  const fmtPayroll = (field: "gross_total" | "net_total") =>
+    loading || !payroll
       ? "..."
       : formatInCurrency(
-          convertAmount(
-            v,
-            PAYROLL_CURRENCY_ID,
-            displayCurrency.currency_id,
-            exchangeRates,
-          ),
+          pickAmount(payroll, field, displayCurrency.currency_id),
           displayCurrency,
         );
 
@@ -234,15 +239,21 @@ function FnzExpensePageContent({
           <div className="bg-indigo-50 rounded-xl p-4 text-center">
             <p className="text-xs text-indigo-600 mb-1">Nómina</p>
             <p className="text-lg font-bold text-indigo-700">
-              {fmtPayroll(payrollTotal)}
+              {fmtPayroll("gross_total")}
             </p>
+            {!loading && payroll && payroll.paysheet_count > 0 && (
+              <p className="text-[11px] text-indigo-500 mt-1">
+                Neto pagado {fmtPayroll("net_total")} ·{" "}
+                {payroll.paysheet_count}{" "}
+                {payroll.paysheet_count === 1 ? "planilla" : "planillas"}
+              </p>
+            )}
           </div>
         </div>
 
         <ExpenseDistributionChart
-          data={analytics?.fixedVsVariable ?? []}
+          data={display?.fixedVsVariable ?? []}
           displayCurrency={displayCurrency}
-          exchangeRates={exchangeRates}
         />
       </div>
 
@@ -250,18 +261,16 @@ function FnzExpensePageContent({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-gray-200 p-6">
           <ExpenseBreakdownChart
-            data={analytics?.fixedBreakdown ?? []}
+            data={display?.fixedBreakdown ?? []}
             title="Desglose — Gastos Fijos"
             displayCurrency={displayCurrency}
-            exchangeRates={exchangeRates}
           />
         </div>
         <div className="bg-white rounded-2xl border border-gray-200 p-6">
           <ExpenseBreakdownChart
-            data={analytics?.variableBreakdown ?? []}
+            data={display?.variableBreakdown ?? []}
             title="Desglose — Gastos Variables"
             displayCurrency={displayCurrency}
-            exchangeRates={exchangeRates}
           />
         </div>
       </div>
@@ -269,12 +278,11 @@ function FnzExpensePageContent({
       {/* 3. Barras: Ventas vs Gastos */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
         <SalesVsExpensesChart
-          data={analytics?.salesVsExpenses ?? []}
+          data={display?.salesVsExpenses ?? []}
           branches={branches}
           selectedBranchId={selectedBranchId}
           onBranchChange={setSelectedBranchId}
           displayCurrency={displayCurrency}
-          exchangeRates={exchangeRates}
           isLoading={loading}
         />
       </div>
@@ -317,6 +325,7 @@ function FnzExpensePageContent({
             <CategoryManagementPanel
               tenantId={tenantId}
               initialCategories={categories}
+              canProvision={(user?.role.role_id ?? 4) <= 2}
             />
           </div>
         </div>
