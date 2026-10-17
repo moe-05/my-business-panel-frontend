@@ -21,13 +21,15 @@ import {
 } from "@/assets/icons";
 
 import { loyaltyFinanceApi } from "@/api/loyaltyFinance.api";
-import { formatMoney } from "@/utils/currency";
+import { formatMoney, pickAmount } from "@/utils/currency";
+import { useDisplayCurrency } from "@/context/CurrencyContext";
 import {
   DEFAULT_LOYALTY_INTERVAL,
   LOYALTY_INTERVAL_OPTIONS,
 } from "@/constants/loyaltyFinance";
 
 import type { Branch } from "@/interfaces/entities/Branch.interface";
+import type { Currency } from "@/interfaces/entities/Currency.interface";
 import type {
   BucketUnit,
   LoyaltyGrowthPoint,
@@ -36,7 +38,6 @@ import type {
 } from "@/interfaces/entities/LoyaltyFinance.interface";
 import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 
-const fmtMoney = (value: number) => formatMoney(value, "VES", "Bs.");
 const fmtPoints = (value: number) =>
   `${Number(value ?? 0).toLocaleString("es-VE")} pts`;
 
@@ -109,12 +110,28 @@ function GrowthChart({
 interface LoyaltyAnalyticsTabProps {
   initial: LoyaltyOverview;
   branches: Branch[];
+  currencies: Currency[];
 }
 
 export function LoyaltyAnalyticsTab({
   initial,
   branches,
+  currencies,
 }: LoyaltyAnalyticsTabProps) {
+  // Moneda visualizada: toggle universal del header. El programa se define en
+  // USD; el backend devuelve cada equivalente en USD y en VES (a la tasa de
+  // hoy) y aqui solo se elige la columna (FNZ-FI-02).
+  const { displayCurrencyId } = useDisplayCurrency();
+  const currency =
+    currencies.find((c) => Number(c.currency_id) === displayCurrencyId) ??
+    currencies[0];
+  const fmtMoney = (value: number) =>
+    formatMoney(
+      value,
+      currency?.currency_code ?? "VES",
+      currency?.symbol ?? "Bs.",
+    );
+
   const [overview, setOverview] = useState<LoyaltyOverview>(initial);
   const [interval, setInterval] = useState<LoyaltyInterval>(
     initial.interval ?? DEFAULT_LOYALTY_INTERVAL,
@@ -150,8 +167,9 @@ export function LoyaltyAnalyticsTab({
   const redeemRate = config
     ? Number(config.points_redeemed_per_currency_unit)
     : null;
-  const earnPct = config
-    ? Number(config.points_earned_per_currency_unit) * 100
+  // Puntos que se ganan por cada USD gastado (no es un porcentaje).
+  const earnPerUsd = config
+    ? Number(config.points_earned_per_currency_unit)
     : null;
 
   const topColumns: Column[] = [
@@ -182,12 +200,12 @@ export function LoyaltyAnalyticsTab({
       ),
     },
     {
-      key: "value",
+      key: "value_usd",
       label: "Equivalencia",
       width: "23%",
-      render: (value: unknown) => (
+      render: (_value: unknown, row: unknown) => (
         <span className="font-mono text-gray-700">
-          {fmtMoney(Number(value))}
+          {fmtMoney(pickAmount(row as object, "value", displayCurrencyId))}
         </span>
       ),
     },
@@ -213,16 +231,19 @@ export function LoyaltyAnalyticsTab({
           {config ? (
             <>
               <span className="font-medium text-gray-800">
-                {earnPct !== null ? `${earnPct.toFixed(2)}%` : "—"}
+                {earnPerUsd !== null
+                  ? earnPerUsd.toLocaleString("es-VE")
+                  : "—"}{" "}
+                pts
               </span>{" "}
-              de fidelidad por compra
+              por cada USD gastado
               {redeemRate && redeemRate > 0 && (
                 <>
                   {" · "}
                   <span className="font-medium text-gray-800">
                     {redeemRate.toLocaleString("es-VE")} pts
                   </span>{" "}
-                  = Bs. 1
+                  = USD 1
                 </>
               )}
             </>
@@ -249,7 +270,7 @@ export function LoyaltyAnalyticsTab({
         />
         <StatCard
           label="Equivalencia monetaria"
-          value={fmtMoney(totals.active_value)}
+          value={fmtMoney(pickAmount(totals, "active_value", displayCurrencyId))}
           icon={<IconTrendingUp />}
           sublabel="Obligacion futura del programa"
           accent
@@ -258,7 +279,7 @@ export function LoyaltyAnalyticsTab({
           label="Puntos utilizados"
           value={fmtPoints(totals.redeemed_points)}
           icon={<IconCheckCircle />}
-          sublabel={`${fmtMoney(totals.redeemed_value)} canjeados`}
+          sublabel={`${fmtMoney(pickAmount(totals, "redeemed_value", displayCurrencyId))} canjeados`}
         />
         <StatCard
           label="Puntos vencidos"
@@ -270,7 +291,7 @@ export function LoyaltyAnalyticsTab({
           label="Puntos generados (historico)"
           value={fmtPoints(totals.lifetime_points)}
           icon={<IconTrendingUp />}
-          sublabel={`${fmtMoney(totals.lifetime_value)} acumulados`}
+          sublabel={`${fmtMoney(pickAmount(totals, "lifetime_value", displayCurrencyId))} acumulados`}
         />
         <StatCard
           label="Clientes con puntos"

@@ -1,63 +1,66 @@
 import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
 
-export const BASE_CURRENCY_ID = 1;
-export const BASE_CURRENCY_CODE = "VES";
+/**
+ * Conversion de moneda unica del sistema (bimonetario USD/VES).
+ *
+ * El USD es la moneda de referencia (catalogo, costos, CxP); el bolivar es la
+ * moneda que se devalua. Existe UNA sola tasa por tenant, USD -> VES
+ * (ver exchangeRateApi.getAll): 1 USD = `rate` VES. Todo monto debe llevar su
+ * moneda de origen (`currency_id`) y se convierte con estas funciones; ninguna
+ * pantalla debe asumir una moneda base propia.
+ */
 
-// Tasa de una moneda a la moneda base. Busca directa, luego inversa.
-export function getExchangeRateToBase(
-  rates: ExchangeRate[],
-  fromCurrencyId: number,
-): number | null {
-  if (fromCurrencyId === BASE_CURRENCY_ID) return 1;
+// IDs de general_schema.currency (seeds/catalog/general/006-insert-currencies.sql)
+export const VES_CURRENCY_ID = 1;
+export const USD_CURRENCY_ID = 2;
+
+/** Tasa USD -> VES de la lista de tasas. Acepta la directa o su inversa. */
+export function getUsdToVesRate(rates: ExchangeRate[]): number | null {
   const direct = rates.find(
     (r) =>
-      Number(r.from_currency_id) === fromCurrencyId &&
-      Number(r.to_currency_id) === BASE_CURRENCY_ID,
+      Number(r.from_currency_id) === USD_CURRENCY_ID &&
+      Number(r.to_currency_id) === VES_CURRENCY_ID &&
+      Number(r.rate) > 0,
   );
   if (direct) return Number(direct.rate);
-  const rev = rates.find(
+  const inverse = rates.find(
     (r) =>
-      Number(r.from_currency_id) === BASE_CURRENCY_ID &&
-      Number(r.to_currency_id) === fromCurrencyId,
+      Number(r.from_currency_id) === VES_CURRENCY_ID &&
+      Number(r.to_currency_id) === USD_CURRENCY_ID &&
+      Number(r.rate) > 0,
   );
-  if (rev && Number(rev.rate) > 0) return 1 / Number(rev.rate);
+  if (inverse) return 1 / Number(inverse.rate);
   return null;
 }
 
-// Convierte un monto en la moneda base a la moneda destino.
-export function convertFromBase(
-  amountBase: number,
-  targetCurrencyId: number,
-  rates: ExchangeRate[],
-): number | null {
-  if (targetCurrencyId === BASE_CURRENCY_ID) return amountBase;
-  const toTarget = rates.find(
-    (r) =>
-      Number(r.from_currency_id) === BASE_CURRENCY_ID &&
-      Number(r.to_currency_id) === targetCurrencyId,
-  );
-  if (toTarget) return amountBase * Number(toTarget.rate);
-  const toBase = getExchangeRateToBase(rates, targetCurrencyId);
-  if (toBase && toBase > 0) return amountBase / toBase;
-  return null;
+/** true si hay una tasa USD <-> VES utilizable. */
+export function hasExchangeRate(rates: ExchangeRate[]): boolean {
+  return getUsdToVesRate(rates) !== null;
 }
 
-// Convierte un monto entre dos monedas cualesquiera (via la moneda base como pivote).
-// Si falta la tasa, cae al monto original (1:1) para no producir NaN.
+/**
+ * Convierte un monto entre USD y VES con la tasa vigente. Misma moneda,
+ * monto vacio o monedas fuera del par USD/VES devuelven el monto sin tocar.
+ * Si falta la tasa tambien devuelve el monto original (no NaN): quien necesite
+ * distinguir ese caso debe consultar `hasExchangeRate` antes.
+ */
 export function convertCurrency(
   amount: number,
   fromCurrencyId: number,
   toCurrencyId: number,
   rates: ExchangeRate[],
 ): number {
-  if (!amount) return 0;
+  if (!amount || !Number.isFinite(amount)) return 0;
   if (fromCurrencyId === toCurrencyId) return amount;
-  const inBase =
-    fromCurrencyId === BASE_CURRENCY_ID
-      ? amount
-      : (getExchangeRateToBase(rates, fromCurrencyId) ?? 1) * amount;
-  const converted = convertFromBase(inBase, toCurrencyId, rates);
-  return converted ?? inBase;
+  const rate = getUsdToVesRate(rates);
+  if (rate === null) return amount;
+  if (fromCurrencyId === USD_CURRENCY_ID && toCurrencyId === VES_CURRENCY_ID) {
+    return amount * rate;
+  }
+  if (fromCurrencyId === VES_CURRENCY_ID && toCurrencyId === USD_CURRENCY_ID) {
+    return amount / rate;
+  }
+  return amount;
 }
 
 // Formatea un monto (ya en la moneda destino) con simbolo y locale es-VE.
@@ -73,4 +76,21 @@ export function formatMoney(value: number, currencyCode: string, symbol: string)
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+/**
+ * Monto historico ya convertido por el backend (FNZ-X-02): las respuestas de
+ * Finanzas traen cada monto como `<campo>_usd` y `<campo>_ves`, convertidos
+ * con la tasa de la fecha de cada movimiento. Aqui solo se elige la columna
+ * de la moneda de visualizacion; no se reconvierte con la tasa de hoy.
+ */
+export function pickAmount(
+  row: object,
+  field: string,
+  targetCurrencyId: number,
+): number {
+  const suffix = targetCurrencyId === USD_CURRENCY_ID ? "usd" : "ves";
+  const value = (row as Record<string, unknown>)[`${field}_${suffix}`];
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
 }

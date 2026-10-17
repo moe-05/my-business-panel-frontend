@@ -55,7 +55,6 @@ import {
 } from "@/router/loaders/accounts-receivable.loaders";
 import { getAccountsOverviewPageData } from "@/router/loaders/finances.loaders";
 import { getProfitabilityPageData } from "@/router/loaders/profitability.loaders";
-import { getLoyaltyFinancePageData } from "@/router/loaders/loyaltyFinance.loaders";
 import { getCashFlowPageData } from "@/router/loaders/cashFlow.loaders";
 import {
   getHrAmonestacionesPageData,
@@ -450,14 +449,11 @@ export const privateRoutes: RouteObject[] = [
             },
           },
           {
+            // Ruta retirada: el contenido vive como pestana "Punto de fidelidad"
+            // en Promociones (FNZ-FI-04). Se conserva el redirect por si hay
+            // enlaces guardados.
             path: "fnz/loyalty-points",
-            loader: getLoyaltyFinancePageData,
-            lazy: async () => {
-              const { LoyaltyFinancePage } = await import(
-                "@/pages/app/fnz/LoyaltyFinancePage/LoyaltyFinancePage"
-              );
-              return { Component: LoyaltyFinancePage };
-            },
+            element: <Navigate to="/app/fnz/promotions" replace />,
           },
           {
             path: "fnz/expenses",

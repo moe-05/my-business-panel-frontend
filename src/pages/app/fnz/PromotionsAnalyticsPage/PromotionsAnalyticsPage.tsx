@@ -13,7 +13,7 @@ import {
 } from "@/assets/icons";
 
 import { promotionApi } from "@/api/promotion.api";
-import { convertCurrency, formatMoney } from "@/utils/currency";
+import { formatMoney, pickAmount } from "@/utils/currency";
 import { useDisplayCurrency } from "@/context/CurrencyContext";
 import {
   DEFAULT_PROMO_INTERVAL,
@@ -29,7 +29,6 @@ import type {
   PromoAnalyticsSummary,
   PromoInterval,
 } from "@/interfaces/entities/Promotion.interface";
-import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
 import type { Column } from "@/interfaces/components/ui/TableProps.interface";
 
 type ActiveFilter = "all" | "true" | "false";
@@ -39,23 +38,13 @@ type SortDir = "asc" | "desc";
 function aggregateRows(
   rows: PromoAnalyticsRow[],
   displayCurrencyId: number,
-  exchangeRates: ExchangeRate[],
 ): PromoAnalyticsSummary[] {
   const map = new Map<string, PromoAnalyticsSummary>();
 
   for (const row of rows) {
-    const discount = convertCurrency(
-      parseFloat(row.total_discount),
-      row.currency_id,
-      displayCurrencyId,
-      exchangeRates,
-    );
-    const revenue = convertCurrency(
-      parseFloat(row.total_revenue),
-      row.currency_id,
-      displayCurrencyId,
-      exchangeRates,
-    );
+    // El backend ya convirtio con la tasa de la fecha de cada venta (FNZ-X-02).
+    const discount = pickAmount(row, "total_discount", displayCurrencyId);
+    const revenue = pickAmount(row, "total_revenue", displayCurrencyId);
     const saleCount = parseInt(row.sale_count, 10);
 
     const existing = map.get(row.promotion_id);
@@ -94,10 +83,11 @@ export function PromotionsAnalyticsPage() {
 
 function PromotionsAnalyticsPageContent({
   rows: initialRows,
+  salesWithPromotion: initialSalesWithPromotion,
+  promotionTypes,
   royalty,
   loyalty,
   currencies,
-  exchangeRates,
   branches,
   tenantId,
 }: PromotionsAnalyticsLoaderData) {
@@ -105,6 +95,9 @@ function PromotionsAnalyticsPageContent({
     "promociones",
   );
   const [rows, setRows] = useState<PromoAnalyticsRow[]>(initialRows);
+  const [salesWithPromotion, setSalesWithPromotion] = useState<number>(
+    initialSalesWithPromotion,
+  );
   const [currentInterval, setCurrentInterval] = useState<PromoInterval>(
     DEFAULT_PROMO_INTERVAL,
   );
@@ -132,6 +125,7 @@ function PromotionsAnalyticsPageContent({
     nextInterval: PromoInterval,
     nextActive: ActiveFilter,
     nextBranch: string,
+    nextType: string,
   ) {
     setLoading(true);
     try {
@@ -143,8 +137,10 @@ function PromotionsAnalyticsPageContent({
         nextInterval,
         isActiveParam,
         branchParam,
+        nextType === "all" ? undefined : nextType,
       );
-      setRows(data);
+      setRows(data.promotions);
+      setSalesWithPromotion(data.sales_with_promotion);
     } finally {
       setLoading(false);
     }
@@ -153,18 +149,24 @@ function PromotionsAnalyticsPageContent({
   function handleIntervalChange(value: string) {
     const next = value as PromoInterval;
     setCurrentInterval(next);
-    void refetch(next, activeFilter, branchFilter);
+    void refetch(next, activeFilter, branchFilter, typeFilter);
   }
 
   function handleActiveFilterChange(value: string) {
     const next = value as ActiveFilter;
     setActiveFilter(next);
-    void refetch(currentInterval, next, branchFilter);
+    void refetch(currentInterval, next, branchFilter, typeFilter);
   }
 
   function handleBranchChange(value: string) {
     setBranchFilter(value);
-    void refetch(currentInterval, activeFilter, value);
+    void refetch(currentInterval, activeFilter, value, typeFilter);
+  }
+
+  // El tipo se filtra en el backend (re-consulta), no sobre las filas cargadas.
+  function handleTypeChange(value: string) {
+    setTypeFilter(value);
+    void refetch(currentInterval, activeFilter, branchFilter, value);
   }
 
   function handleSort(field: SortField) {
@@ -176,27 +178,24 @@ function PromotionsAnalyticsPageContent({
     }
   }
 
-  const availableTypes = useMemo(() => {
-    const types = new Set(rows.map((r) => r.promotion_type));
-    return Array.from(types).sort();
-  }, [rows]);
+  const availableTypes = useMemo(
+    () => promotionTypes.map((t) => t.type_name).sort(),
+    [promotionTypes],
+  );
 
   const summaries = useMemo(() => {
-    const aggregated = aggregateRows(rows, selectedCurrencyId, exchangeRates);
+    const aggregated = aggregateRows(rows, selectedCurrencyId);
 
-    const filtered =
-      typeFilter === "all"
-        ? aggregated
-        : aggregated.filter((s) => s.promotion_type === typeFilter);
-
-    return [...filtered].sort((a, b) => {
+    return [...aggregated].sort((a, b) => {
       const mul = sortDir === "asc" ? 1 : -1;
       return mul * (a[sortField] - b[sortField]);
     });
-  }, [rows, selectedCurrencyId, exchangeRates, typeFilter, sortField, sortDir]);
+  }, [rows, selectedCurrencyId, sortField, sortDir]);
 
   const totalDiscount = summaries.reduce((acc, s) => acc + s.total_discount, 0);
-  const totalSales = summaries.reduce((acc, s) => acc + s.sale_count, 0);
+  // Ventas distintas con promocion: viene del backend porque sumar el conteo
+  // de cada promocion cuenta dos veces una venta con dos promociones.
+  const totalSales = salesWithPromotion;
   const withUsage = summaries.filter((s) => s.sale_count > 0).length;
 
   const branchOptions = [
@@ -254,7 +253,7 @@ function PromotionsAnalyticsPageContent({
       sortable: true,
       render: (value) => (
         <span className="font-medium text-gray-900">
-          {(value as number).toLocaleString("es-CR")}
+          {(value as number).toLocaleString("es-VE")}
         </span>
       ),
     },
@@ -311,7 +310,11 @@ function PromotionsAnalyticsPageContent({
       )}
 
       {tab === "fidelidad" && (
-        <LoyaltyAnalyticsTab initial={loyalty} branches={branches} />
+        <LoyaltyAnalyticsTab
+          initial={loyalty}
+          branches={branches}
+          currencies={currencies}
+        />
       )}
 
       {tab === "promociones" && (
@@ -369,13 +372,13 @@ function PromotionsAnalyticsPageContent({
             />
             <StatCard
               label="Ventas con promocion"
-              value={totalSales.toLocaleString("es-CR")}
+              value={totalSales.toLocaleString("es-VE")}
               icon={<IconTrendingUp />}
               sublabel="Transacciones que aplicaron una promocion"
             />
             <StatCard
               label="Promociones con uso"
-              value={withUsage.toLocaleString("es-CR")}
+              value={withUsage.toLocaleString("es-VE")}
               icon={<IconCheckCircle />}
               sublabel="Con al menos una venta en el periodo"
             />
@@ -395,7 +398,7 @@ function PromotionsAnalyticsPageContent({
                 <div className="w-52">
                   <Select
                     value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value)}
+                    onChange={(e) => handleTypeChange(e.target.value)}
                     options={typeOptions}
                   />
                 </div>

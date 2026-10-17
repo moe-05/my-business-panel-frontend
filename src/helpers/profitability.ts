@@ -1,5 +1,4 @@
-import { BASE_CURRENCY_ID, convertCurrency } from "@/utils/currency";
-import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
+import { pickAmount } from "@/utils/currency";
 import type {
   BranchProfitability,
   BucketUnit,
@@ -51,7 +50,9 @@ interface BucketAccumulator {
   cogs: number;
   returns: number;
   returns_cogs: number;
+  notes: number;
   expenses: number;
+  payroll: number;
 }
 
 function emptyAccumulator(): BucketAccumulator {
@@ -61,7 +62,9 @@ function emptyAccumulator(): BucketAccumulator {
     cogs: 0,
     returns: 0,
     returns_cogs: 0,
+    notes: 0,
     expenses: 0,
+    payroll: 0,
   };
 }
 
@@ -70,33 +73,34 @@ function formatBucketLabel(iso: string, unit: BucketUnit): string {
   const d = new Date(iso);
   switch (unit) {
     case "hour":
-      return d.toLocaleTimeString("es-CR", {
+      return d.toLocaleTimeString("es-VE", {
         hour: "2-digit",
         minute: "2-digit",
       });
     case "month":
-      return d.toLocaleDateString("es-CR", {
+      return d.toLocaleDateString("es-VE", {
         month: "short",
         year: "2-digit",
       });
     default: // day | week
-      return d.toLocaleDateString("es-CR", { day: "2-digit", month: "2-digit" });
+      return d.toLocaleDateString("es-VE", { day: "2-digit", month: "2-digit" });
   }
 }
 
 // Aplica las formulas de rentabilidad a un acumulador.
-//   VN = ventas netas - devoluciones
-//   UB = (ventas netas - cogs) - (devoluciones - cogs devuelto)
-//   UN = UB - gastos
+//   VN = ventas netas - devoluciones + notas (credito negativas, debito positivas)
+//   UB = (ventas netas - cogs) - (devoluciones - cogs devuelto) + notas
+//   UN = UB - gastos - nomina
 //   MB = UB / VN * 100 ; MN = UN / VN * 100
 function computePoint(
   bucketStart: string,
   unit: BucketUnit,
   acc: BucketAccumulator,
 ): ProfitabilityPoint {
-  const vn = acc.net_sales - acc.returns;
-  const ub = acc.net_sales - acc.cogs - (acc.returns - acc.returns_cogs);
-  const un = ub - acc.expenses;
+  const vn = acc.net_sales - acc.returns + acc.notes;
+  const ub =
+    acc.net_sales - acc.cogs - (acc.returns - acc.returns_cogs) + acc.notes;
+  const un = ub - acc.expenses - acc.payroll;
   return {
     bucket_start: bucketStart,
     label: formatBucketLabel(bucketStart, unit),
@@ -113,6 +117,7 @@ function seriesFromBuckets(
   unit: BucketUnit,
   expenseBreakdown: ExpenseCategoryBreakdown[],
 ): ProfitabilitySeries {
+  const accs = Array.from(buckets.values());
   const points = Array.from(buckets.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([bucketStart, acc]) => computePoint(bucketStart, unit, acc));
@@ -122,6 +127,7 @@ function seriesFromBuckets(
     total_vn: points.reduce((s, p) => s + p.vn, 0),
     total_ub: points.reduce((s, p) => s + p.ub, 0),
     total_un: points.reduce((s, p) => s + p.un, 0),
+    total_payroll: accs.reduce((s, a) => s + a.payroll, 0),
     expense_breakdown: expenseBreakdown,
   };
 }
@@ -130,7 +136,6 @@ function seriesFromBuckets(
 export function computeProfitability(
   raw: ProfitabilityRawData,
   targetCurrencyId: number,
-  rates: ExchangeRate[],
 ): ProfitabilityResult {
   const unit = raw.bucket_unit;
 
@@ -161,13 +166,15 @@ export function computeProfitability(
     return acc;
   };
 
-  const toTarget = (amount: number, fromCurrencyId: number) =>
-    convertCurrency(Number(amount), fromCurrencyId, targetCurrencyId, rates);
+  // El backend ya convirtio cada monto con la tasa de su fecha (FNZ-X-02):
+  // solo se elige la columna _usd o _ves.
+  const pick = (row: object, field: string) =>
+    pickAmount(row, field, targetCurrencyId);
 
   for (const row of raw.sales) {
-    const netSales = toTarget(Number(row.net_sales), row.currency_id);
-    const discounts = toTarget(Number(row.discounts), row.currency_id);
-    const cogs = toTarget(Number(row.cogs), BASE_CURRENCY_ID);
+    const netSales = pick(row, "net_sales");
+    const discounts = pick(row, "discounts");
+    const cogs = pick(row, "cogs");
     for (const acc of [
       branchBucket(row.branch_id, row.bucket_start),
       generalBucket(row.bucket_start),
@@ -179,8 +186,8 @@ export function computeProfitability(
   }
 
   for (const row of raw.returns) {
-    const returns = toTarget(Number(row.returns), row.currency_id);
-    const returnsCogs = toTarget(Number(row.returns_cogs), BASE_CURRENCY_ID);
+    const returns = pick(row, "returns");
+    const returnsCogs = pick(row, "returns_cogs");
     for (const acc of [
       branchBucket(row.branch_id, row.bucket_start),
       generalBucket(row.bucket_start),
@@ -190,13 +197,35 @@ export function computeProfitability(
     }
   }
 
+  // Notas de credito / debito: ajustan las ventas netas del periodo en que se emiten.
+  for (const row of raw.notes ?? []) {
+    const notes = pick(row, "notes");
+    for (const acc of [
+      branchBucket(row.branch_id, row.bucket_start),
+      generalBucket(row.bucket_start),
+    ]) {
+      acc.notes += notes;
+    }
+  }
+
   for (const row of raw.expenses) {
-    const expenses = toTarget(Number(row.amount), row.currency_id);
+    const expenses = pick(row, "amount");
     for (const acc of [
       branchBucket(row.branch_id, row.bucket_start),
       generalBucket(row.bucket_start),
     ]) {
       acc.expenses += expenses;
+    }
+  }
+
+  // Nomina pagada: se resta en la UN y se muestra aparte de los gastos.
+  for (const row of raw.payroll ?? []) {
+    const payroll = pick(row, "amount");
+    for (const acc of [
+      branchBucket(row.branch_id, row.bucket_start),
+      generalBucket(row.bucket_start),
+    ]) {
+      acc.payroll += payroll;
     }
   }
 
@@ -206,7 +235,7 @@ export function computeProfitability(
   const generalCategory = new Map<string, CategoryAccumulator>();
 
   for (const row of raw.expense_categories) {
-    const amount = toTarget(Number(row.amount), row.currency_id);
+    const amount = pick(row, "amount");
 
     let branchMap = byBranchCategory.get(row.branch_id);
     if (!branchMap) {
@@ -233,7 +262,10 @@ export function computeProfitability(
       branch_id: b.branch_id,
       branch_name: b.branch_name,
       ...series,
-      contribution_pct: tenantUn !== 0 ? (series.total_un / tenantUn) * 100 : 0,
+      // Divisor en valor absoluto: con UN consolidada negativa, una sucursal con
+      // ganancia no debe mostrar un aporte negativo.
+      contribution_pct:
+        tenantUn !== 0 ? (series.total_un / Math.abs(tenantUn)) * 100 : 0,
     };
   });
 

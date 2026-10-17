@@ -1,21 +1,19 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLoaderData } from "react-router-dom";
 import { fnzIvaApi } from "@/api/fnzIva.api";
-import {
-  TimeIntervalSelector,
-  intervalToDates,
-} from "@/components/ui/TimeIntervalSelector";
 import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
 import { PageHeaderBanner } from "@/components/layout/PageHeaderBanner";
-import { formatInCurrency, convertAmount } from "@/utils/purchase";
+import { formatInCurrency } from "@/utils/purchase";
+import { buildIvaSummary, ivaPeriodRange } from "@/helpers/fnzIva";
+import { businessDate } from "@/utils/businessDate";
+import { useDisplayCurrency } from "@/context/CurrencyContext";
 import { DeferredPage } from "@/components/routing/DeferredPage";
+import { IvaWithholdingsPanel } from "./components/IvaWithholdingsPanel";
 
-import type { TimeInterval } from "@/components/ui/TimeIntervalSelector";
-import type { IvaSummary } from "@/interfaces/entities/FnzIva.interface";
+import type { IvaPeriodHalf } from "@/helpers/fnzIva";
+import type { IvaSummaryRaw } from "@/interfaces/entities/FnzIva.interface";
 import type { FnzIvaPageLoaderData } from "@/router/loaders/fnzIva.loaders";
 import type { Currency } from "@/interfaces/entities/Currency.interface";
-
-const CRC_CURRENCY_ID = 1;
 
 function IvaStat({
   label,
@@ -66,47 +64,53 @@ function FnzIvaPageContent({
   currencies,
   exchangeRates,
 }: FnzIvaPageLoaderData) {
-  const crcCurrency =
-    currencies.find((c) => c.currency_code === "VES") ?? currencies[0];
+  // Sincronizado con el toggle universal del header (CurrencyContext).
+  const { displayCurrency: globalCurrency, setDisplayCurrency: setGlobal } =
+    useDisplayCurrency();
+  const displayCurrency: Currency =
+    currencies.find((c) => c.currency_code === globalCurrency) ??
+    currencies[0];
+  const setDisplayCurrency = (currency: Currency) =>
+    setGlobal(currency.currency_code === "VES" ? "VES" : "USD");
 
-  const [displayCurrency, setDisplayCurrency] = useState<Currency>(
-    crcCurrency ?? currencies[0],
-  );
-  const [interval, setInterval] = useState<TimeInterval>("30d");
-  const [summary, setSummary] = useState<IvaSummary | null>(null);
+  // Periodo declarable (FNZ-IV-04): mes calendario o quincena, no una
+  // ventana movil. Por defecto, el mes en curso (hora de Venezuela).
+  const [month, setMonth] = useState(() => businessDate().slice(0, 7));
+  const [half, setHalf] = useState<IvaPeriodHalf>("full");
+  const [rawSummary, setRawSummary] = useState<IvaSummaryRaw | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const period = useMemo(() => ivaPeriodRange(month, half), [month, half]);
 
   const loadSummary = useCallback(async () => {
     if (!tenantId) return;
     setLoading(true);
-    const { start, end } = intervalToDates(interval);
+    const { start, end } = period;
     try {
       const data = await fnzIvaApi.getSummary(tenantId, start, end);
-      setSummary(data);
+      setRawSummary(data);
     } catch {
       // Mantener datos anteriores en caso de error
     } finally {
       setLoading(false);
     }
-  }, [tenantId, interval]);
+  }, [tenantId, period]);
 
   useEffect(() => {
     loadSummary();
   }, [loadSummary]);
 
-  const convert = useCallback(
-    (amount: number) =>
-      convertAmount(
-        amount,
-        CRC_CURRENCY_ID,
-        displayCurrency.currency_id,
-        exchangeRates,
-      ),
-    [displayCurrency, exchangeRates],
+  // Cada componente llega en USD y VES con la tasa de su fecha (FNZ-X-02).
+  const summary = useMemo(
+    () =>
+      rawSummary
+        ? buildIvaSummary(rawSummary, displayCurrency.currency_id)
+        : null,
+    [rawSummary, displayCurrency.currency_id],
   );
 
   const fmt = (amount: number) =>
-    loading ? "..." : formatInCurrency(convert(amount), displayCurrency);
+    loading ? "..." : formatInCurrency(amount, displayCurrency);
 
   const ivaNeto = summary?.iva_neto ?? 0;
   const isDebt = ivaNeto > 0;
@@ -119,7 +123,24 @@ function FnzIvaPageContent({
         description="Desglose de impuesto al valor agregado para la declaración al SENIAT"
       >
         <div className="flex items-center gap-3 flex-wrap">
-          <TimeIntervalSelector value={interval} onChange={setInterval} />
+          <input
+            type="month"
+            value={month}
+            max={businessDate().slice(0, 7)}
+            onChange={(e) => e.target.value && setMonth(e.target.value)}
+            aria-label="Mes del periodo"
+            className="px-3 py-1 text-sm rounded-full border border-gray-300 bg-white"
+          />
+          <select
+            value={half}
+            onChange={(e) => setHalf(e.target.value as IvaPeriodHalf)}
+            aria-label="Periodo"
+            className="px-3 py-1 text-sm rounded-full border border-gray-300 bg-white"
+          >
+            <option value="full">Mes completo</option>
+            <option value="first">1ra quincena (1-15)</option>
+            <option value="second">2da quincena (16-fin)</option>
+          </select>
           {currencies.length > 0 && (
             <CurrencyToggle
               currencies={currencies}
@@ -130,8 +151,8 @@ function FnzIvaPageContent({
         </div>
       </PageHeaderBanner>
 
-      {/* Fila 1: IVA Débito, Recuperable y Notas de Crédito */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Fila 1: IVA Debito, notas y Recuperable */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <IvaStat
           label="IVA Débito (Ventas)"
           value={fmt(summary?.iva_debito ?? 0)}
@@ -142,21 +163,28 @@ function FnzIvaPageContent({
         <IvaStat
           label="IVA Recuperable (Compras)"
           value={fmt(summary?.iva_recuperable ?? 0)}
-          description="Crédito fiscal de compras (pagadas + CxP pendiente)"
+          description="Crédito fiscal: compras pagadas + CxP pendiente + gastos"
           tone="gray"
           loading={loading}
         />
         <IvaStat
           label="IVA Notas de Crédito"
           value={fmt(summary?.iva_notas_credito ?? 0)}
-          description="IVA revertido por devoluciones de ventas"
+          description="IVA revertido por devoluciones y notas de crédito"
+          tone="gray"
+          loading={loading}
+        />
+        <IvaStat
+          label="IVA Notas de Débito"
+          value={fmt(summary?.iva_notas_debito ?? 0)}
+          description="IVA agregado por notas de débito sobre facturas emitidas"
           tone="gray"
           loading={loading}
         />
       </div>
 
-      {/* Fila 2: Desglose compras */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Fila 2: Desglose del credito fiscal */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <IvaStat
           label="IVA Crédito — Compras Pagadas"
           value={fmt(summary?.iva_credito ?? 0)}
@@ -168,6 +196,24 @@ function FnzIvaPageContent({
           label="IVA CxP — Pago Pendiente"
           value={fmt(summary?.iva_cxp ?? 0)}
           description="IVA acreditable de facturas recibidas con pago aún pendiente"
+          tone="gray"
+          loading={loading}
+        />
+        <IvaStat
+          label="IVA Crédito — Gastos"
+          value={fmt(summary?.iva_gastos ?? 0)}
+          description="IVA de gastos registrados en el período"
+          tone="gray"
+          loading={loading}
+        />
+      </div>
+
+      {/* Retenciones practicadas a proveedores (FNZ-IV-06): informativo */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <IvaStat
+          label="IVA Retenido a Proveedores"
+          value={fmt(summary?.iva_retenido ?? 0)}
+          description="Comprobantes de retención del período: se entera al SENIAT aparte, no modifica el IVA neto"
           tone="gray"
           loading={loading}
         />
@@ -191,7 +237,7 @@ function FnzIvaPageContent({
             >
               {loading
                 ? "..."
-                : formatInCurrency(convert(Math.abs(ivaNeto)), displayCurrency)}
+                : formatInCurrency(Math.abs(ivaNeto), displayCurrency)}
             </p>
             <p
               className={`text-sm mt-2 font-semibold ${
@@ -214,7 +260,7 @@ function FnzIvaPageContent({
               </span>
             </p>
             <p className="text-gray-400 text-[10px]">
-              (Débito − Notas de Crédito)
+              (Débito + Notas de Débito − Notas de Crédito)
             </p>
             <hr className="border-gray-200 my-1" />
             <p>
@@ -223,7 +269,7 @@ function FnzIvaPageContent({
                 {fmt(summary?.iva_recuperable ?? 0)}
               </span>
             </p>
-            <p className="text-gray-400 text-[10px]">(Crédito compras + CxP)</p>
+            <p className="text-gray-400 text-[10px]">(Compras pagadas + CxP + Gastos)</p>
             <hr className="border-gray-200 my-1" />
             <p
               className={`font-semibold ${isDebt ? "text-red-600" : "text-green-600"}`}
@@ -232,13 +278,21 @@ function FnzIvaPageContent({
               {loading
                 ? "..."
                 : `${isDebt ? "" : "−"}${formatInCurrency(
-                    convert(Math.abs(ivaNeto)),
+                    Math.abs(ivaNeto),
                     displayCurrency,
                   )}`}
             </p>
           </div>
         </div>
       </div>
+
+      <IvaWithholdingsPanel
+        tenantId={tenantId}
+        periodStart={period.start}
+        periodEnd={period.end}
+        displayCurrency={displayCurrency}
+        onChanged={loadSummary}
+      />
 
       {/* Disclaimer tipo de cambio */}
       {exchangeRates.length === 0 && currencies.length > 1 && (

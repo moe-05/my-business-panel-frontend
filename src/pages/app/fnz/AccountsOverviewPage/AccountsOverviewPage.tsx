@@ -19,7 +19,19 @@ import { financesApi } from "@/api/finances.api";
 import { getPayableStatusTone } from "@/utils/purchase";
 import { getReceivableStatusTone } from "@/utils/accounts-receivable";
 import { useDisplayCurrency } from "@/context/CurrencyContext";
+import {
+  convertCurrency,
+  formatMoney,
+  hasExchangeRate,
+  pickAmount,
+} from "@/utils/currency";
 import { DeferredPage } from "@/components/routing/DeferredPage";
+import {
+  businessDate,
+  dateOnly,
+  daysBetween,
+  formatDateOnly,
+} from "@/utils/businessDate";
 
 import type {
   AccountAlertStatus,
@@ -34,8 +46,6 @@ import type { AccountsOverviewPageLoaderData } from "@/router/loaders/finances.l
 import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const BASE_CURRENCY_ID = 1; // VES
 
 const STATUS_OPTIONS = [
   { value: "", label: "Todos los estados" },
@@ -68,63 +78,27 @@ const ALERT_VARIANT: Record<
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
-function getExchangeRateToCrc(
-  rates: ExchangeRate[],
-  fromCurrencyId: number,
-): number | null {
-  if (fromCurrencyId === BASE_CURRENCY_ID) return 1;
-  const direct = rates.find(
-    (r) =>
-      Number(r.from_currency_id) === fromCurrencyId &&
-      Number(r.to_currency_id) === BASE_CURRENCY_ID,
-  );
-  if (direct) return Number(direct.rate);
-  const rev = rates.find(
-    (r) =>
-      Number(r.from_currency_id) === BASE_CURRENCY_ID &&
-      Number(r.to_currency_id) === fromCurrencyId,
-  );
-  if (rev && Number(rev.rate) > 0) return 1 / Number(rev.rate);
-  return null;
-}
-
-function convertAmount(
-  amountCrc: number,
-  targetCurrencyId: number,
-  rates: ExchangeRate[],
-): number | null {
-  if (targetCurrencyId === BASE_CURRENCY_ID) return amountCrc;
-  const toTarget = rates.find(
-    (r) =>
-      Number(r.from_currency_id) === BASE_CURRENCY_ID &&
-      Number(r.to_currency_id) === targetCurrencyId,
-  );
-  if (toTarget) return amountCrc * Number(toTarget.rate);
-  const toCrc = getExchangeRateToCrc(rates, targetCurrencyId);
-  if (toCrc && toCrc > 0) return amountCrc / toCrc;
-  return null;
-}
-
+// Formatea un monto que llega en `fromCurrencyId` (CxP en USD, CxC en la moneda
+// de la venta) en la moneda de visualizacion. Sin tasa y con monedas distintas
+// no se puede convertir: se muestra "—" en vez de un numero enganoso.
 function formatAmount(
   value: number | string | null | undefined,
+  fromCurrencyId: number,
   targetCurrencyId: number,
+  targetCode: string,
   rates: ExchangeRate[],
   symbol: string,
 ): string {
-  const num = Number(value ?? 0);
-  if (targetCurrencyId === BASE_CURRENCY_ID) {
-    return new Intl.NumberFormat("es-VE", {
-      style: "currency",
-      currency: "VES",
-      maximumFractionDigits: 2,
-    }).format(num);
+  if (fromCurrencyId !== targetCurrencyId && !hasExchangeRate(rates)) {
+    return "—";
   }
-  const converted = convertAmount(num, targetCurrencyId, rates);
-  if (converted === null) return "—";
-  return `${symbol} ${converted.toLocaleString("es-VE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  const converted = convertCurrency(
+    Number(value ?? 0),
+    fromCurrencyId,
+    targetCurrencyId,
+    rates,
+  );
+  return formatMoney(converted, targetCode, symbol);
 }
 
 function formatDate(value?: string | null): string {
@@ -132,17 +106,13 @@ function formatDate(value?: string | null): string {
   return new Date(value).toLocaleDateString("es-VE");
 }
 
+// due_date es una columna date: se compara como dia (YYYY-MM-DD) contra el
+// dia de hoy en Caracas. Con new Date() una cuenta que vence hoy salia vencida.
 function computeAlertStatus(
   dueDate: string,
   alertConfig: AccountsAlertConfig | null,
 ): AccountAlertStatus {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate);
-  due.setHours(0, 0, 0, 0);
-  const days = Math.ceil(
-    (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-  );
+  const days = daysBetween(businessDate(), dateOnly(dueDate));
   if (days < 0) return "vencida";
   if (!alertConfig) return "al_dia";
   if (days <= alertConfig.urgent_days_before_due) return "urgente";
@@ -377,9 +347,10 @@ function AccountsOverviewPageContent({
   const [overview, setOverview] = useState(initialOverview);
   const [branchId, setBranchId] = useState("");
   // Moneda visualizada: toggle universal del header (ver CurrencyContext).
-  // Distinto de BASE_CURRENCY_ID (moneda en la que llegan los montos crudos
-  // del backend, VES) -- este es el destino de la conversion para mostrar.
-  const { displayCurrencyId: selectedCurrencyId } = useDisplayCurrency();
+  // Cada fila trae su propio currency_id (CxP en USD, CxC en la moneda de la
+  // venta); este es solo el destino de la conversion para mostrar.
+  const { displayCurrencyId: selectedCurrencyId, displayCurrency } =
+    useDisplayCurrency();
 
   // Modal state
   const [selectedPayable, setSelectedPayable] =
@@ -433,29 +404,47 @@ function AccountsOverviewPageContent({
   const currencySymbol =
     currencies.find((c) => Number(c.currency_id) === selectedCurrencyId)
       ?.symbol ?? "Bs.";
-  const fmt = (value: number | string | null | undefined) =>
-    formatAmount(value, selectedCurrencyId, exchangeRates, currencySymbol);
+  const fmt = (
+    value: number | string | null | undefined,
+    fromCurrencyId: number,
+  ) =>
+    formatAmount(
+      value,
+      fromCurrencyId,
+      selectedCurrencyId,
+      displayCurrency,
+      exchangeRates,
+      currencySymbol,
+    );
+  // Total ya expresado en la moneda de visualizacion.
+  const fmtDisplay = (value: number) =>
+    formatMoney(value, displayCurrency, currencySymbol);
+  // Saldos abiertos: se valoran a la tasa de hoy (lo que cuesta saldarlos ahora).
+  // Monto de una fila convertido a la moneda de visualizacion (para totales).
+  const toDisplay = (value: number | string | null | undefined, from: number) =>
+    convertCurrency(Number(value ?? 0), from, selectedCurrencyId, exchangeRates);
 
   // Stats always reflect full overview, not filtered rows
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessDate();
   const stats = useMemo(
     () => ({
       totalCxP: overview.payables.reduce(
-        (s, p) => s + Number(p.balance_due ?? 0),
+        (s, p) => s + toDisplay(p.balance_due, p.currency_id),
         0,
       ),
       totalCxC: overview.receivables.reduce(
-        (s, r) => s + Number(r.balance_due ?? 0),
+        (s, r) => s + toDisplay(r.balance_due, r.currency_id),
         0,
       ),
       vencidoCxP: overview.payables
-        .filter((p) => !p.is_paid && p.due_date < today)
-        .reduce((s, p) => s + Number(p.balance_due ?? 0), 0),
+        .filter((p) => !p.is_paid && dateOnly(p.due_date) < today)
+        .reduce((s, p) => s + toDisplay(p.balance_due, p.currency_id), 0),
       vencidoCxC: overview.receivables
-        .filter((r) => !r.is_paid && r.due_date < today)
-        .reduce((s, r) => s + Number(r.balance_due ?? 0), 0),
+        .filter((r) => !r.is_paid && dateOnly(r.due_date) < today)
+        .reduce((s, r) => s + toDisplay(r.balance_due, r.currency_id), 0),
     }),
-    [overview, today],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [overview, today, selectedCurrencyId, exchangeRates],
   );
 
   // Modal open handlers
@@ -517,26 +506,26 @@ function AccountsOverviewPageContent({
       <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total por pagar"
-          value={fmt(stats.totalCxP)}
+          value={fmtDisplay(stats.totalCxP)}
           icon={<IconShoppingCart />}
           sublabel="Saldo pendiente de pago"
           accent
         />
         <StatCard
           label="Total por cobrar"
-          value={fmt(stats.totalCxC)}
+          value={fmtDisplay(stats.totalCxC)}
           icon={<IconTrendingUp />}
           sublabel="Saldo pendiente de cobro"
         />
         <StatCard
           label="Pagos vencidos"
-          value={fmt(stats.vencidoCxP)}
+          value={fmtDisplay(stats.vencidoCxP)}
           icon={<IconCheckCircle />}
           sublabel="Cuentas por pagar vencidas"
         />
         <StatCard
           label="Cobros vencidos"
-          value={fmt(stats.vencidoCxC)}
+          value={fmtDisplay(stats.vencidoCxC)}
           icon={<IconCreditCard />}
           sublabel="Cuentas por cobrar vencidas"
         />
@@ -590,7 +579,8 @@ function AccountsOverviewPageContent({
                 key: "total_amount",
                 label: "Total",
                 width: "15%",
-                render: (value) => fmt(value as number | string),
+                render: (value, row: AccountPayableOverview) =>
+                  fmt(value as number | string, row.currency_id),
               },
               {
                 key: "payment_count",
@@ -600,19 +590,21 @@ function AccountsOverviewPageContent({
                   fmt(
                     Number(row.total_amount ?? 0) -
                       Number(row.balance_due ?? 0),
+                    row.currency_id,
                   ),
               },
               {
                 key: "balance_due",
                 label: "Pendiente",
                 width: "15%",
-                render: (value) => fmt(value as number | string),
+                render: (value, row: AccountPayableOverview) =>
+                  fmt(value as number | string, row.currency_id),
               },
               {
                 key: "due_date",
                 label: "Limite",
                 width: "14%",
-                render: (value) => formatDate(value as string),
+                render: (value) => formatDateOnly(value as string),
               },
               {
                 key: "account_payable_status_name",
@@ -655,20 +647,25 @@ function AccountsOverviewPageContent({
                 key: "digital_sale_invoice_id",
                 label: "Factura",
                 width: "15%",
-                render: (value) =>
-                  value ? (
+                // Correlativo SENIAT; las facturas anteriores a la numeracion
+                // por tenant no lo tienen y se muestran como "Sin numero".
+                render: (value, row: AccountReceivableOverview) =>
+                  !value ? (
+                    <span className="text-gray-400">Sin factura</span>
+                  ) : row.invoice_number != null ? (
                     <span className="font-mono text-xs text-gray-700">
-                      {String(value).slice(0, 8)}
+                      N° {row.invoice_number}
                     </span>
                   ) : (
-                    <span className="text-gray-400">Sin factura</span>
+                    <span className="text-xs text-gray-400">Sin numero</span>
                   ),
               },
               {
                 key: "total_amount",
                 label: "Total",
                 width: "16%",
-                render: (value) => fmt(value as number | string),
+                render: (value, row: AccountReceivableOverview) =>
+                  fmt(value as number | string, row.currency_id),
               },
               {
                 key: "collection_count",
@@ -678,19 +675,21 @@ function AccountsOverviewPageContent({
                   fmt(
                     Number(row.total_amount ?? 0) -
                       Number(row.balance_due ?? 0),
+                    row.currency_id,
                   ),
               },
               {
                 key: "balance_due",
                 label: "Pendiente",
                 width: "16%",
-                render: (value) => fmt(value as number | string),
+                render: (value, row: AccountReceivableOverview) =>
+                  fmt(value as number | string, row.currency_id),
               },
               {
                 key: "due_date",
                 label: "Limite",
                 width: "15%",
-                render: (value) => formatDate(value as string),
+                render: (value) => formatDateOnly(value as string),
               },
               {
                 key: "account_receivable_status_name",
@@ -733,20 +732,21 @@ function AccountsOverviewPageContent({
                 />
                 <DetailRow
                   label="Total"
-                  value={fmt(selectedPayable.total_amount)}
+                  value={fmt(selectedPayable.total_amount, selectedPayable.currency_id)}
                 />
                 <DetailRow
                   label="Abonado"
                   value={fmt(
                     Number(selectedPayable.total_amount ?? 0) -
                       Number(selectedPayable.balance_due ?? 0),
+                    selectedPayable.currency_id,
                   )}
                 />
                 <DetailRow
                   label="Pendiente"
                   value={
                     <span className="font-semibold text-red-600">
-                      {fmt(selectedPayable.balance_due)}
+                      {fmt(selectedPayable.balance_due, selectedPayable.currency_id)}
                     </span>
                   }
                 />
@@ -756,7 +756,7 @@ function AccountsOverviewPageContent({
                 />
                 <DetailRow
                   label="Fecha limite"
-                  value={formatDate(selectedPayable.due_date)}
+                  value={formatDateOnly(selectedPayable.due_date)}
                 />
                 <DetailRow
                   label="Alerta"
@@ -792,7 +792,9 @@ function AccountsOverviewPageContent({
                     key: "amount_paid",
                     label: "Monto",
                     width: "20%",
-                    render: (value) => fmt(value as number | string),
+                    // Historico: tasa de la fecha del pago (FNZ-X-02).
+                    render: (_value, row: PayablePayment) =>
+                  fmtDisplay(pickAmount(row, "amount_paid", selectedCurrencyId)),
                   },
                   {
                     key: "payment_method_name",
@@ -845,30 +847,33 @@ function AccountsOverviewPageContent({
                 )}
                 {selectedReceivable.digital_sale_invoice_id && (
                   <DetailRow
-                    label="Factura digital"
+                    label="Factura"
                     value={
                       <span className="font-mono text-xs">
-                        {selectedReceivable.digital_sale_invoice_id}
+                        {selectedReceivable.invoice_number != null
+                          ? `N° ${selectedReceivable.invoice_number}`
+                          : "Sin numero"}
                       </span>
                     }
                   />
                 )}
                 <DetailRow
                   label="Total"
-                  value={fmt(selectedReceivable.total_amount)}
+                  value={fmt(selectedReceivable.total_amount, selectedReceivable.currency_id)}
                 />
                 <DetailRow
                   label="Abonado"
                   value={fmt(
                     Number(selectedReceivable.total_amount ?? 0) -
                       Number(selectedReceivable.balance_due ?? 0),
+                    selectedReceivable.currency_id,
                   )}
                 />
                 <DetailRow
                   label="Pendiente"
                   value={
                     <span className="font-semibold text-red-600">
-                      {fmt(selectedReceivable.balance_due)}
+                      {fmt(selectedReceivable.balance_due, selectedReceivable.currency_id)}
                     </span>
                   }
                 />
@@ -878,7 +883,7 @@ function AccountsOverviewPageContent({
                 />
                 <DetailRow
                   label="Fecha limite"
-                  value={formatDate(selectedReceivable.due_date)}
+                  value={formatDateOnly(selectedReceivable.due_date)}
                 />
                 <DetailRow
                   label="Alerta"
@@ -912,9 +917,11 @@ function AccountsOverviewPageContent({
                   },
                   {
                     key: "amount_paid",
-                    label: "Monto (Bs.)",
+                    label: "Monto",
                     width: "18%",
-                    render: (value) => fmt(value as number | string),
+                    // Historico: tasa de la fecha del cobro (FNZ-X-02).
+                    render: (_value, row: ReceivableCollection) =>
+                  fmtDisplay(pickAmount(row, "amount_paid", selectedCurrencyId)),
                   },
                   {
                     key: "payment_method_name",

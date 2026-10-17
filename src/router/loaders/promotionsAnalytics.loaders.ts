@@ -8,7 +8,11 @@ import { branchApi } from "@/api/branch.api";
 import { DEFAULT_PROMO_INTERVAL } from "@/constants/promotion";
 import { DEFAULT_LOYALTY_INTERVAL } from "@/constants/loyaltyFinance";
 import { emptyOverview } from "./loyaltyFinance.loaders";
-import type { PromoAnalyticsRow, PromoInterval } from "@/interfaces/entities/Promotion.interface";
+import type {
+  PromoAnalyticsRow,
+  PromoInterval,
+  PromotionType,
+} from "@/interfaces/entities/Promotion.interface";
 import type { Currency } from "@/interfaces/entities/Currency.interface";
 import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
 import type { Branch } from "@/interfaces/entities/Branch.interface";
@@ -17,6 +21,9 @@ import type { LoyaltyOverview } from "@/interfaces/entities/LoyaltyFinance.inter
 
 export interface PromotionsAnalyticsLoaderData {
   rows: PromoAnalyticsRow[];
+  salesWithPromotion: number;
+  /** Tipos de promocion para el filtro (independiente de las filas cargadas). */
+  promotionTypes: PromotionType[];
   royalty: RoyaltyAnalytics | null;
   loyalty: LoyaltyOverview;
   currencies: Currency[];
@@ -31,11 +38,20 @@ async function fetchPromotionsAnalyticsPageData(): Promise<PromotionsAnalyticsLo
   const tenantId = user?.tenant?.tenant_id ?? "";
   const interval = DEFAULT_PROMO_INTERVAL;
 
-  const [rows, royalty, loyalty, currencies, exchangeRates, branchRes] =
+  const [
+    analytics,
+    promotionTypes,
+    royalty,
+    loyalty,
+    currencies,
+    exchangeRates,
+    branchRes,
+  ] =
     await Promise.all([
       tenantId
         ? promotionApi.getAnalytics(tenantId, interval)
-        : Promise.resolve([]),
+        : Promise.resolve({ promotions: [], sales_with_promotion: 0 }),
+      promotionApi.getTypes().catch(() => [] as PromotionType[]),
       tenantId
         ? royaltyApi.getAnalytics(tenantId, interval).catch(() => null)
         : Promise.resolve(null),
@@ -50,7 +66,9 @@ async function fetchPromotionsAnalyticsPageData(): Promise<PromotionsAnalyticsLo
     ]);
 
   return {
-    rows,
+    rows: analytics.promotions,
+    salesWithPromotion: analytics.sales_with_promotion,
+    promotionTypes,
     royalty,
     loyalty,
     currencies,

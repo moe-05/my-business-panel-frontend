@@ -138,7 +138,12 @@ function CreateSalePageContent({
   const [appliedPromotion, setAppliedPromotion] =
     useState<AppliedPromotion | null>(null);
 
-  const loyalty = useCustomerLoyalty(customer?.customer_id);
+  const { serverExchangeRate, effectiveExchangeRate } = useServerExchangeRate();
+
+  const loyalty = useCustomerLoyalty(
+    customer?.customer_id,
+    effectiveExchangeRate,
+  );
 
   const [usePoints, setUsePoints] = useState(false);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
@@ -149,8 +154,6 @@ function CreateSalePageContent({
       setPointsToRedeem(0);
     }
   }, [customer?.customer_id]);
-
-  const { serverExchangeRate, effectiveExchangeRate } = useServerExchangeRate();
 
   const calc = useSaleCalculations({
     items,

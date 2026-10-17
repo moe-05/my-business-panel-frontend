@@ -10,8 +10,14 @@ export interface UseCustomerLoyaltyResult {
   loyaltyActive: boolean;
 }
 
+// El programa de fidelidad se define en USD (FNZ-FI-01): la tasa de canje del
+// programa son puntos por cada USD. El POS calcula los montos en bolivares
+// (moneda base del carrito), asi que la tasa se expresa por bolivar dividiendo
+// entre la tasa USD -> VES vigente; el resto del flujo (puntos = monto * tasa,
+// monto = puntos / tasa) no cambia. Sin tasa vigente no se puede canjear.
 export function useCustomerLoyalty(
   customerId: string | undefined,
+  usdToVesRate: number,
 ): UseCustomerLoyaltyResult {
   const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(
     null,
@@ -37,7 +43,9 @@ export function useCustomerLoyalty(
   }, [customerId]);
 
   const availablePoints = customerDetail?.loyalty_score ?? 0;
-  const pointsRate = customerDetail?.points_redeemed_per_currency_unit ?? 0;
+  const pointsPerUsd = customerDetail?.points_redeemed_per_currency_unit ?? 0;
+  const pointsRate =
+    pointsPerUsd > 0 && usdToVesRate > 0 ? pointsPerUsd / usdToVesRate : 0;
   const loyaltyActive = !!(
     customerDetail?.loyalty_program_active &&
     pointsRate > 0 &&

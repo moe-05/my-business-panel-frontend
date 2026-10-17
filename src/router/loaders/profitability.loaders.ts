@@ -28,6 +28,8 @@ const emptyRaw: ProfitabilityRawData = {
   returns: [],
   expenses: [],
   expense_categories: [],
+  payroll: [],
+  notes: [],
 };
 
 const fetchProfitabilityPageData =

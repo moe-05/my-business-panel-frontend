@@ -363,13 +363,6 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "trending-up",
       },
       {
-        id: "loyalty-points",
-        label: "Puntos de fidelidad",
-        path: "/app/fnz/loyalty-points",
-        icon: "credit-card",
-        rolesAllowed: [1, 2, 3],
-      },
-      {
         id: "expenses",
         label: "Gastos",
         path: "/app/fnz/expenses",

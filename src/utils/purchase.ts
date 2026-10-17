@@ -1,6 +1,7 @@
 import type { NumericLike } from "@/interfaces/entities/Purchase.interface";
 import type { Currency } from "@/interfaces/entities/Currency.interface";
 import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
+import { convertCurrency } from "@/utils/currency";
 
 type BadgeTone =
   | "green"
@@ -20,6 +21,8 @@ export function formatInCurrency(amount: number, currency: Currency): string {
   }).format(amount);
 }
 
+// Wrapper de compatibilidad sobre utils/currency.ts (conversion unica USD/VES,
+// en ambos sentidos). Acepta montos como string, tal como llegan de Postgres.
 export function convertAmount(
   raw: string | number,
   fromCurrencyId: number,
@@ -27,13 +30,8 @@ export function convertAmount(
   rates: ExchangeRate[],
 ): number {
   const amount = Number(raw);
-  if (fromCurrencyId === toCurrencyId || isNaN(amount)) return amount;
-  const rate = rates.find(
-    (r) =>
-      r.from_currency_id === fromCurrencyId &&
-      r.to_currency_id === toCurrencyId,
-  );
-  return rate ? amount * Number(rate.rate) : amount;
+  if (isNaN(amount)) return amount;
+  return convertCurrency(amount, fromCurrencyId, toCurrencyId, rates);
 }
 
 // Moneda base de Compras/CxP: USD (currency_id 2). VES queda como conversion
