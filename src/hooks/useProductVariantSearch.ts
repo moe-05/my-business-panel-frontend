@@ -18,6 +18,7 @@ interface UseProductVariantSearchOptions {
 interface UseProductVariantSearchResult {
   variants: ProductVariantRow[];
   isLoading: boolean;
+  error: string | null;
   search: (term: string) => Promise<void>;
   getStockForVariant: (variantId: string) => number | undefined;
 }
@@ -30,10 +31,11 @@ interface UseProductVariantSearchResult {
 export function useProductVariantSearch({
   tenantId,
   warehouseId,
-  debounceMs = 400,
+  debounceMs = 800,
 }: UseProductVariantSearchOptions): UseProductVariantSearchResult {
   const [variants, setVariants] = useState<ProductVariantRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inventoryStockRef = useRef<Map<string, number>>(new Map());
 
@@ -45,12 +47,18 @@ export function useProductVariantSearch({
       }
 
       setIsLoading(true);
+      setError(null);
       try {
         if (warehouseId) {
           await fetchInventoryVariants(term);
         } else {
           await fetchCatalogVariants(term);
         }
+      } catch (err) {
+        setVariants([]);
+        setError(
+          err instanceof Error ? err.message : "Error al buscar productos",
+        );
       } finally {
         setIsLoading(false);
       }
@@ -65,7 +73,16 @@ export function useProductVariantSearch({
   };
 
   const fetchInventoryVariants = async (term: string) => {
-    const inventory = await warehouseApi.listInventory(warehouseId!, term);
+    // include_catalog=true: sin esto, un producto sin fila de inventario
+    // todavia en esta bodega (nunca paso por un goods-receipt) queda
+    // invisible para siempre en el combo de venta -- el INNER JOIN
+    // original del backend lo excluia aunque existiera en el catalogo.
+    const inventory = await warehouseApi.listInventory(
+      warehouseId!,
+      term,
+      undefined,
+      true,
+    );
     const map = new Map<
       string,
       {
@@ -89,7 +106,8 @@ export function useProductVariantSearch({
       };
       entry.stock += Number(item.stock ?? 0);
       if (item.unit_price !== undefined) entry.unit_price = item.unit_price;
-      if (item.is_composite !== undefined) entry.is_composite = item.is_composite;
+      if (item.is_composite !== undefined)
+        entry.is_composite = item.is_composite;
       map.set(id, entry);
 
       // 2. Si es compuesto, expandir children para stock virtual
@@ -128,7 +146,6 @@ export function useProductVariantSearch({
       const row: ProductVariantRow = {
         product_id: id,
         product_name: value.variant_name ?? "",
-        category_id: "",
         tenant_id: tenantId,
         created_at: "",
         updated_at: "",
@@ -177,6 +194,10 @@ export function useProductVariantSearch({
     (term: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
 
+      // Feedback inmediato: "buscando" se muestra al tipear, la request
+      // real recien se dispara al vencer el debounce.
+      setIsLoading(true);
+
       return new Promise<void>((resolve) => {
         debounceRef.current = setTimeout(() => {
           fetchVariants(term.trim()).then(resolve);
@@ -199,6 +220,7 @@ export function useProductVariantSearch({
   return {
     variants,
     isLoading,
+    error,
     search,
     getStockForVariant,
   };

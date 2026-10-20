@@ -35,7 +35,7 @@ export interface Module {
   id: ModuleId;
   label: string;
   description: string;
-  color: "blue" | "purple" | "amber" | "green" | "red";
+  color: "blue" | "purple" | "amber" | "green" | "red" | "gray";
   code: string;
   path: string;
   icon:
@@ -55,7 +55,7 @@ export const MODULES: Record<ModuleId, Module> = {
     id: "general",
     label: "General",
     description: "Gestion general del sistema",
-    color: "blue",
+    color: "gray",
     code: "GEN",
     path: "/app",
     icon: "briefcase",
@@ -174,6 +174,20 @@ export const MODULES: Record<ModuleId, Module> = {
         icon: "gift",
         rolesAllowed: [1, 2],
       },
+      {
+        id: "receivables",
+        label: "Cuentas por cobrar",
+        path: "/app/pos/receivables",
+        icon: "credit-card",
+        rolesAllowed: [1, 2, 3],
+      },
+      {
+        id: "collection-alerts",
+        label: "Alertas de cobro",
+        path: "/app/pos/collection-alerts",
+        icon: "calendar",
+        rolesAllowed: [1, 2, 3],
+      },
     ],
   },
 
@@ -291,6 +305,27 @@ export const MODULES: Record<ModuleId, Module> = {
         rolesAllowed: [1, 2, 3],
       },
       {
+        id: "benefits",
+        label: "Beneficios y deducciones",
+        path: "/app/hr/benefits",
+        icon: "credit-card",
+        rolesAllowed: [1, 2, 3],
+      },
+      {
+        id: "offboarding",
+        label: "Egreso y liquidacion",
+        path: "/app/hr/offboarding",
+        icon: "file-text",
+        rolesAllowed: [1, 2, 3],
+      },
+      {
+        id: "parameters",
+        label: "Configuracion de nomina",
+        path: "/app/hr/parameters",
+        icon: "settings",
+        rolesAllowed: [1, 2],
+      },
+      {
         id: "amonestaciones",
         label: "Amonestaciones",
         path: "/app/hr/amonestaciones",
@@ -310,28 +345,42 @@ export const MODULES: Record<ModuleId, Module> = {
     rolesAllowed: [1, 2, 3],
     submodules: [
       {
+        id: "accounts",
+        label: "Cuentas",
+        path: "/app/fnz/accounts",
+        icon: "credit-card",
+      },
+      {
+        id: "cash-flow",
+        label: "Flujo de Caja",
+        path: "/app/fnz/cash-flow",
+        icon: "trending-up",
+      },
+      {
+        id: "profitability",
+        label: "Rentabilidad",
+        path: "/app/fnz/profitability",
+        icon: "trending-up",
+      },
+      {
+        id: "expenses",
+        label: "Gastos",
+        path: "/app/fnz/expenses",
+        icon: "trending-down",
+        rolesAllowed: [1, 2, 3],
+      },
+      {
         id: "accounting",
-        label: "Contabilidad",
+        label: "IVA",
         path: "/app/fnz/accounting",
         icon: "briefcase",
       },
       {
-        id: "reports",
-        label: "Reportes",
-        path: "/app/fnz/reports",
-        icon: "file-text",
-      },
-      {
-        id: "budgets",
-        label: "Presupuestos",
-        path: "/app/fnz/budgets",
-        icon: "credit-card",
-      },
-      {
-        id: "analytics",
-        label: "Analisis",
-        path: "/app/fnz/analytics",
+        id: "promotions",
+        label: "Promociones",
+        path: "/app/fnz/promotions",
         icon: "trending-up",
+        rolesAllowed: [1, 2, 3],
       },
     ],
   },
@@ -362,6 +411,7 @@ export function getModuleColor(moduleId: ModuleId): string {
     amber: "#f59e0b",
     green: "#22c55e",
     red: "#ef4444",
+    gray: "#111827",
   };
   return colorMap[MODULES[moduleId].color];
 }
@@ -402,6 +452,13 @@ export function getModuleColorClasses(moduleId: ModuleId) {
       text: "text-red-700",
       accent: "text-red-600",
       button: "bg-red-600 hover:bg-red-700 text-white",
+    },
+    gray: {
+      bg: "bg-gray-50",
+      border: "border-gray-200",
+      text: "text-gray-700",
+      accent: "text-gray-900",
+      button: "bg-gray-900 hover:bg-gray-800 text-white",
     },
   };
   return classMap[MODULES[moduleId].color];

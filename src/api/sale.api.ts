@@ -5,8 +5,7 @@ import type { CreateSaleRequest } from "@/interfaces/api/requests/CreateSaleRequ
 import type { PaginatedResponse } from "@/interfaces/api/responses/PaginatedResponse.interface";
 import type {
   CreateSaleResult,
-  DigitalInvoiceInfo,
-  ElectronicInvoiceInfo,
+  InvoiceInfo,
   SaleCondition,
   SaleItemDetail,
   SaleListItem,
@@ -59,10 +58,20 @@ export const saleApi = {
     branchId: string,
     page = 1,
     limit = 100,
+    dateFrom?: string,
+    dateTo?: string,
   ): Promise<PaginatedResponse<SaleListItem>> {
     try {
+      const offset = (page - 1) * limit;
+      const params = new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+      });
+      if (dateFrom) params.set("date_from", dateFrom);
+      if (dateTo) params.set("date_to", dateTo);
+
       const response = await fetch(
-        `${url}/sale/${branchId}?page=${page}&limit=${limit}`,
+        `${url}/sale/${branchId}?${params.toString()}`,
         {
           method: "GET",
           headers: { "Content-Type": "application/json" },
@@ -97,11 +106,20 @@ export const saleApi = {
   async listByTenant(
     page = 1,
     limit = 100,
+    dateFrom?: string,
+    dateTo?: string,
   ): Promise<PaginatedResponse<SaleListItem>> {
     try {
       const offset = (page - 1) * limit;
+      const params = new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+      });
+      if (dateFrom) params.set("date_from", dateFrom);
+      if (dateTo) params.set("date_to", dateTo);
+
       const response = await fetch(
-        `${url}/sale/tenant/all?limit=${limit}&offset=${offset}`,
+        `${url}/sale/tenant/all?${params.toString()}`,
         {
           method: "GET",
           headers: { "Content-Type": "application/json" },
@@ -142,67 +160,18 @@ export const saleApi = {
     }
   },
 
-  async getDigitalInvoice(saleId: string): Promise<DigitalInvoiceInfo | null> {
+  async getInvoice(saleId: string): Promise<InvoiceInfo | null> {
     try {
-      const response = await fetch(`${url}/d-invoice/sale/${saleId}`, {
+      const response = await fetch(`${url}/invoice/sale/${saleId}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
       });
       if (!response.ok) return null;
-      const json: ApiResponse<DigitalInvoiceInfo> = await response.json();
+      const json: ApiResponse<InvoiceInfo> = await response.json();
       return json.data;
     } catch {
       return null;
-    }
-  },
-
-  async getElectronicInvoiceForSale(
-    saleId: string,
-  ): Promise<ElectronicInvoiceInfo | null> {
-    try {
-      const response = await fetch(`${url}/sale/${saleId}/e-invoice`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      if (!response.ok) return null;
-      const json: ApiResponse<ElectronicInvoiceInfo | ElectronicInvoiceInfo[]> =
-        await response.json();
-      // Backend returns rows.map(...) — array. Take first element or null.
-      const data = json.data as unknown;
-      if (Array.isArray(data)) {
-        return (data[0] as ElectronicInvoiceInfo) ?? null;
-      }
-      return (data as ElectronicInvoiceInfo) ?? null;
-    } catch {
-      return null;
-    }
-  },
-
-  async createElectronicInvoiceForSale(
-    saleId: string,
-  ): Promise<ElectronicInvoiceInfo> {
-    try {
-      const response = await fetch(`${url}/sale/${saleId}/e-invoice`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const json = await response.json();
-      if (!response.ok) {
-        const message = Array.isArray(json?.message)
-          ? json.message.join(", ")
-          : (json?.message ?? "Error al generar factura electrónica");
-        throw new Error(message);
-      }
-      return (json as ApiResponse<ElectronicInvoiceInfo>).data;
-    } catch (error) {
-      throw new Error(
-        error instanceof Error
-          ? error.message
-          : "Error al generar factura electrónica",
-      );
     }
   },
 };

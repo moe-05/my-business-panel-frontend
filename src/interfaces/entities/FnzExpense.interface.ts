@@ -1,0 +1,151 @@
+// Analiticos de gastos.
+//
+// Respuestas crudas del backend: cada monto llega en USD y VES (<campo>_usd /
+// <campo>_ves), convertido con la tasa de la fecha de cada gasto o venta
+// (FNZ-X-02). helpers/fnzExpenseAnalytics.ts elige la columna de la moneda de
+// visualizacion y produce los tipos de display de abajo.
+export interface FixedVsVariableAnalyticRaw {
+  is_fixed: boolean;
+  expense_type: string; // 'Fijo' | 'Variable'
+  total_usd: string;
+  total_ves: string;
+}
+
+export interface CategoryAnalyticRaw {
+  category_id: string;
+  category_name: string;
+  account_code: string;
+  total_usd: string;
+  total_ves: string;
+}
+
+export interface SalesVsExpensesRaw {
+  period: string;
+  total_sales_usd: string;
+  total_sales_ves: string;
+  total_expenses_usd: string;
+  total_expenses_ves: string;
+}
+
+export interface ExpenseAnalyticsRaw {
+  fixedVsVariable: FixedVsVariableAnalyticRaw[];
+  fixedBreakdown: CategoryAnalyticRaw[];
+  variableBreakdown: CategoryAnalyticRaw[];
+  salesVsExpenses: SalesVsExpensesRaw[];
+}
+
+// Nomina del rango (planillas cerradas), en USD y VES con la tasa del dia de pago.
+export interface PayrollAnalytic {
+  paysheet_count: number;
+  /** Costo de nomina: total devengado (o el neto si el devengado quedo en 0). */
+  gross_total_usd: string;
+  gross_total_ves: string;
+  net_total_usd: string;
+  net_total_ves: string;
+}
+
+// Tipos de display: montos ya en la moneda de visualizacion.
+export interface FixedVsVariableAnalytic {
+  is_fixed: boolean;
+  expense_type: string; // 'Fijo' | 'Variable'
+  total_amount: string;
+}
+
+export interface CategoryAnalytic {
+  category_id: string;
+  category_name: string;
+  account_code: string;
+  total_amount: string;
+}
+
+export interface SalesVsExpensesPoint {
+  period: string;
+  total_sales: string;
+  total_expenses: string;
+}
+
+export interface ExpenseAnalyticsData {
+  fixedVsVariable: FixedVsVariableAnalytic[];
+  fixedBreakdown: CategoryAnalytic[];
+  variableBreakdown: CategoryAnalytic[];
+  salesVsExpenses: SalesVsExpensesPoint[];
+}
+
+// Accounting expense category (from accounting_schema.expense_category)
+export interface ExpenseCategory {
+  category_id: string;
+  tenant_id: string;
+  name: string;
+  account_code: string | null;
+  parent_category_id: string | null;
+  is_fixed: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Payload to create an accounting expense (POST /expense)
+export interface CreateExpensePayload {
+  tenant_id: string;
+  branch_id: string;
+  category_id: string;
+  description?: string;
+  amount: number;
+  tax_amount?: number;
+  total_amount: number;
+  currency_id: number;
+  expense_date: string; // 'YYYY-MM-DD'
+  payment_method: "CASH" | "BANK" | "CREDIT_CARD" | "CHECK" | "TRANSFER";
+  reference_number?: string;
+  notes?: string;
+  created_by?: string;
+}
+
+// Expense history row (GET /expense/history) — from accounting_schema.expense
+export interface ExpenseHistoryRow {
+  expense_id: string;
+  tenant_id: string;
+  branch_id: string;
+  branch_name: string;
+  category_id: string;
+  category_name: string;
+  account_code: string | null;
+  is_fixed: boolean;
+  description: string | null;
+  amount: string;
+  tax_amount: string;
+  total_amount: string;
+  currency_id: number;
+  expense_date: string;
+  payment_method: "CASH" | "BANK" | "CREDIT_CARD" | "CHECK" | "TRANSFER";
+  reference_number: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_by_email: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedExpenses {
+  results: ExpenseHistoryRow[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ExpenseHistoryParams {
+  branchId?: string | null;
+  start?: string | null;
+  end?: string | null;
+  page?: number;
+  limit?: number;
+}
+
+// Payload to create an expense category (POST /expense/categories)
+export interface CreateExpenseCategoryPayload {
+  tenant_id: string;
+  name: string;
+  account_code?: string;
+  parent_category_id?: string;
+  is_fixed: boolean;
+}

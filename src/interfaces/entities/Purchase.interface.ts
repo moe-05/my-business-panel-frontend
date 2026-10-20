@@ -91,9 +91,13 @@ export interface ExchangeRateResult {
   updated_at: string;
 }
 
+export type GoodsReceiptStatus = "PENDING" | "CONFIRMED";
+
 export interface GoodsReceiptSummary {
   goods_receipt_id: string;
   received_date: string;
+  status: GoodsReceiptStatus;
+  confirmed_at?: string | null;
   subtotal_amount: NumericLike;
   tax_amount: NumericLike;
   total_amount: NumericLike;
@@ -102,10 +106,37 @@ export interface GoodsReceiptSummary {
   updated_at?: string;
 }
 
+export interface GoodsReceiptItem {
+  goods_receipt_item_id: string;
+  product_variant_id: string;
+  sku?: string;
+  variant_name?: string;
+  quantity_received: number;
+  /** Cantidad originalmente pedida en la orden, para comparar contra lo recibido. */
+  quantity_ordered?: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GoodsReceiptDetail {
+  goods_receipt_id: string;
+  purchase_order_id: string;
+  received_date: string;
+  status: GoodsReceiptStatus;
+  confirmed_at?: string | null;
+  subtotal_amount: NumericLike;
+  tax_amount: NumericLike;
+  total_amount: NumericLike;
+  items: GoodsReceiptItem[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface PurchaseOrder {
   purchase_order_id: string;
   purchase_order_date: string;
   expected_delivery_date: string;
+  payment_due_date?: string | null;
   purchase_order_status_id: number;
   purchase_order_status_name: string;
   supplier_id: string;
@@ -140,6 +171,34 @@ export interface PurchaseOrderDetail extends PurchaseOrder {
   goods_receipts: GoodsReceiptSummary[];
 }
 
+export interface MatchingAmountBreakdown {
+  subtotal: NumericLike | null;
+  tax: NumericLike | null;
+  total: NumericLike | null;
+}
+
+export interface MatchingAmountComparison {
+  order: MatchingAmountBreakdown;
+  invoice: MatchingAmountBreakdown;
+  receipt: MatchingAmountBreakdown;
+  differences: {
+    order_vs_invoice_total: NumericLike;
+    order_vs_receipt_total: NumericLike;
+    invoice_vs_receipt_total: NumericLike;
+  };
+}
+
+export interface MatchingQuantityComparison {
+  order_qty: NumericLike;
+  invoice_qty: NumericLike;
+  receipt_qty: NumericLike;
+  differences: {
+    order_vs_invoice: NumericLike;
+    order_vs_receipt: NumericLike;
+    invoice_vs_receipt: NumericLike;
+  };
+}
+
 export interface PurchaseMatching {
   purchase_order_id: string;
   matching_found: boolean;
@@ -150,8 +209,8 @@ export interface PurchaseMatching {
   quantities_matched?: boolean;
   is_matched?: boolean;
   matched_at?: string;
-  amount_comparison?: Record<string, unknown>;
-  quantity_comparison?: Record<string, unknown>;
+  amount_comparison?: MatchingAmountComparison;
+  quantity_comparison?: MatchingQuantityComparison;
   message?: string;
 }
 
@@ -255,4 +314,41 @@ export interface PaymentAlertConfigResponse {
   tenant_id: string;
   config: PaymentAlertConfig | null;
   alert_types: PaymentAlertType[];
+}
+
+export type PurchaseDisputeType = 'MISSING_GOODS' | 'PRICE_MISMATCH';
+export type PurchaseDisputeStatus = 'OPEN' | 'RESOLVED';
+
+export interface PurchaseDispute {
+  dispute_id: string;
+  purchase_order_id: string;
+  supplier_invoice_id?: string | null;
+  tenant_id: string;
+  dispute_type: PurchaseDisputeType;
+  description: string;
+  status: PurchaseDisputeStatus;
+  notify_supplier_pending: boolean;
+  resolution_notes?: string | null;
+  created_at?: string;
+  resolved_at?: string | null;
+  updated_at?: string;
+}
+
+export type SupplierCreditStatus = "AVAILABLE" | "APPLIED" | "VOIDED";
+
+/**
+ * Saldo a favor del tenant frente a un proveedor, originado por una nota de
+ * credito de venta por mercancia danada. Aplicable contra el balance de una
+ * cuenta por pagar de compras de ese mismo proveedor.
+ */
+export interface SupplierCredit {
+  supplier_credit_id: string;
+  tenant_id: string;
+  supplier_id: string;
+  source_note_id: string;
+  original_amount: NumericLike;
+  remaining_amount: NumericLike;
+  status: SupplierCreditStatus;
+  created_at?: string;
+  updated_at?: string;
 }

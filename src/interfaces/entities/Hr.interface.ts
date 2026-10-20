@@ -48,6 +48,16 @@ export interface HrTurn {
   out: string;
 }
 
+/** Resultado de clasificar un rango horario segun el Art. 173 LOTTT. */
+export interface HrJourneyClassification {
+  totalHours: number;
+  diurnalHours: number;
+  nocturnalHours: number;
+  effectiveJourney: "diurna" | "nocturna" | "mixta";
+  maxDaily: number;
+  reason?: string;
+}
+
 export interface HrClockingRecord {
   clocking_id: number;
   employee_id: string;
@@ -157,6 +167,9 @@ export interface HrPayrollMovement {
   base_amount: number;
   calculated_amount: number;
   description?: string;
+  employee_id: string;
+  concept_name: string;
+  concept_type: "earning" | "deduction";
 }
 
 export interface CreateHrConceptPayload {
@@ -203,6 +216,477 @@ export interface ManualClockInPayload {
   employeeId: string;
   branchId: string;
   clockIn: string;
+}
+
+export interface HrPayrollParameter {
+  parameter_id: string;
+  tenant_id: string;
+  param_key: string;
+  param_value: number | string;
+  valid_from: string;
+  valid_to: string | null;
+  source?: string | null;
+  created_at: string;
+}
+
+export interface CreateHrPayrollParameterPayload {
+  param_key: string;
+  param_value: number;
+  valid_from: string;
+  source?: string;
+}
+
+export interface HrPayrollParametersMissing {
+  date: string;
+  missing: string[];
+}
+
+// ---------------------------------------------------------------
+// Vacaciones (Arts. 190, 192, 195, 196)
+// ---------------------------------------------------------------
+
+export interface HrVacationPeriod {
+  vacation_period_id: string;
+  employee_id: string;
+  tenant_id: string;
+  service_year: number;
+  period_start: string;
+  period_end: string;
+  days_earned: number | string;
+  bonus_days_earned: number | string;
+  days_taken: number | string;
+  enjoyed_from: string | null;
+  enjoyed_to: string | null;
+  normal_daily_salary: number | string | null;
+  paid_amount: number | string | null;
+  bonus_paid_amount: number | string | null;
+  is_fractional: boolean;
+  status: "causado" | "disfrutando" | "disfrutado" | "pagado";
+  created_at: string;
+}
+
+export interface HrVacationEntitlement {
+  completeYears: number;
+  vacationDays: number;
+  bonusVacationDays?: number;
+  article: string;
+  [key: string]: unknown;
+}
+
+export interface EnjoyVacationPayload {
+  enjoyed_from: string;
+  enjoyed_to: string;
+}
+
+export interface PayVacationBonusPayload {
+  paid_at?: string;
+}
+
+// ---------------------------------------------------------------
+// Prestaciones sociales (Art. 142, 143, 144)
+// ---------------------------------------------------------------
+
+export interface HrSeveranceDeposit {
+  deposit_id: string;
+  employee_id: string;
+  tenant_id: string;
+  quarter_start: string;
+  quarter_end: string;
+  days: number | string;
+  integral_daily_salary: number | string;
+  amount: number | string;
+  deposit_made: boolean;
+  deposit_date: string | null;
+  location: "fideicomiso" | "fondo_nacional" | "contabilidad";
+  created_at: string;
+}
+
+export interface HrSeveranceInterest {
+  interest_id: string;
+  deposit_id: string | null;
+  employee_id: string;
+  tenant_id: string;
+  period_month: string;
+  balance_base: number | string;
+  applied_rate: number | string;
+  rate_kind: "fideicomiso" | "promedio_activa_pasiva" | "activa_bcv";
+  amount: number | string;
+  capitalized: boolean;
+  paid_at: string | null;
+  created_at: string;
+}
+
+export interface HrSeveranceAdvance {
+  advance_id: string;
+  employee_id: string;
+  tenant_id: string;
+  requested_amount: number | string;
+  approved_amount: number | string | null;
+  reason: "vivienda" | "hipoteca" | "educacion" | "salud";
+  reason_detail?: string | null;
+  request_date: string;
+  resolution_date: string | null;
+  status: "pendiente" | "aprobado" | "rechazado";
+  guarantee_balance_at_request: number | string | null;
+  created_at: string;
+}
+
+export interface HrSeveranceBalance {
+  depositedAmount: string;
+  capitalizedInterest: string;
+  advancesApproved: string;
+  balance: string;
+}
+
+export interface GenerateSeveranceDepositsPayload {
+  employee_id: string;
+  until: string;
+  location: "fideicomiso" | "fondo_nacional" | "contabilidad";
+}
+
+export interface UpdateSeveranceDepositPayload {
+  deposit_made: boolean;
+  deposit_date?: string;
+}
+
+export interface GenerateSeveranceInterestPayload {
+  employee_id: string;
+  from: string;
+  to: string;
+}
+
+export interface SettleSeveranceInterestPayload {
+  employee_id: string;
+  year: number;
+  capitalize: boolean;
+  authorization_ref?: string;
+}
+
+export interface CreateSeveranceAdvancePayload {
+  employee_id: string;
+  requested_amount: number;
+  reason: "vivienda" | "hipoteca" | "educacion" | "salud";
+  reason_detail?: string;
+}
+
+export interface ApproveSeveranceAdvancePayload {
+  approved_amount: number;
+  resolution_date: string;
+}
+
+export interface RejectSeveranceAdvancePayload {
+  resolution_date: string;
+  reason_detail?: string;
+}
+
+// ---------------------------------------------------------------
+// Utilidades / bonificacion fin de anio (Arts. 131, 132, 136)
+// ---------------------------------------------------------------
+
+export interface HrProfitSharingPeriod {
+  profit_period_id: string;
+  tenant_id: string;
+  fiscal_year: number;
+  fiscal_year_start: string;
+  fiscal_year_end: string;
+  liquid_benefits: number | string | null;
+  distribution_percentage: number | string;
+  distributable_amount: number | string | null;
+  total_earned_salaries: number | string | null;
+  is_non_profit: boolean;
+  status: "abierto" | "calculado" | "cerrado";
+  closed_at: string | null;
+  payment_deadline: string | null;
+  created_at: string;
+}
+
+export interface HrProfitSharingDetail {
+  profit_detail_id: string;
+  profit_period_id: string;
+  employee_id: string;
+  earned_salary: number | string;
+  complete_months: number;
+  daily_salary: number | string;
+  raw_quota: number | string | null;
+  min_cap: number | string;
+  max_cap: number | string;
+  final_amount: number | string | null;
+  advance_paid: number | string;
+  advance_paid_at: string | null;
+  created_at: string;
+}
+
+export interface CreateProfitPeriodPayload {
+  fiscal_year: number;
+  fiscal_year_start: string;
+  fiscal_year_end: string;
+  is_non_profit?: boolean;
+}
+
+export interface SetLiquidBenefitsPayload {
+  liquid_benefits: number;
+  source?: string;
+}
+
+export interface YearEndBonusPayload {
+  employee_id: string;
+  fiscal_year: number;
+  amount: number;
+  paid_at: string;
+}
+
+// ---------------------------------------------------------------
+// Liquidacion final (Arts. 92, 106, 142, 144, 154, 195)
+// ---------------------------------------------------------------
+
+/**
+ * Causales de egreso (LOTTT). La causal decide si aplica la
+ * indemnizacion del Art. 92 y si se abre el reparto entre herederos
+ * del Art. 145, por eso es obligatoria al registrar el egreso.
+ */
+export type HrTerminationType =
+  | "despido_injustificado"
+  | "despido_justificado"
+  | "renuncia"
+  | "causa_ajena_al_trabajador"
+  | "vencimiento_contrato"
+  | "fallecimiento";
+
+export interface TerminateEmployeePayload {
+  termination_date: string;
+  termination_type: HrTerminationType;
+  termination_reason?: string;
+}
+
+export interface UpdateTerminationPayload {
+  termination_type: HrTerminationType;
+  termination_reason?: string;
+}
+
+export interface HrTerminationInfo {
+  message: string;
+  employee: {
+    employee_id: string;
+    tenant_id: string;
+    hire_date: string;
+    termination_date: string | null;
+    termination_type: HrTerminationType | null;
+    termination_reason: string | null;
+  };
+}
+
+export interface HrSettlementItem {
+  settlement_item_id: string;
+  settlement_id: string;
+  code: string;
+  concept_name: string;
+  article: string;
+  salary_basis: "normal" | "integral";
+  base_amount: number | string;
+  days: number | string | null;
+  amount: number | string;
+  formula_text: string | null;
+  sort_order: number;
+}
+
+export interface HrSettlement {
+  settlement_id: string;
+  employee_id: string;
+  tenant_id: string;
+  branch_id: string | null;
+  termination_date: string;
+  payment_due_date: string;
+  payment_date: string | null;
+  hire_date: string;
+  complete_years: number;
+  remainder_months: number;
+  last_integral_daily_salary: number | string;
+  last_normal_daily_salary: number | string;
+  via1_amount: number | string | null;
+  via2_amount: number | string | null;
+  selected_via: string | null;
+  severance_amount: number | string | null;
+  advances_deducted: number | string;
+  deductions_amount: number | string;
+  subtotal: number | string | null;
+  mora_days: number;
+  mora_rate: number | string | null;
+  mora_amount: number | string;
+  total: number | string | null;
+  status: "borrador" | "calculada" | "pagada" | "anulada";
+  created_at: string;
+  items?: HrSettlementItem[];
+}
+
+export interface HrSettlementPreview {
+  employeeId: string;
+  endDate: string;
+  hireDate: string;
+  completeYears: number;
+  remainderMonths: number;
+  lastIntegralDailySalary: string;
+  via1Amount: string;
+  via2Amount: string;
+  selectedVia: string;
+  severanceAmount: string;
+  indemnityAmount: string;
+  subtotal: string;
+  moraDays: number;
+  moraAmount: string;
+  total: string;
+  paymentDueDate: string;
+  items?: HrSettlementItem[];
+}
+
+export interface CreateSettlementPayload {
+  employee_id: string;
+  termination_date: string;
+}
+
+export interface PaySettlementPayload {
+  payment_date: string;
+}
+
+// ---------------------------------------------------------------
+// Deducciones (Arts. 152, 154, 412, 413)
+// ---------------------------------------------------------------
+
+export interface HrEmployeeDeduction {
+  deduction_id: string;
+  employee_id: string;
+  tenant_id: string;
+  kind: "deuda_patrono" | "sindical" | "alimentaria" | "otra";
+  description: string;
+  total_amount: number | string;
+  installment_amount: number | string | null;
+  outstanding_balance: number | string;
+  authorized: boolean;
+  authorization_date: string | null;
+  authorization_ref: string | null;
+  union_organization: string | null;
+  start_date: string;
+  end_date: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CreateDeductionPayload {
+  employee_id: string;
+  kind: "deuda_patrono" | "sindical" | "alimentaria" | "otra";
+  description: string;
+  total_amount: number;
+  installment_amount?: number;
+  union_organization?: string;
+  authorized?: boolean;
+  authorization_date?: string;
+  authorization_ref?: string;
+  start_date: string;
+}
+
+export interface UpdateDeductionPayload {
+  authorized?: boolean;
+  is_active?: boolean;
+  end_date?: string;
+  outstanding_balance?: number;
+}
+
+export interface ApplyDeductionPaymentPayload {
+  amount: number;
+  applied_at: string;
+}
+
+// ---------------------------------------------------------------
+// Beneficiarios por fallecimiento (Art. 145)
+// ---------------------------------------------------------------
+
+export type HrBeneficiaryRelationship =
+  | "hijo"
+  | "conyuge"
+  | "pareja_estable"
+  | "padre"
+  | "madre"
+  | "nieto_huerfano";
+
+export interface HrEmployeeBeneficiary {
+  beneficiary_id: string;
+  employee_id: string;
+  tenant_id: string;
+  settlement_id: string | null;
+  full_name: string;
+  doc_number: string;
+  identification_type_id: number | null;
+  relationship: HrBeneficiaryRelationship;
+  birth_date: string | null;
+  claim_date: string | null;
+  validated: boolean;
+  validated_at: string | null;
+  share_percentage: number | string | null;
+  share_amount: number | string | null;
+  created_at: string;
+}
+
+/** Respuesta de GET /beneficiaries/:employeeId/claim-window (Art. 145). */
+export interface HrClaimWindow {
+  terminationDate: string | null;
+  deadline: string | null;
+  open: boolean;
+  totalClaimants: number;
+  validatedClaimants: number;
+  pendingClaimants: number;
+  article: string;
+}
+
+/** Respuesta de POST /beneficiaries/:employeeId/distribute (Art. 145). */
+export interface HrDistributionResult {
+  count: number;
+  sharePercentage: string;
+  shareAmount: string;
+  remainder: string;
+  total: string;
+  article: string;
+}
+
+export interface CreateBeneficiaryPayload {
+  employee_id: string;
+  full_name: string;
+  doc_number: string;
+  relationship: HrBeneficiaryRelationship;
+  claim_date: string;
+}
+
+export interface DistributeSettlementPayload {
+  settlement_id: string;
+  recalculate?: boolean;
+}
+
+// ---------------------------------------------------------------
+// Horas con recargo (Arts. 117, 118, 120, 178, 182)
+// ---------------------------------------------------------------
+
+export type HrOvertimeKind = "nocturna" | "extra" | "feriado" | "descanso";
+
+export interface HrOvertimeRecord {
+  overtime_id: string;
+  employee_id: string;
+  branch_id: string;
+  tenant_id: string;
+  work_date: string;
+  kind: HrOvertimeKind;
+  hours: number | string;
+  rate_factor: number | string;
+  inspectoria_authorized: boolean;
+  authorization_ref: string | null;
+  created_at: string;
+}
+
+export interface CreateOvertimePayload {
+  employee_id: string;
+  branch_id: string;
+  work_date: string;
+  kind: HrOvertimeKind;
+  hours: number;
+  inspectoria_authorized?: boolean;
+  authorization_ref?: string;
 }
 
 export interface ManualClockOutPayload {

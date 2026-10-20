@@ -12,7 +12,7 @@ import type { ReturnTransaction } from "@/interfaces/entities/ReturnTransaction.
 import type { SaleRefundContext } from "@/interfaces/entities/SaleRefundContext.interface";
 import type { ToastMode } from "@/interfaces/components/ui/ToastProps.interface";
 
-import { isUUID } from "@/pages/app/RefundsPage/refunds.utils";
+import { isUUID } from "@/pages/app/pos/RefundsPage/refunds.utils";
 
 export type RefundMode = "partial" | "full";
 
@@ -50,7 +50,7 @@ export function useRefundFlow({ initialReturns }: UseRefundFlowArgs) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
 
-  const currencySymbol = context?.sale.currency_symbol ?? "₡";
+  const currencySymbol = context?.sale.currency_symbol ?? "Bs.";
 
   const productsToRefund = useMemo(() => {
     if (!context) return [];

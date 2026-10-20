@@ -1,0 +1,214 @@
+import api from "./api";
+import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
+import type {
+  AccountListParams,
+  AccountPayableOverview,
+  AccountReceivableOverview,
+  AccountsOverviewData,
+  PayablePayment,
+  ReceivableCollection,
+} from "@/interfaces/entities/Finances.interface";
+import type {
+  FixedVsVariableAnalyticRaw,
+  CategoryAnalyticRaw,
+  SalesVsExpensesRaw,
+  PayrollAnalytic,
+  ExpenseCategory,
+  CreateExpensePayload,
+  CreateExpenseCategoryPayload,
+  ExpenseHistoryParams,
+  PaginatedExpenses,
+} from "@/interfaces/entities/FnzExpense.interface";
+import type {
+  CashFlowData,
+  CashFlowGroupBy,
+  CashFlowProjectionsData,
+} from "@/interfaces/entities/CashFlow.interface";
+
+export const financesApi = {
+  // --- CUENTAS POR PAGAR / COBRAR ---
+
+  async getAccountsOverview(
+    branchId?: string | null,
+  ): Promise<AccountsOverviewData> {
+    const res = await api.get<ApiResponse<AccountsOverviewData>>(
+      "/finances/accounts",
+      { params: branchId ? { branchId } : {} },
+    );
+    return res.data.data;
+  },
+
+  async getPayables(params: AccountListParams): Promise<AccountPayableOverview[]> {
+    const res = await api.get<ApiResponse<AccountPayableOverview[]>>(
+      "/finances/accounts/payables",
+      { params },
+    );
+    return res.data.data;
+  },
+
+  async getReceivables(params: AccountListParams): Promise<AccountReceivableOverview[]> {
+    const res = await api.get<ApiResponse<AccountReceivableOverview[]>>(
+      "/finances/accounts/receivables",
+      { params },
+    );
+    return res.data.data;
+  },
+
+  async getPayablePayments(payableId: string): Promise<PayablePayment[]> {
+    const res = await api.get<ApiResponse<PayablePayment[]>>(
+      `/finances/accounts/payable/${payableId}/payments`,
+    );
+    return res.data.data;
+  },
+
+  async getReceivableCollections(receivableId: string): Promise<ReceivableCollection[]> {
+    const res = await api.get<ApiResponse<ReceivableCollection[]>>(
+      `/finances/accounts/receivable/${receivableId}/collections`,
+    );
+    return res.data.data;
+  },
+
+  // --- ANALYTICS DE GASTOS ---
+
+  async getFixedVsVariable(
+    tenantId: string,
+    start: string,
+    end: string,
+    branchId?: string | null,
+  ): Promise<FixedVsVariableAnalyticRaw[]> {
+    const res = await api.get<ApiResponse<FixedVsVariableAnalyticRaw[]>>(
+      `/expense/analytics/fixed-vs-variable/${tenantId}`,
+      { params: { start, end, ...(branchId ? { branchId } : {}) } },
+    );
+    return res.data.data;
+  },
+
+  async getFixedBreakdown(
+    tenantId: string,
+    start: string,
+    end: string,
+    branchId?: string | null,
+  ): Promise<CategoryAnalyticRaw[]> {
+    const res = await api.get<ApiResponse<CategoryAnalyticRaw[]>>(
+      `/expense/analytics/fixed-breakdown/${tenantId}`,
+      { params: { start, end, ...(branchId ? { branchId } : {}) } },
+    );
+    return res.data.data;
+  },
+
+  async getVariableBreakdown(
+    tenantId: string,
+    start: string,
+    end: string,
+    branchId?: string | null,
+  ): Promise<CategoryAnalyticRaw[]> {
+    const res = await api.get<ApiResponse<CategoryAnalyticRaw[]>>(
+      `/expense/analytics/variable-breakdown/${tenantId}`,
+      { params: { start, end, ...(branchId ? { branchId } : {}) } },
+    );
+    return res.data.data;
+  },
+
+  /** Nomina pagada en los dias locales [start, end] (planillas cerradas). */
+  async getPayroll(
+    tenantId: string,
+    start: string,
+    end: string,
+    branchId?: string | null,
+  ): Promise<PayrollAnalytic> {
+    const res = await api.get<ApiResponse<PayrollAnalytic>>(
+      `/expense/analytics/payroll/${tenantId}`,
+      { params: { start, end, ...(branchId ? { branchId } : {}) } },
+    );
+    return res.data.data;
+  },
+
+  async getSalesVsExpenses(
+    tenantId: string,
+    start: string,
+    end: string,
+    branchId?: string | null,
+  ): Promise<SalesVsExpensesRaw[]> {
+    const res = await api.get<ApiResponse<SalesVsExpensesRaw[]>>(
+      `/expense/analytics/sales-vs-expenses/${tenantId}`,
+      {
+        params: {
+          start,
+          end,
+          ...(branchId ? { branchId } : {}),
+        },
+      },
+    );
+    return res.data.data;
+  },
+
+  // --- CATEGORIAS DE GASTO ---
+
+  async getCategories(tenantId: string, search?: string): Promise<ExpenseCategory[]> {
+    const res = await api.get<ApiResponse<ExpenseCategory[]>>(
+      `/expense/categories/${tenantId}`,
+      search !== undefined && search !== '' ? { params: { search } } : {},
+    );
+    return res.data.data;
+  },
+
+  async createCategory(data: CreateExpenseCategoryPayload): Promise<string> {
+    const res = await api.post<ApiResponse<string>>("/expense/categories", data);
+    return res.data.data;
+  },
+
+  async provisionCategories(tenantId: string): Promise<number> {
+    const res = await api.post<ApiResponse<number>>(
+      `/expense/categories/provision/${tenantId}`,
+    );
+    return res.data.data;
+  },
+
+  // --- GASTOS ---
+
+  async createExpense(data: CreateExpensePayload): Promise<{ expenseId: string }> {
+    const res = await api.post<ApiResponse<{ expenseId: string }>>("/expense", data);
+    return res.data.data;
+  },
+
+  // Historial de gastos paginado (tenant del session). El filtro de sucursal/fecha
+  // se aplica en el backend; aplicar un filtro relanza esta solicitud.
+  async getExpenseHistory(
+    params: ExpenseHistoryParams,
+  ): Promise<PaginatedExpenses> {
+    const res = await api.get<ApiResponse<PaginatedExpenses>>(
+      "/expense/history",
+      {
+        params: {
+          ...(params.branchId ? { branchId: params.branchId } : {}),
+          ...(params.start ? { start: params.start } : {}),
+          ...(params.end ? { end: params.end } : {}),
+          page: params.page ?? 1,
+          limit: params.limit ?? 20,
+        },
+      },
+    );
+    return res.data.data;
+  },
+
+  // --- FLUJO DE CAJA ---
+
+  async getCashFlow(params?: {
+    startDate?: string;
+    endDate?: string;
+    groupBy?: CashFlowGroupBy;
+    branchId?: string;
+  }): Promise<CashFlowData> {
+    const res = await api.get<ApiResponse<CashFlowData>>("/finances/cash-flow", {
+      params,
+    });
+    return res.data.data;
+  },
+
+  async getCashFlowProjections(): Promise<CashFlowProjectionsData> {
+    const res = await api.get<ApiResponse<CashFlowProjectionsData>>(
+      "/finances/cash-flow/projections",
+    );
+    return res.data.data;
+  },
+};

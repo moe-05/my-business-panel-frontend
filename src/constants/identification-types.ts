@@ -1,8 +1,10 @@
+// Los ids siguen el orden de seeds/catalog/general/002-insert-document-types.sql.
+// `code` es el ident_code que se imprime junto al documento en la factura.
 export const identificationTypes = [
-  { value: 1, label: "Cedula fisica" },
-  { value: 2, label: "Cédula jurídica" },
-  { value: 3, label: "DIMEX" },
-  { value: 4, label: "NITE" },
-  { value: 5, label: "Extranjero no domiciliado" },
-  { value: 6, label: "No contribuyente" },
+  { value: 1, code: "V", label: "Cédula de Identidad (V)" },
+  { value: 2, code: "J", label: "RIF Persona Jurídica (J)" },
+  { value: 3, code: "E", label: "Cédula de Identidad Extranjero (E)" },
+  { value: 4, code: "G", label: "RIF Ente Gubernamental (G)" },
+  { value: 5, code: "P", label: "Pasaporte (P)" },
+  { value: 6, code: "C", label: "RIF Consejo Comunal (C)" },
 ];

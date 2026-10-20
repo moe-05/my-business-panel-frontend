@@ -66,3 +66,44 @@ export interface Promotion {
   created_at?: string;
   updated_at?: string;
 }
+
+export type PromoInterval =
+  | "24h"
+  | "7d"
+  | "15d"
+  | "30d"
+  | "90d"
+  | "180d"
+  | "365d";
+
+// Respuesta de GET /promos/analytics/:tenantId.
+export interface PromoAnalytics {
+  promotions: PromoAnalyticsRow[];
+  /** Ventas distintas con al menos una promocion (una venta con dos cuenta una). */
+  sales_with_promotion: number;
+}
+
+export interface PromoAnalyticsRow {
+  promotion_id: string;
+  promotion_name: string;
+  promotion_code: string | null;
+  is_active: boolean;
+  promotion_type: string;
+  sale_count: string;
+  // USD y VES con la tasa de la fecha de cada venta (FNZ-X-02).
+  total_discount_usd: string;
+  total_discount_ves: string;
+  total_revenue_usd: string;
+  total_revenue_ves: string;
+}
+
+export interface PromoAnalyticsSummary {
+  promotion_id: string;
+  promotion_name: string;
+  promotion_code: string | null;
+  is_active: boolean;
+  promotion_type: string;
+  sale_count: number;
+  total_discount: number;
+  total_revenue: number;
+}

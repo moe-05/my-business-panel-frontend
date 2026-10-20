@@ -1,4 +1,7 @@
 import type { NumericLike } from "@/interfaces/entities/Purchase.interface";
+import type { Currency } from "@/interfaces/entities/Currency.interface";
+import type { ExchangeRate } from "@/interfaces/entities/ExchangeRate.interface";
+import { convertCurrency } from "@/utils/currency";
 
 type BadgeTone =
   | "green"
@@ -8,21 +11,54 @@ type BadgeTone =
   | "secondary"
   | "accent";
 
-const currencyFormatter = new Intl.NumberFormat("es-CR", {
-  style: "currency",
-  currency: "CRC",
-  maximumFractionDigits: 2,
-});
+// --- Generic currency utilities ---
 
+export function formatInCurrency(amount: number, currency: Currency): string {
+  return new Intl.NumberFormat("es-VE", {
+    style: "currency",
+    currency: currency.currency_code,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+// Wrapper de compatibilidad sobre utils/currency.ts (conversion unica USD/VES,
+// en ambos sentidos). Acepta montos como string, tal como llegan de Postgres.
+export function convertAmount(
+  raw: string | number,
+  fromCurrencyId: number,
+  toCurrencyId: number,
+  rates: ExchangeRate[],
+): number {
+  const amount = Number(raw);
+  if (isNaN(amount)) return amount;
+  return convertCurrency(amount, fromCurrencyId, toCurrencyId, rates);
+}
+
+// Moneda base de Compras/CxP: USD (currency_id 2). VES queda como conversion
+// secundaria via la tasa vigente (general_schema.get_effective_exchange_rate).
+export const BASE_CURRENCY: Currency = {
+  currency_id: 2,
+  currency_code: "USD",
+  currency_name: "US Dollar",
+  symbol: "$",
+};
+
+// No usa formatInCurrency/Intl currency-style: Intl.NumberFormat("es-VE",
+// {currency:"USD"}) renderiza "USD 1.234,50", no "$" -- Compras siempre
+// muestra USD como "$", igual que el resto del sistema (ver
+// src/utils/dualCurrency.ts formatUsd).
 export const formatCurrency = (value?: NumericLike | null) =>
-  currencyFormatter.format(Number(value ?? 0));
+  `$ ${Number(value ?? 0).toLocaleString("es-VE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 export const formatDate = (value?: string | null) =>
-  value ? new Date(value).toLocaleDateString("es-CR") : "—";
+  value ? new Date(value).toLocaleDateString("es-VE") : "—";
 
 export const formatDateTime = (value?: string | null) =>
   value
-    ? new Date(value).toLocaleString("es-CR", {
+    ? new Date(value).toLocaleString("es-VE", {
         dateStyle: "short",
         timeStyle: "short",
       })
@@ -35,6 +71,26 @@ export const formatPaymentMethodName = (value?: string | null) =>
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ")
     : "—";
+
+const orderStatusLabels: Record<string, string> = {
+  pending: "Pendiente",
+  shipped: "Enviada",
+  delivered: "Entregada",
+  cancelled: "Cancelada",
+};
+
+export const translateOrderStatus = (status?: string | null): string =>
+  orderStatusLabels[(status ?? "").toLowerCase()] ?? status ?? "—";
+
+const payableStatusLabels: Record<string, string> = {
+  pending: "Pendiente",
+  "partial paid": "Pago parcial",
+  paid: "Pagada",
+  overdue: "Vencida",
+};
+
+export const translatePayableStatus = (status?: string | null): string =>
+  payableStatusLabels[(status ?? "").toLowerCase()] ?? status ?? "—";
 
 export const getOrderStatusTone = (status?: string | null): BadgeTone => {
   switch ((status ?? "").toLowerCase()) {

@@ -16,10 +16,10 @@ function ModuleRedirect({ moduleId }: { moduleId: ModuleId }) {
   return <Navigate to={path} replace />;
 }
 
-import { DashboardPage } from "@/pages/app/DashboardPage/DashboardPage";
-import { TenantsPage } from "@/pages/app/TenantsPage";
-import { TenantDetailPage } from "@/pages/app/TenantDetailPage";
-import { ProfilePage } from "@/pages/app/ProfilePage";
+import { DashboardPage } from "@/pages/app/gen/DashboardPage/DashboardPage";
+import { TenantsPage } from "@/pages/app/gen/TenantsPage";
+import { TenantDetailPage } from "@/pages/app/gen/TenantDetailPage";
+import { ProfilePage } from "@/pages/app/gen/ProfilePage";
 import { ComingSoon } from "@/pages/app/ComingSoon";
 import { authApi } from "@/api/auth.api";
 
@@ -36,6 +36,7 @@ import {
 import { getCashSessionsPageData } from "@/router/loaders/cashRegister.loaders";
 import { getRefundsPageData } from "@/router/loaders/returns.loaders";
 import { getPromotionsPageData } from "@/router/loaders/promotion.loaders";
+import { getPromotionsAnalyticsPageData } from "@/router/loaders/promotionsAnalytics.loaders";
 import { getPosExpensePageData } from "@/router/loaders/posExpense.loaders";
 import { getRoyaltiesPageData } from "@/router/loaders/royalties.loaders";
 import { getWarehousesPageData } from "@/router/loaders/warehouse.loaders";
@@ -49,12 +50,21 @@ import {
   getSuppliersPageData,
 } from "@/router/loaders/purchase.loaders";
 import {
+  getAccountsReceivablePageData,
+  getCollectionAlertsPageData,
+} from "@/router/loaders/accounts-receivable.loaders";
+import { getAccountsOverviewPageData } from "@/router/loaders/finances.loaders";
+import { getProfitabilityPageData } from "@/router/loaders/profitability.loaders";
+import { getCashFlowPageData } from "@/router/loaders/cashFlow.loaders";
+import {
   getHrAmonestacionesPageData,
   getHrAttendancePageData,
   getHrContractsPageData,
   getHrEmployeesPageData,
   getHrPayrollPageData,
 } from "@/router/loaders/hr.loaders";
+import { getFnzExpensePageData } from "@/router/loaders/fnzExpense.loaders";
+import { getFnzIvaPageData } from "@/router/loaders/fnzIva.loaders";
 
 export const privateRoutes: RouteObject[] = [
   {
@@ -72,7 +82,7 @@ export const privateRoutes: RouteObject[] = [
             path: "special-codes",
             lazy: async () => {
               const { SpecialCodesPage } =
-                await import("@/pages/app/SpecialCodesPage/SpecialCodesPage");
+                await import("@/pages/app/gen/SpecialCodesPage/SpecialCodesPage");
               return { Component: SpecialCodesPage };
             },
           },
@@ -82,7 +92,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getUsersPageData,
             lazy: async () => {
               const { UsersPage } =
-                await import("@/pages/app/UsersPage/UsersPage");
+                await import("@/pages/app/gen/UsersPage/UsersPage");
               return { Component: UsersPage };
             },
           },
@@ -92,7 +102,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getBranchesPageData,
             lazy: async () => {
               const { BranchesPage } =
-                await import("@/pages/app/BranchesPage/BranchesPage");
+                await import("@/pages/app/gen/BranchesPage/BranchesPage");
               return { Component: BranchesPage };
             },
           },
@@ -101,7 +111,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getProductsPageData,
             lazy: async () => {
               const { ProductsPage } =
-                await import("@/pages/app/ProductsPage/ProductsPage");
+                await import("@/pages/app/gen/ProductsPage/ProductsPage");
               return { Component: ProductsPage };
             },
           },
@@ -109,7 +119,7 @@ export const privateRoutes: RouteObject[] = [
             path: "attributes",
             lazy: async () => {
               const { AttributesPage } =
-                await import("@/pages/app/AttributesPage/AttributesPage");
+                await import("@/pages/app/gen/AttributesPage/AttributesPage");
               return { Component: AttributesPage };
             },
           },
@@ -118,25 +128,29 @@ export const privateRoutes: RouteObject[] = [
             loader: getCustomersPageData,
             lazy: async () => {
               const { CustomersPage } =
-                await import("@/pages/app/CustomersPage/CustomersPage");
+                await import("@/pages/app/gen/CustomersPage/CustomersPage");
               return { Component: CustomersPage };
             },
           },
           {
             path: "settings",
-            loader: async () => {
-              const segments = await getAllSegments();
-              const currentUser = await authApi.getCurrentUser();
-              const tenantId = currentUser?.tenant?.tenant_id;
-              const margins = tenantId
-                ? await getMarginsByTenant(tenantId)
-                : [];
+            // Carga diferida: el loader retorna de inmediato (sin await) para
+            // que la navegación no espere la respuesta del backend.
+            loader: () => ({
+              data: (async () => {
+                const segments = await getAllSegments();
+                const currentUser = await authApi.getCurrentUser();
+                const tenantId = currentUser?.tenant?.tenant_id;
+                const margins = tenantId
+                  ? await getMarginsByTenant(tenantId)
+                  : [];
 
-              return { segments, margins };
-            },
+                return { segments, margins };
+              })(),
+            }),
             lazy: async () => {
               const { SettingsPage } =
-                await import("@/pages/app/SettingsPage/SettingsPage");
+                await import("@/pages/app/gen/SettingsPage/SettingsPage");
               return { Component: SettingsPage };
             },
           },
@@ -148,7 +162,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getCreateSalePageData,
             lazy: async () => {
               const { CreateSalePage } =
-                await import("@/pages/app/CreateSalePage/CreateSalePage");
+                await import("@/pages/app/pos/CreateSalePage/CreateSalePage");
               return { Component: CreateSalePage };
             },
           },
@@ -157,7 +171,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getSalesHistoryPageData,
             lazy: async () => {
               const { SalesHistoryPage } =
-                await import("@/pages/app/SalesHistoryPage/SalesHistoryPage");
+                await import("@/pages/app/pos/SalesHistoryPage/SalesHistoryPage");
               return { Component: SalesHistoryPage };
             },
           },
@@ -166,7 +180,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getCashSessionsPageData,
             lazy: async () => {
               const { CashSessionsPage } =
-                await import("@/pages/app/CashSessionsPage/CashSessionsPage");
+                await import("@/pages/app/pos/CashSessionsPage/CashSessionsPage");
               return { Component: CashSessionsPage };
             },
           },
@@ -175,7 +189,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getRefundsPageData,
             lazy: async () => {
               const { RefundsPage } =
-                await import("@/pages/app/RefundsPage/RefundsPage");
+                await import("@/pages/app/pos/RefundsPage/RefundsPage");
               return { Component: RefundsPage };
             },
           },
@@ -184,7 +198,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getPromotionsPageData,
             lazy: async () => {
               const { PromotionsPage } =
-                await import("@/pages/app/PromotionsPage/PromotionsPage");
+                await import("@/pages/app/pos/PromotionsPage/PromotionsPage");
               return { Component: PromotionsPage };
             },
           },
@@ -193,7 +207,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getPosExpensePageData,
             lazy: async () => {
               const { PosExpensePage } =
-                await import("@/pages/app/PosExpensePage/PosExpensePage");
+                await import("@/pages/app/pos/PosExpensePage/PosExpensePage");
               return { Component: PosExpensePage };
             },
           },
@@ -202,8 +216,26 @@ export const privateRoutes: RouteObject[] = [
             loader: getRoyaltiesPageData,
             lazy: async () => {
               const { RoyaltiesPage } =
-                await import("@/pages/app/RoyaltiesPage/RoyaltiesPage");
+                await import("@/pages/app/pos/RoyaltiesPage/RoyaltiesPage");
               return { Component: RoyaltiesPage };
+            },
+          },
+          {
+            path: "pos/receivables",
+            loader: getAccountsReceivablePageData,
+            lazy: async () => {
+              const { AccountsReceivablePage } =
+                await import("@/pages/app/pos/AccountsReceivablePage/AccountsReceivablePage");
+              return { Component: AccountsReceivablePage };
+            },
+          },
+          {
+            path: "pos/collection-alerts",
+            loader: getCollectionAlertsPageData,
+            lazy: async () => {
+              const { CollectionAlertsPage } =
+                await import("@/pages/app/pos/CollectionAlertsPage/CollectionAlertsPage");
+              return { Component: CollectionAlertsPage };
             },
           },
           {
@@ -217,7 +249,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getInventoryPageData,
             lazy: async () => {
               const { InventoryPage } =
-                await import("@/pages/app/InventoryPage/InventoryPage");
+                await import("@/pages/app/int/InventoryPage/InventoryPage");
               return { Component: InventoryPage };
             },
           },
@@ -226,7 +258,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getWarehousesPageData,
             lazy: async () => {
               const { WarehousesPage } =
-                await import("@/pages/app/WarehousesPage/WarehousesPage");
+                await import("@/pages/app/int/WarehousesPage/WarehousesPage");
               return { Component: WarehousesPage };
             },
           },
@@ -235,7 +267,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getMovementsPageData,
             lazy: async () => {
               const { MovementsPage } =
-                await import("@/pages/app/MovementsPage/MovementsPage");
+                await import("@/pages/app/int/MovementsPage/MovementsPage");
               return { Component: MovementsPage };
             },
           },
@@ -244,7 +276,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getReportsPageData,
             lazy: async () => {
               const { ReportsPage } =
-                await import("@/pages/app/ReportsPage/ReportsPage");
+                await import("@/pages/app/int/ReportsPage/ReportsPage");
               return { Component: ReportsPage };
             },
           },
@@ -259,7 +291,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getPurchasesPageData,
             lazy: async () => {
               const { PurchasesPage } =
-                await import("@/pages/app/PurchasesPage/PurchasesPage");
+                await import("@/pages/app/sch/PurchasesPage/PurchasesPage");
               return { Component: PurchasesPage };
             },
           },
@@ -272,7 +304,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getSuppliersPageData,
             lazy: async () => {
               const { SuppliersPage } =
-                await import("@/pages/app/SuppliersPage/SuppliersPage");
+                await import("@/pages/app/sch/SuppliersPage/SuppliersPage");
               return { Component: SuppliersPage };
             },
           },
@@ -281,7 +313,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getAccountsPayablePageData,
             lazy: async () => {
               const { AccountsPayablePage } =
-                await import("@/pages/app/AccountsPayablePage/AccountsPayablePage");
+                await import("@/pages/app/sch/AccountsPayablePage/AccountsPayablePage");
               return { Component: AccountsPayablePage };
             },
           },
@@ -294,7 +326,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getPaymentAlertsPageData,
             lazy: async () => {
               const { PaymentAlertsPage } =
-                await import("@/pages/app/PaymentAlertsPage/PaymentAlertsPage");
+                await import("@/pages/app/sch/PaymentAlertsPage/PaymentAlertsPage");
               return { Component: PaymentAlertsPage };
             },
           },
@@ -309,7 +341,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getHrEmployeesPageData,
             lazy: async () => {
               const { HREmployeesPage } =
-                await import("@/pages/app/HREmployeesPage/HREmployeesPage");
+                await import("@/pages/app/hr/HREmployeesPage/HREmployeesPage");
               return { Component: HREmployeesPage };
             },
           },
@@ -318,7 +350,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getHrContractsPageData,
             lazy: async () => {
               const { HRContractsPage } =
-                await import("@/pages/app/HRContractsPage/HRContractsPage");
+                await import("@/pages/app/hr/HRContractsPage/HRContractsPage");
               return { Component: HRContractsPage };
             },
           },
@@ -327,8 +359,42 @@ export const privateRoutes: RouteObject[] = [
             loader: getHrPayrollPageData,
             lazy: async () => {
               const { HRPayrollPage } =
-                await import("@/pages/app/HRPayrollPage/HRPayrollPage");
+                await import("@/pages/app/hr/HRPayrollPage/HRPayrollPage");
               return { Component: HRPayrollPage };
+            },
+          },
+          {
+            path: "hr/parameters",
+            lazy: async () => {
+              const { HRParametersPage } = await import(
+                "@/pages/app/hr/HRParametersPage/HRParametersPage"
+              );
+              return { Component: HRParametersPage };
+            },
+          },
+          // Modulos agrupados por pestanas: comparten el selector de
+          // empleado y reemplazan a las 7 pantallas sueltas que antes
+          // repetian el mismo cascaron.
+          {
+            path: "hr/compensation",
+            element: <Navigate to="/app/hr/benefits" replace />,
+          },
+          {
+            path: "hr/benefits",
+            lazy: async () => {
+              const { HRBenefitsPage } = await import(
+                "@/pages/app/hr/HRBenefitsPage"
+              );
+              return { Component: HRBenefitsPage };
+            },
+          },
+          {
+            path: "hr/offboarding",
+            lazy: async () => {
+              const { HROffboardingPage } = await import(
+                "@/pages/app/hr/HROffboardingPage"
+              );
+              return { Component: HROffboardingPage };
             },
           },
           {
@@ -336,7 +402,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getHrAttendancePageData,
             lazy: async () => {
               const { HRAttendancePage } =
-                await import("@/pages/app/HRAttendancePage/HRAttendancePage");
+                await import("@/pages/app/hr/HRAttendancePage/HRAttendancePage");
               return { Component: HRAttendancePage };
             },
           },
@@ -345,7 +411,7 @@ export const privateRoutes: RouteObject[] = [
             loader: getHrAmonestacionesPageData,
             lazy: async () => {
               const { HRAmonestacionesPage } =
-                await import("@/pages/app/HRAmonestacionesPage/HRAmonestacionesPage");
+                await import("@/pages/app/hr/HRAmonestacionesPage/HRAmonestacionesPage");
               return { Component: HRAmonestacionesPage };
             },
           },
@@ -356,8 +422,57 @@ export const privateRoutes: RouteObject[] = [
 
           // FNZ (Finances) Module
           {
+            path: "fnz/cash-flow",
+            loader: getCashFlowPageData,
+            lazy: async () => {
+              const { CashFlowPage } =
+                await import("@/pages/app/fnz/CashFlowPage/CashFlowPage");
+              return { Component: CashFlowPage };
+            },
+          },
+          {
+            path: "fnz/accounts",
+            loader: getAccountsOverviewPageData,
+            lazy: async () => {
+              const { AccountsOverviewPage } =
+                await import("@/pages/app/fnz/AccountsOverviewPage/AccountsOverviewPage");
+              return { Component: AccountsOverviewPage };
+            },
+          },
+          {
+            path: "fnz/profitability",
+            loader: getProfitabilityPageData,
+            lazy: async () => {
+              const { ProfitabilityPage } =
+                await import("@/pages/app/fnz/ProfitabilityPage/ProfitabilityPage");
+              return { Component: ProfitabilityPage };
+            },
+          },
+          {
+            // Ruta retirada: el contenido vive como pestana "Punto de fidelidad"
+            // en Promociones (FNZ-FI-04). Se conserva el redirect por si hay
+            // enlaces guardados.
+            path: "fnz/loyalty-points",
+            element: <Navigate to="/app/fnz/promotions" replace />,
+          },
+          {
+            path: "fnz/expenses",
+            loader: getFnzExpensePageData,
+            lazy: async () => {
+              const { FnzExpensePage } =
+                await import("@/pages/app/fnz/FnzExpensePage/FnzExpensePage");
+              return { Component: FnzExpensePage };
+            },
+          },
+          {
             path: "fnz/accounting",
-            element: <ComingSoon title="FNZ - Contabilidad" />,
+            loader: getFnzIvaPageData,
+            lazy: async () => {
+              const { FnzIvaPage } = await import(
+                "@/pages/app/fnz/FnzIvaPage/FnzIvaPage"
+              );
+              return { Component: FnzIvaPage };
+            },
           },
           {
             path: "fnz/reports",
@@ -366,6 +481,16 @@ export const privateRoutes: RouteObject[] = [
           {
             path: "fnz/budgets",
             element: <ComingSoon title="FNZ - Presupuestos" />,
+          },
+          {
+            path: "fnz/promotions",
+            loader: getPromotionsAnalyticsPageData,
+            lazy: async () => {
+              const { PromotionsAnalyticsPage } = await import(
+                "@/pages/app/fnz/PromotionsAnalyticsPage/PromotionsAnalyticsPage"
+              );
+              return { Component: PromotionsAnalyticsPage };
+            },
           },
           {
             path: "fnz/analytics",

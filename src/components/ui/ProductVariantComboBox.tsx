@@ -27,6 +27,12 @@ interface ProductVariantComboBoxProps {
   hint?: string;
   placeholder?: string;
   hideOutOfStock?: boolean;
+  /**
+   * "price" (default) muestra/usa el precio de venta -- lo correcto para POS.
+   * "cost_price" muestra/usa el costo (lo que se le paga al proveedor) --
+   * usar en Compras, donde el precio de venta es irrelevante para la orden.
+   */
+  priceField?: "price" | "cost_price";
 }
 
 type ProductVariantRow = Product & {
@@ -43,8 +49,13 @@ const getVariantId = (p: ProductVariantRow): string | undefined =>
 const getVariantName = (p: ProductVariantRow): string =>
   p.variant_name ?? p.product_name ?? "—";
 
-const getVariantPrice = (p: ProductVariantRow): number =>
-  Number(p.unit_price ?? p.price ?? 0);
+const getVariantPrice = (
+  p: ProductVariantRow,
+  priceField: "price" | "cost_price" = "price",
+): number =>
+  priceField === "cost_price"
+    ? Number(p.cost_price ?? 0)
+    : Number(p.unit_price ?? p.price ?? 0);
 
 const formatCurrency = (value: number): string =>
   value.toLocaleString("es-CR", { minimumFractionDigits: 2 });
@@ -64,6 +75,7 @@ export function ProductVariantComboBox({
   hint,
   placeholder = "Buscar producto por SKU o nombre...",
   hideOutOfStock = false,
+  priceField = "price",
 }: ProductVariantComboBoxProps) {
   // State
   const [isOpen, setIsOpen] = useState(false);
@@ -75,7 +87,7 @@ export function ProductVariantComboBox({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Custom hook for search logic
-  const { variants, isLoading, search, getStockForVariant } =
+  const { variants, isLoading, error: searchError, search, getStockForVariant } =
     useProductVariantSearch({
       tenantId,
       warehouseId,
@@ -100,6 +112,16 @@ export function ProductVariantComboBox({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Con hideOutOfStock las variantes sin stock no se listan; el contador debe
+  // reflejar lo que realmente se muestra, no lo que devolvio el backend.
+  const visibleVariants = variants.filter((v) => {
+    if (!hideOutOfStock || !warehouseId) return true;
+    const id = getVariantId(v);
+    if (!id) return true;
+    return (getStockForVariant(id) ?? 0) > 0;
+  });
+  const hiddenOutOfStock = variants.length - visibleVariants.length;
 
   // Event handlers
   const handleOpen = useCallback(() => {
@@ -136,14 +158,14 @@ export function ProductVariantComboBox({
         product_variant_id: id,
         variant_name: name,
         sku: variant.sku,
-        unit_price: getVariantPrice(variant),
+        unit_price: getVariantPrice(variant, priceField),
       });
 
       setSelectedLabel(label);
       setIsOpen(false);
       setSearchTerm("");
     },
-    [onChange, getStockForVariant],
+    [onChange, getStockForVariant, priceField],
   );
 
   const handleManualSkuLookup = useCallback(
@@ -279,7 +301,11 @@ export function ProductVariantComboBox({
             <p className="mt-1 text-xs text-gray-400">
               {isLoading
                 ? "Buscando..."
-                : `${variants.length} resultado${variants.length !== 1 ? "s" : ""}`}
+                : `${visibleVariants.length} resultado${visibleVariants.length !== 1 ? "s" : ""}${
+                    hiddenOutOfStock > 0
+                      ? ` (${hiddenOutOfStock} sin stock en esta bodega)`
+                      : ""
+                  }`}
             </p>
           </div>
 
@@ -291,23 +317,25 @@ export function ProductVariantComboBox({
               </li>
             )}
 
-            {!isLoading && variants.length === 0 && (
+            {!isLoading && searchError && (
+              <li className="px-4 py-4 text-center text-sm text-red-600">
+                {searchError}
+              </li>
+            )}
+
+            {!isLoading && !searchError && visibleVariants.length === 0 && (
               <li className="px-4 py-4 text-center text-sm text-gray-500">
-                {searchTerm.trim()
-                  ? `Sin resultados para "${searchTerm.trim()}"`
-                  : "No hay productos para mostrar"}
+                {hiddenOutOfStock > 0
+                  ? "Los productos encontrados no tienen stock en esta bodega. Registre una recepción de mercancía o un ajuste de inventario."
+                  : searchTerm.trim()
+                    ? `Sin resultados para "${searchTerm.trim()}"`
+                    : "No hay productos para mostrar"}
               </li>
             )}
 
             {!isLoading &&
-              variants
-                .filter((v) => {
-                  if (!hideOutOfStock || !warehouseId) return true;
-                  const id = getVariantId(v);
-                  if (!id) return true;
-                  const stock = getStockForVariant(id);
-                  return (stock ?? 0) > 0;
-                })
+              !searchError &&
+              visibleVariants
                 .map((variant) => {
                   const id = getVariantId(variant);
                   const isSelected = !!id && id === value;
@@ -340,10 +368,17 @@ export function ProductVariantComboBox({
                         </span>
                       </div>
                       <div className="mt-0.5 text-[11px] text-gray-500">
-                        Precio:{" "}
+                        {priceField === "cost_price" ? "Costo" : "Precio"}{" "}
+                        (USD):{" "}
                         <span className="font-mono">
-                          {formatCurrency(getVariantPrice(variant))}
+                          ${formatCurrency(getVariantPrice(variant, priceField))}
                         </span>
+                        {priceField === "cost_price" &&
+                          getVariantPrice(variant, priceField) === 0 && (
+                            <span className="ml-1 font-medium text-amber-600">
+                              — sin costo configurado
+                            </span>
+                          )}
                       </div>
                     </button>
                   </li>

@@ -1,5 +1,6 @@
 import { authApi } from "@/api/auth.api";
 import { branchApi } from "@/api/branch.api";
+import { creditDebitNoteApi } from "@/api/creditDebitNote.api";
 import { customerApi } from "@/api/customer.api";
 import { employeeApi } from "@/api/employee.api";
 import { productApi } from "@/api/product.api";
@@ -9,6 +10,7 @@ import { withAuthCheck } from "./utils/withAuthCheck";
 import type { Branch } from "@/interfaces/entities/Branch.interface";
 import type { Product } from "@/interfaces/entities/Product.interface";
 import type { Customer } from "@/interfaces/entities/Customer.interface";
+import type { CreditDebitNoteListItem } from "@/interfaces/entities/CreditDebitNote.interface";
 import type { CurrentUserResponse } from "@/interfaces/api/responses/CurrentUserResponse.interface";
 import type { PaginatedResponse } from "@/interfaces/api/responses/PaginatedResponse.interface";
 import type {
@@ -26,9 +28,8 @@ export interface CreateSalePageLoaderData {
   initialCustomers: Customer[];
 }
 
-export const getCreateSalePageData =
-  async (): Promise<CreateSalePageLoaderData> =>
-    withAuthCheck(async () => {
+const fetchCreateSalePageData = async (): Promise<CreateSalePageLoaderData> =>
+  withAuthCheck(async () => {
       const currentUser = await authApi.getCurrentUser();
       const tenantId = currentUser?.tenant?.tenant_id;
       const userId = currentUser?.user_id;
@@ -78,14 +79,24 @@ export const getCreateSalePageData =
       };
     });
 
+/**
+ * Carga diferida: el loader retorna de inmediato (sin await) para que la
+ * navegación no espere la respuesta del backend. La página resuelve la
+ * promesa con <Suspense>+<Await> y muestra un loader animado mientras tanto.
+ */
+export const getCreateSalePageData = () => ({
+  data: fetchCreateSalePageData(),
+});
+
 export interface SalesHistoryPageLoaderData {
   currentUser: CurrentUserResponse | null;
   branches: Branch[];
   initialSales: PaginatedResponse<SaleListItem>;
   initialBranchId: string;
+  creditDebitNotes: CreditDebitNoteListItem[];
 }
 
-export const getSalesHistoryPageData =
+const fetchSalesHistoryPageData =
   async (): Promise<SalesHistoryPageLoaderData> =>
     withAuthCheck(async () => {
       const currentUser = await authApi.getCurrentUser();
@@ -133,18 +144,36 @@ export const getSalesHistoryPageData =
             limit: SALES_PAGE_LIMIT,
           } as PaginatedResponse<SaleListItem>);
 
-      return { currentUser, branches, initialSales, initialBranchId };
+      const creditDebitNotes = await creditDebitNoteApi
+        .listByTenant()
+        .catch(() => [] as CreditDebitNoteListItem[]);
+
+      return {
+        currentUser,
+        branches,
+        initialSales,
+        initialBranchId,
+        creditDebitNotes,
+      };
     });
+
+export const getSalesHistoryPageData = () => ({
+  data: fetchSalesHistoryPageData(),
+});
 
 export const getSalesByBranch = async (
   branchId: string,
   page = 1,
   limit = SALES_PAGE_LIMIT,
+  dateFrom?: string,
+  dateTo?: string,
 ): Promise<PaginatedResponse<SaleListItem>> =>
-  saleApi.listByBranch(branchId, page, limit);
+  saleApi.listByBranch(branchId, page, limit, dateFrom, dateTo);
 
 export const getSalesByTenant = async (
   page = 1,
   limit = SALES_PAGE_LIMIT,
+  dateFrom?: string,
+  dateTo?: string,
 ): Promise<PaginatedResponse<SaleListItem>> =>
-  saleApi.listByTenant(page, limit);
+  saleApi.listByTenant(page, limit, dateFrom, dateTo);

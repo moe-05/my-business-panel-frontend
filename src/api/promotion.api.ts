@@ -3,6 +3,7 @@ import { url } from ".";
 import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
 import type {
   Promotion,
+  PromoAnalytics,
   PromotionType,
 } from "@/interfaces/entities/Promotion.interface";
 import type { CreatePromotionRequest } from "@/interfaces/api/requests/CreatePromotionRequest.interface";
@@ -159,6 +160,38 @@ export const promotionApi = {
         error instanceof Error
           ? error.message
           : "Error al eliminar promoción",
+      );
+    }
+  },
+
+  async getAnalytics(
+    tenantId: string,
+    interval: string,
+    isActive?: boolean,
+    branchId?: string,
+    promotionType?: string,
+  ): Promise<PromoAnalytics> {
+    try {
+      const params = new URLSearchParams({ interval });
+      if (isActive !== undefined) params.set("isActive", String(isActive));
+      if (branchId) params.set("branchId", branchId);
+      // El filtro por tipo lo aplica el backend (FNZ-PR-02).
+      if (promotionType) params.set("type", promotionType);
+      const response = await fetch(
+        `${url}/promos/analytics/${tenantId}?${params.toString()}`,
+        { credentials: "include" },
+      );
+      const json = await response.json();
+      const data = unwrap<PromoAnalytics>(json);
+      return {
+        promotions: Array.isArray(data?.promotions) ? data.promotions : [],
+        sales_with_promotion: Number(data?.sales_with_promotion ?? 0),
+      };
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "Error al obtener analisis de promociones",
       );
     }
   },

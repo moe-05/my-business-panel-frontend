@@ -1,28 +1,42 @@
-import { authApi } from "@/api/auth.api";
+﻿import { authApi } from "@/api/auth.api";
 import { branchApi } from "@/api/branch.api";
-import { posExpenseApi } from "@/api/posExpense.api";
+import { financesApi } from "@/api/finances.api";
+import { currencyApi } from "@/api/currency.api";
 import type { Branch } from "@/interfaces/entities/Branch.interface";
-import type { ExpenseType } from "@/interfaces/entities/PosExpense.interface";
+import type { Currency } from "@/interfaces/entities/Currency.interface";
+import type { ExpenseCategory } from "@/interfaces/entities/FnzExpense.interface";
 
 export interface PosExpensePageLoaderData {
   branches: Branch[];
-  expenseTypes: ExpenseType[];
+  categories: ExpenseCategory[];
+  currencies: Currency[];
   tenantId: string;
 }
 
-export const getPosExpensePageData =
+const fetchPosExpensePageData =
   async (): Promise<PosExpensePageLoaderData> => {
     const user = await authApi.getCurrentUser();
     const tenantId = user?.tenant?.tenant_id ?? "";
 
-    const [branchRes, expenseTypes] = await Promise.all([
+    const [branchRes, allCategories, currencies] = await Promise.all([
       branchApi.listByTenant(tenantId, 1, 200),
-      tenantId ? posExpenseApi.listTypes(tenantId) : Promise.resolve([]),
+      tenantId ? financesApi.getCategories(tenantId) : Promise.resolve([]),
+      currencyApi.getAll(),
     ]);
 
     return {
       branches: branchRes.branches,
-      expenseTypes,
+      categories: allCategories.filter((c) => c.is_active),
+      currencies,
       tenantId,
     };
   };
+
+/**
+ * Carga diferida: el loader retorna de inmediato (sin await) para que la
+ * navegación no espere la respuesta del backend. La página resuelve la
+ * promesa con <Suspense>+<Await> y muestra un loader animado mientras tanto.
+ */
+export const getPosExpensePageData = () => ({
+  data: fetchPosExpensePageData(),
+});

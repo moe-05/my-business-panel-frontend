@@ -2,23 +2,31 @@ import { url } from ".";
 
 import type { ApiResponse } from "@/interfaces/api/ApiResponse.interface";
 import type {
+  ApplySupplierCreditRequest,
+  CreatePurchaseDisputeRequest,
   CreatePurchaseOrderRequest,
   CreatePurchasePaymentRequest,
   CreateSupplierRequest,
+  ResolvePurchaseDisputeRequest,
+  UpdateGoodsReceiptRequest,
+  UpdateSupplierInvoiceRequest,
   UpdateSupplierRequest,
   UpsertPaymentAlertConfigRequest,
 } from "@/interfaces/api/requests/PurchaseModuleRequests.interface";
 import type {
   ExchangeRateResult,
+  GoodsReceiptDetail,
   PaymentAlert,
   PaymentAlertConfigResponse,
   PaymentAlertStats,
   PurchaseAccountPayable,
   PurchaseCatalogs,
+  PurchaseDispute,
   PurchaseMatching,
   PurchaseOrder,
   PurchaseOrderDetail,
   Supplier,
+  SupplierCredit,
 } from "@/interfaces/entities/Purchase.interface";
 
 const json = async <T>(res: Response, fallback: string): Promise<T> => {
@@ -146,6 +154,144 @@ export const purchaseApi = {
       res,
       "Error al actualizar el estado de la orden",
     );
+  },
+
+  async updateSupplierInvoice(
+    invoiceId: string,
+    data: UpdateSupplierInvoiceRequest,
+  ): Promise<PurchaseOrderDetail> {
+    const res = await fetch(`${url}/purchase/invoices/${invoiceId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+
+    return json<PurchaseOrderDetail>(res, "Error al actualizar la factura");
+  },
+
+  async createDispute(data: CreatePurchaseDisputeRequest): Promise<PurchaseDispute> {
+    const res = await fetch(`${url}/purchase/disputes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+
+    return json<PurchaseDispute>(res, "Error al reportar la discrepancia");
+  },
+
+  async listDisputesByOrder(purchaseOrderId: string): Promise<PurchaseDispute[]> {
+    const res = await fetch(
+      withQuery(`${url}/purchase/disputes`, { purchase_order_id: purchaseOrderId }),
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+
+    return json<PurchaseDispute[]>(res, "Error al listar discrepancias");
+  },
+
+  async resolveDispute(
+    disputeId: string,
+    data: ResolvePurchaseDisputeRequest,
+  ): Promise<PurchaseDispute> {
+    const res = await fetch(`${url}/purchase/disputes/${disputeId}/resolve`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+
+    return json<PurchaseDispute>(res, "Error al resolver la discrepancia");
+  },
+
+  async listSupplierCredits(supplierId: string): Promise<SupplierCredit[]> {
+    const res = await fetch(
+      withQuery(`${url}/purchase/supplier-credits`, { supplier_id: supplierId }),
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+
+    return json<SupplierCredit[]>(res, "Error al listar créditos del proveedor");
+  },
+
+  async applySupplierCredit(
+    creditId: string,
+    data: ApplySupplierCreditRequest,
+  ): Promise<PurchaseOrderDetail> {
+    const res = await fetch(`${url}/purchase/supplier-credits/${creditId}/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+
+    return json<PurchaseOrderDetail>(res, "Error al aplicar el crédito del proveedor");
+  },
+
+  async startGoodsReceipt(orderId: string): Promise<GoodsReceiptDetail> {
+    const res = await fetch(`${url}/purchase/${orderId}/goods-receipt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+
+    return json<GoodsReceiptDetail>(res, "Error al iniciar la recepción de mercancía");
+  },
+
+  async getGoodsReceipt(goodsReceiptId: string): Promise<GoodsReceiptDetail> {
+    const res = await fetch(`${url}/purchase/goods-receipt/${goodsReceiptId}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+
+    return json<GoodsReceiptDetail>(res, "Error al obtener la recepción de mercancía");
+  },
+
+  async updateGoodsReceiptItems(
+    goodsReceiptId: string,
+    data: UpdateGoodsReceiptRequest,
+  ): Promise<GoodsReceiptDetail> {
+    const res = await fetch(`${url}/purchase/goods-receipt/${goodsReceiptId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+
+    return json<GoodsReceiptDetail>(res, "Error al corregir los items recibidos");
+  },
+
+  async confirmGoodsReceipt(goodsReceiptId: string): Promise<PurchaseOrderDetail> {
+    const res = await fetch(
+      `${url}/purchase/goods-receipt/${goodsReceiptId}/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      },
+    );
+
+    return json<PurchaseOrderDetail>(res, "Error al confirmar la recepción de mercancía");
+  },
+
+  async cancelGoodsReceipt(goodsReceiptId: string): Promise<PurchaseOrderDetail> {
+    const res = await fetch(
+      `${url}/purchase/goods-receipt/${goodsReceiptId}`,
+      {
+        method: "DELETE",
+        credentials: "include",
+      },
+    );
+
+    return json<PurchaseOrderDetail>(res, "Error al cancelar la recepción de mercancía");
   },
 
   async getMatching(orderId: string): Promise<PurchaseMatching> {
